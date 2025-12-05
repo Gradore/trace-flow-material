@@ -17,7 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FlaskConical } from "lucide-react";
+import { FlaskConical, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "@/hooks/use-toast";
 
 interface SampleDialogProps {
   open: boolean;
@@ -26,15 +29,87 @@ interface SampleDialogProps {
 
 export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
   const [formData, setFormData] = useState({
-    batch: "",
-    processStep: "",
+    materialInput: "",
+    processingStep: "",
     sampler: "",
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const { data: materialInputs = [] } = useQuery({
+    queryKey: ["material-inputs-for-sampling"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("material_inputs")
+        .select("id, input_id, material_type")
+        .in("status", ["received", "in_processing"])
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: open,
+  });
+
+  const { data: processingSteps = [] } = useQuery({
+    queryKey: ["processing-steps-for-sampling"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("processing_steps")
+        .select("id, processing_id, step_type, material_input_id")
+        .in("status", ["in_progress", "pending"])
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: open,
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Probe erstellt:", formData);
-    onOpenChange(false);
+    if (!formData.sampler) {
+      toast({ title: "Fehler", description: "Bitte Probenehmer angeben.", variant: "destructive" });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const { data: idData, error: idError } = await supabase.rpc("generate_unique_id", { prefix: "PRB" });
+      if (idError) throw idError;
+
+      const sampleId = idData as string;
+
+      const { error } = await supabase.from("samples").insert({
+        sample_id: sampleId,
+        sampler_name: formData.sampler,
+        material_input_id: formData.materialInput || null,
+        processing_step_id: formData.processingStep || null,
+        status: "pending",
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Probe erstellt",
+        description: `${sampleId} wurde erfolgreich erstellt.`,
+      });
+
+      setFormData({ materialInput: "", processingStep: "", sampler: "" });
+      onOpenChange(false);
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: error.message || "Probe konnte nicht erstellt werden.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const stepTypeLabels: Record<string, string> = {
+    shredding: "Schreddern",
+    sorting: "Sortieren",
+    milling: "Mahlen",
+    separation: "Faser/Harz-Trennung",
   };
 
   return (
@@ -52,42 +127,51 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label>Charge / Verarbeitung</Label>
+            <Label>Materialeingang (optional)</Label>
             <Select
-              value={formData.batch}
-              onValueChange={(value) => setFormData({ ...formData, batch: value })}
+              value={formData.materialInput}
+              onValueChange={(value) => setFormData({ ...formData, materialInput: value })}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Charge wählen" />
+                <SelectValue placeholder="Materialeingang wählen" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="VRB-2024-0045">VRB-2024-0045 - GFK-UP (Schreddern)</SelectItem>
-                <SelectItem value="VRB-2024-0044">VRB-2024-0044 - PP (Mahlen)</SelectItem>
-                <SelectItem value="VRB-2024-0043">VRB-2024-0043 - GFK-EP (Trennung)</SelectItem>
+              <SelectContent className="bg-popover">
+                {materialInputs.map((mi) => (
+                  <SelectItem key={mi.id} value={mi.id}>
+                    {mi.input_id} - {mi.material_type}
+                  </SelectItem>
+                ))}
+                {materialInputs.length === 0 && (
+                  <SelectItem value="none" disabled>Keine Materialeingänge verfügbar</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-2">
-            <Label>Prozessschritt</Label>
+            <Label>Verarbeitungsschritt (optional)</Label>
             <Select
-              value={formData.processStep}
-              onValueChange={(value) => setFormData({ ...formData, processStep: value })}
+              value={formData.processingStep}
+              onValueChange={(value) => setFormData({ ...formData, processingStep: value })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Prozessschritt wählen" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="shredding">Schreddern</SelectItem>
-                <SelectItem value="sorting">Sortieren</SelectItem>
-                <SelectItem value="milling">Mahlen</SelectItem>
-                <SelectItem value="separation">Faser/Harz-Trennung</SelectItem>
+              <SelectContent className="bg-popover">
+                {processingSteps.map((ps) => (
+                  <SelectItem key={ps.id} value={ps.id}>
+                    {ps.processing_id} - {stepTypeLabels[ps.step_type] || ps.step_type}
+                  </SelectItem>
+                ))}
+                {processingSteps.length === 0 && (
+                  <SelectItem value="none" disabled>Keine Verarbeitungsschritte verfügbar</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-2">
-            <Label>Probenehmer</Label>
+            <Label>Probenehmer *</Label>
             <Input
               placeholder="Name des Probenehmers"
               value={formData.sampler}
@@ -108,7 +192,8 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Abbrechen
             </Button>
-            <Button type="submit">
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Probe erstellen
             </Button>
           </DialogFooter>

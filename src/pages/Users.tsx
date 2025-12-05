@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Users as UsersIcon, MoreVertical, Shield, Mail, UserCheck } from "lucide-react";
+import { Plus, Search, Users as UsersIcon, MoreVertical, Shield, Mail, UserCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,8 +18,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "@/hooks/use-toast";
 
-const roleConfig = {
+const roleConfig: Record<string, { label: string; class: string; icon: typeof Shield }> = {
   admin: { label: "Administrator", class: "bg-destructive/10 text-destructive border-destructive/20", icon: Shield },
   intake: { label: "Annahme", class: "bg-info/10 text-info border-info/20", icon: UserCheck },
   production: { label: "Produktion", class: "bg-warning/10 text-warning border-warning/20", icon: UserCheck },
@@ -27,53 +30,22 @@ const roleConfig = {
   customer: { label: "Kunde (Nur Lesen)", class: "bg-secondary text-secondary-foreground", icon: UserCheck },
 };
 
-const mockUsers = [
-  {
-    id: "1",
-    name: "Max Schmidt",
-    email: "m.schmidt@recytrack.de",
-    role: "admin",
-    status: "active",
-    lastActive: "vor 5 Min.",
-  },
-  {
-    id: "2",
-    name: "Klaus Weber",
-    email: "k.weber@recytrack.de",
-    role: "qa",
-    status: "active",
-    lastActive: "vor 12 Min.",
-  },
-  {
-    id: "3",
-    name: "Lisa Müller",
-    email: "l.mueller@recytrack.de",
-    role: "production",
-    status: "active",
-    lastActive: "vor 1 Std.",
-  },
-  {
-    id: "4",
-    name: "Thomas Braun",
-    email: "t.braun@recytrack.de",
-    role: "intake",
-    status: "active",
-    lastActive: "vor 2 Std.",
-  },
-  {
-    id: "5",
-    name: "FiberTech AG",
-    email: "kontakt@fibertech.de",
-    role: "customer",
-    status: "active",
-    lastActive: "vor 3 Tagen",
-  },
-];
-
 export default function Users() {
   const [searchTerm, setSearchTerm] = useState("");
 
-  const filteredUsers = mockUsers.filter(
+  const { data: users = [], isLoading, refetch } = useQuery({
+    queryKey: ["profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const filteredUsers = users.filter(
     (u) =>
       u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       u.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -88,9 +60,22 @@ export default function Users() {
       .slice(0, 2);
   };
 
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ role: newRole })
+      .eq("id", userId);
+
+    if (error) {
+      toast({ title: "Fehler", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Rolle aktualisiert" });
+      refetch();
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Benutzerverwaltung</h1>
@@ -102,10 +87,9 @@ export default function Users() {
         </Button>
       </div>
 
-      {/* Role Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {Object.entries(roleConfig).map(([key, config]) => {
-          const count = mockUsers.filter((u) => u.role === key).length;
+          const count = users.filter((u) => u.role === key).length;
           const Icon = config.icon;
           return (
             <div key={key} className="glass-card rounded-lg p-4">
@@ -123,7 +107,6 @@ export default function Users() {
         })}
       </div>
 
-      {/* Search */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -136,71 +119,88 @@ export default function Users() {
         </div>
       </div>
 
-      {/* Table */}
       <div className="glass-card rounded-xl overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Benutzer</TableHead>
-              <TableHead>E-Mail</TableHead>
-              <TableHead>Rolle</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Letzte Aktivität</TableHead>
-              <TableHead className="w-12"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredUsers.map((user) => {
-              const role = roleConfig[user.role as keyof typeof roleConfig];
-              return (
-                <TableRow key={user.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                          {getInitials(user.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium">{user.name}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Mail className="h-3.5 w-3.5" />
-                      {user.email}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border", role.class)}>
-                      {role.label}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="status-badge-success">Aktiv</span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {user.lastActive}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Profil bearbeiten</DropdownMenuItem>
-                        <DropdownMenuItem>Rolle ändern</DropdownMenuItem>
-                        <DropdownMenuItem>Passwort zurücksetzen</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">Deaktivieren</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+        {isLoading ? (
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Benutzer</TableHead>
+                <TableHead>E-Mail</TableHead>
+                <TableHead>Rolle</TableHead>
+                <TableHead>Erstellt am</TableHead>
+                <TableHead className="w-12"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredUsers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    Keine Benutzer vorhanden
                   </TableCell>
                 </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+              ) : (
+                filteredUsers.map((user) => {
+                  const role = roleConfig[user.role] || roleConfig.customer;
+                  return (
+                    <TableRow key={user.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                              {getInitials(user.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="font-medium">{user.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <Mail className="h-3.5 w-3.5" />
+                          {user.email}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border", role.class)}>
+                          {role.label}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {new Date(user.created_at).toLocaleDateString("de-DE")}
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon-sm">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-popover">
+                            <DropdownMenuItem onClick={() => handleRoleChange(user.id, "admin")}>
+                              Admin setzen
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleRoleChange(user.id, "intake")}>
+                              Annahme setzen
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleRoleChange(user.id, "production")}>
+                              Produktion setzen
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleRoleChange(user.id, "qa")}>
+                              QA/Labor setzen
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        )}
       </div>
     </div>
   );
