@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Filter, Package, QrCode, MoreVertical, MapPin, Scale } from "lucide-react";
+import { Plus, Search, Filter, Package, QrCode, MoreVertical, MapPin, Scale, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,15 +18,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ContainerDialog } from "@/components/containers/ContainerDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { generateLabelPDF, downloadPDF } from "@/lib/pdf";
+import { buildContainerQRUrl } from "@/lib/qrcode";
+import { toast } from "@/hooks/use-toast";
 
-const containerTypes = {
+const containerTypes: Record<string, { label: string; icon: string }> = {
   bigbag: { label: "BigBag", icon: "📦" },
   box: { label: "Box", icon: "📦" },
   cage: { label: "Gitterbox", icon: "🏗️" },
   container: { label: "Container", icon: "📦" },
 };
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; class: string }> = {
   empty: { label: "Leer", class: "status-badge bg-secondary text-secondary-foreground" },
   filling: { label: "Befüllung", class: "status-badge-warning" },
   full: { label: "Voll", class: "status-badge-info" },
@@ -34,27 +39,60 @@ const statusConfig = {
   processed: { label: "Verarbeitet", class: "status-badge-success" },
 };
 
-const mockContainers = [
-  { id: "BB-2024-0234", type: "bigbag", volume: "1000L", weight: "450kg", status: "full", location: "Halle A, Regal 12", material: "GFK-UP" },
-  { id: "BB-2024-0233", type: "bigbag", volume: "1000L", weight: "380kg", status: "in_processing", location: "Produktion", material: "GFK-EP" },
-  { id: "GX-2024-0156", type: "cage", volume: "500L", weight: "220kg", status: "filling", location: "Annahme", material: "PP" },
-  { id: "BB-2024-0232", type: "bigbag", volume: "1000L", weight: "0kg", status: "empty", location: "Halle B, Regal 5", material: "-" },
-  { id: "BX-2024-0089", type: "box", volume: "200L", weight: "85kg", status: "processed", location: "Ausgang", material: "PA6" },
-];
-
 export default function Containers() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const filteredContainers = mockContainers.filter(
+  const { data: containers = [], isLoading, refetch } = useQuery({
+    queryKey: ["containers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("containers")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const filteredContainers = containers.filter(
     (c) =>
-      c.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.material.toLowerCase().includes(searchTerm.toLowerCase())
+      c.container_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.location || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handlePrintQR = async (container: typeof containers[0]) => {
+    try {
+      const qrUrl = buildContainerQRUrl(container.container_id);
+      const typeLabel = containerTypes[container.type]?.label || container.type;
+      const pdfBlob = await generateLabelPDF(
+        {
+          id: container.container_id,
+          type: typeLabel,
+          location: container.location || "Nicht zugewiesen",
+          date: new Date(container.created_at).toLocaleDateString("de-DE"),
+        },
+        qrUrl
+      );
+      downloadPDF(pdfBlob, `Etikett_${container.container_id}.pdf`);
+      toast({ title: "Etikett heruntergeladen" });
+    } catch (error) {
+      toast({ title: "Fehler", description: "Etikett konnte nicht erstellt werden.", variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase.from("containers").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Fehler", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Container gelöscht" });
+      refetch();
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Container & BigBags</h1>
@@ -66,12 +104,11 @@ export default function Containers() {
         </Button>
       </div>
 
-      {/* Filters */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Suchen nach ID, Material..."
+            placeholder="Suchen nach ID, Standort..."
             className="pl-10"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -83,91 +120,101 @@ export default function Containers() {
         </Button>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {Object.entries(statusConfig).map(([key, config]) => (
           <div key={key} className="glass-card rounded-lg p-4 text-center">
             <p className="text-2xl font-bold text-foreground">
-              {mockContainers.filter((c) => c.status === key).length}
+              {containers.filter((c) => c.status === key).length}
             </p>
             <p className="text-sm text-muted-foreground">{config.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Table */}
       <div className="glass-card rounded-xl overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Container-ID</TableHead>
-              <TableHead>Typ</TableHead>
-              <TableHead>Material</TableHead>
-              <TableHead>Volumen</TableHead>
-              <TableHead>Gewicht</TableHead>
-              <TableHead>Standort</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-12"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredContainers.map((container) => {
-              const type = containerTypes[container.type as keyof typeof containerTypes];
-              const status = statusConfig[container.status as keyof typeof statusConfig];
-              return (
-                <TableRow key={container.id} className="cursor-pointer">
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Package className="h-4 w-4 text-primary" />
-                      <span className="font-mono font-medium">{container.id}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span>{type.icon} {type.label}</span>
-                  </TableCell>
-                  <TableCell className="font-medium">{container.material}</TableCell>
-                  <TableCell>{container.volume}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Scale className="h-3 w-3 text-muted-foreground" />
-                      {container.weight}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3 text-muted-foreground" />
-                      {container.location}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className={cn(status.class)}>{status.label}</span>
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
-                          <QrCode className="h-4 w-4 mr-2" />
-                          QR-Code drucken
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>Bearbeiten</DropdownMenuItem>
-                        <DropdownMenuItem>Details anzeigen</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">Löschen</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+        {isLoading ? (
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Container-ID</TableHead>
+                <TableHead>Typ</TableHead>
+                <TableHead>Volumen</TableHead>
+                <TableHead>Gewicht</TableHead>
+                <TableHead>Standort</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-12"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredContainers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    Keine Container vorhanden
                   </TableCell>
                 </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+              ) : (
+                filteredContainers.map((container) => {
+                  const type = containerTypes[container.type] || { label: container.type, icon: "📦" };
+                  const status = statusConfig[container.status] || statusConfig.empty;
+                  return (
+                    <TableRow key={container.id} className="cursor-pointer">
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Package className="h-4 w-4 text-primary" />
+                          <span className="font-mono font-medium">{container.container_id}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span>{type.icon} {type.label}</span>
+                      </TableCell>
+                      <TableCell>{container.volume_liters ? `${container.volume_liters}L` : "-"}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Scale className="h-3 w-3 text-muted-foreground" />
+                          {container.weight_kg ? `${container.weight_kg}kg` : "0kg"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <MapPin className="h-3 w-3 text-muted-foreground" />
+                          {container.location || "-"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className={cn(status.class)}>{status.label}</span>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon-sm">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-popover">
+                            <DropdownMenuItem onClick={() => handlePrintQR(container)}>
+                              <QrCode className="h-4 w-4 mr-2" />
+                              QR-Code drucken
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(container.id)}>
+                              Löschen
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        )}
       </div>
 
-      <ContainerDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} />
+      <ContainerDialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) refetch(); }} />
     </div>
   );
 }

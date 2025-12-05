@@ -21,6 +21,7 @@ import { Package, QrCode, Download, Loader2 } from "lucide-react";
 import { generateLabelPDF, downloadPDF } from "@/lib/pdf";
 import { buildContainerQRUrl } from "@/lib/qrcode";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ContainerDialogProps {
   open: boolean;
@@ -40,37 +41,62 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
     volume: "",
     location: "",
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [createdContainer, setCreatedContainer] = useState<{
     id: string;
     type: string;
   } | null>(null);
 
-  const generateContainerId = (type: string): string => {
-    const prefix = containerTypes[type as keyof typeof containerTypes]?.prefix || "CT";
-    const year = new Date().getFullYear();
-    const random = Math.floor(Math.random() * 9999).toString().padStart(4, "0");
-    return `${prefix}-${year}-${random}`;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const containerId = generateContainerId(formData.type);
-    setCreatedContainer({
-      id: containerId,
-      type: containerTypes[formData.type as keyof typeof containerTypes]?.label || formData.type,
-    });
-    
-    toast({
-      title: "Container erstellt",
-      description: `${containerId} wurde erfolgreich erstellt.`,
-    });
+    if (!formData.type) return;
+
+    setIsSubmitting(true);
+    try {
+      const prefix = containerTypes[formData.type as keyof typeof containerTypes]?.prefix || "CT";
+      
+      // Generate unique ID using database function
+      const { data: idData, error: idError } = await supabase.rpc("generate_unique_id", { prefix });
+      if (idError) throw idError;
+      
+      const containerId = idData as string;
+      const qrUrl = buildContainerQRUrl(containerId);
+
+      const { error } = await supabase.from("containers").insert({
+        container_id: containerId,
+        type: formData.type,
+        volume_liters: formData.volume ? parseFloat(formData.volume) : null,
+        location: formData.location || null,
+        qr_code: qrUrl,
+        status: "empty",
+      });
+
+      if (error) throw error;
+
+      setCreatedContainer({
+        id: containerId,
+        type: containerTypes[formData.type as keyof typeof containerTypes]?.label || formData.type,
+      });
+
+      toast({
+        title: "Container erstellt",
+        description: `${containerId} wurde erfolgreich erstellt.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: error.message || "Container konnte nicht erstellt werden.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDownloadLabel = async () => {
     if (!createdContainer) return;
-    
+
     setIsGenerating(true);
     try {
       const qrUrl = buildContainerQRUrl(createdContainer.id);
@@ -83,9 +109,9 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
         },
         qrUrl
       );
-      
+
       downloadPDF(pdfBlob, `Etikett_${createdContainer.id}.pdf`);
-      
+
       toast({
         title: "Etikett heruntergeladen",
         description: "Das PDF-Etikett mit QR-Code wurde erstellt.",
@@ -135,7 +161,7 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
                   <SelectTrigger>
                     <SelectValue placeholder="Typ wählen" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-popover">
                     <SelectItem value="bigbag">BigBag</SelectItem>
                     <SelectItem value="box">Box</SelectItem>
                     <SelectItem value="cage">Gitterbox</SelectItem>
@@ -184,7 +210,8 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
               <Button type="button" variant="outline" onClick={handleClose}>
                 Abbrechen
               </Button>
-              <Button type="submit" disabled={!formData.type}>
+              <Button type="submit" disabled={!formData.type || isSubmitting}>
+                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Container erstellen
               </Button>
             </DialogFooter>
