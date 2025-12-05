@@ -17,8 +17,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, Download } from "lucide-react";
+import { FileText, Download, Loader2 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { generateDeliveryNotePDF, downloadPDF } from "@/lib/pdf";
+import { buildDeliveryNoteQRUrl } from "@/lib/qrcode";
+import { toast } from "@/hooks/use-toast";
 
 interface DeliveryNoteDialogProps {
   open: boolean;
@@ -27,17 +30,66 @@ interface DeliveryNoteDialogProps {
 
 export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogProps) {
   const [formData, setFormData] = useState({
-    type: "incoming",
+    type: "incoming" as "incoming" | "outgoing",
     partner: "",
     material: "",
     weight: "",
     wasteCode: "",
   });
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const generateNoteId = (): string => {
+    const year = new Date().getFullYear();
+    const random = Math.floor(Math.random() * 9999).toString().padStart(4, "0");
+    return `LS-${year}-${random}`;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Lieferschein erstellt:", formData);
-    onOpenChange(false);
+    
+    setIsGenerating(true);
+    try {
+      const noteId = generateNoteId();
+      const qrUrl = buildDeliveryNoteQRUrl(noteId);
+      
+      const pdfBlob = await generateDeliveryNotePDF(
+        {
+          noteId,
+          type: formData.type,
+          date: new Date().toLocaleDateString("de-DE"),
+          partner: formData.partner,
+          material: formData.material,
+          weight: `${formData.weight} kg`,
+          wasteCode: formData.wasteCode || undefined,
+        },
+        qrUrl
+      );
+      
+      downloadPDF(pdfBlob, `Lieferschein_${noteId}.pdf`);
+      
+      toast({
+        title: "Lieferschein erstellt",
+        description: `${noteId} wurde als PDF heruntergeladen.`,
+      });
+      
+      setFormData({
+        type: "incoming",
+        partner: "",
+        material: "",
+        weight: "",
+        wasteCode: "",
+      });
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error generating delivery note:", error);
+      toast({
+        title: "Fehler",
+        description: "Der Lieferschein konnte nicht erstellt werden.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -58,7 +110,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
             <Label>Lieferschein-Typ</Label>
             <RadioGroup
               value={formData.type}
-              onValueChange={(value) => setFormData({ ...formData, type: value })}
+              onValueChange={(value) => setFormData({ ...formData, type: value as "incoming" | "outgoing" })}
               className="flex gap-4"
             >
               <div className="flex items-center space-x-2">
@@ -78,11 +130,12 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
               placeholder={formData.type === "incoming" ? "z.B. Recycling GmbH" : "z.B. FiberTech AG"}
               value={formData.partner}
               onChange={(e) => setFormData({ ...formData, partner: e.target.value })}
+              required
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Material / Charge</Label>
+            <Label>Material</Label>
             <Select
               value={formData.material}
               onValueChange={(value) => setFormData({ ...formData, material: value })}
@@ -93,13 +146,19 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
               <SelectContent>
                 {formData.type === "incoming" ? (
                   <>
-                    <SelectItem value="ME-2024-0089">ME-2024-0089 - GFK-UP</SelectItem>
-                    <SelectItem value="ME-2024-0088">ME-2024-0088 - PP</SelectItem>
+                    <SelectItem value="GFK-UP">GFK-UP</SelectItem>
+                    <SelectItem value="GFK-EP">GFK-EP</SelectItem>
+                    <SelectItem value="GFK-VE">GFK-VE</SelectItem>
+                    <SelectItem value="Polypropylen (PP)">Polypropylen (PP)</SelectItem>
+                    <SelectItem value="Polyamid (PA6)">Polyamid (PA6)</SelectItem>
+                    <SelectItem value="Polyamid (PA66)">Polyamid (PA66)</SelectItem>
                   </>
                 ) : (
                   <>
-                    <SelectItem value="OUT-2024-0089">OUT-2024-0089 - Glasfasern</SelectItem>
-                    <SelectItem value="OUT-2024-0087">OUT-2024-0087 - PP Regranulat</SelectItem>
+                    <SelectItem value="Recycelte Glasfasern">Recycelte Glasfasern</SelectItem>
+                    <SelectItem value="Harzpulver">Harzpulver</SelectItem>
+                    <SelectItem value="PP Regranulat">PP Regranulat</SelectItem>
+                    <SelectItem value="PA Regranulat">PA Regranulat</SelectItem>
                   </>
                 )}
               </SelectContent>
@@ -114,6 +173,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
                 placeholder="z.B. 2500"
                 value={formData.weight}
                 onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                required
               />
             </div>
             <div className="space-y-2">
@@ -128,8 +188,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
 
           <div className="p-4 rounded-lg bg-info/10 border border-info/20">
             <p className="text-sm text-info">
-              Nach dem Erstellen wird der Lieferschein als PDF generiert und kann 
-              heruntergeladen oder per E-Mail versendet werden.
+              Nach dem Erstellen wird der Lieferschein als PDF mit QR-Code generiert.
             </p>
           </div>
 
@@ -137,8 +196,12 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Abbrechen
             </Button>
-            <Button type="submit">
-              <Download className="h-4 w-4" />
+            <Button type="submit" disabled={isGenerating || !formData.partner || !formData.material || !formData.weight}>
+              {isGenerating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
               PDF erstellen
             </Button>
           </DialogFooter>
