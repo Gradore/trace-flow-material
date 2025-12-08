@@ -3,6 +3,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
@@ -16,6 +18,7 @@ import Documents from "./pages/Documents";
 import Traceability from "./pages/Traceability";
 import Users from "./pages/Users";
 import QRScanner from "./pages/QRScanner";
+import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,20 +29,23 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/containers" element={<AppLayout><Containers /></AppLayout>} />
-          <Route path="/intake" element={<AppLayout><MaterialIntake /></AppLayout>} />
-          <Route path="/processing" element={<AppLayout><Processing /></AppLayout>} />
-          <Route path="/sampling" element={<AppLayout><Sampling /></AppLayout>} />
-          <Route path="/output" element={<AppLayout><OutputMaterials /></AppLayout>} />
-          <Route path="/delivery-notes" element={<AppLayout><DeliveryNotes /></AppLayout>} />
-          <Route path="/documents" element={<AppLayout><Documents /></AppLayout>} />
-          <Route path="/traceability" element={<AppLayout><Traceability /></AppLayout>} />
-          <Route path="/users" element={<AppLayout><Users /></AppLayout>} />
-          <Route path="/scan" element={<AppLayout><QRScanner /></AppLayout>} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+            <Route path="/containers" element={<ProtectedRoute><AppLayout><Containers /></AppLayout></ProtectedRoute>} />
+            <Route path="/intake" element={<ProtectedRoute><AppLayout><MaterialIntake /></AppLayout></ProtectedRoute>} />
+            <Route path="/processing" element={<ProtectedRoute><AppLayout><Processing /></AppLayout></ProtectedRoute>} />
+            <Route path="/sampling" element={<ProtectedRoute><AppLayout><Sampling /></AppLayout></ProtectedRoute>} />
+            <Route path="/output" element={<ProtectedRoute><AppLayout><OutputMaterials /></AppLayout></ProtectedRoute>} />
+            <Route path="/delivery-notes" element={<ProtectedRoute><AppLayout><DeliveryNotes /></AppLayout></ProtectedRoute>} />
+            <Route path="/documents" element={<ProtectedRoute><AppLayout><Documents /></AppLayout></ProtectedRoute>} />
+            <Route path="/traceability" element={<ProtectedRoute><AppLayout><Traceability /></AppLayout></ProtectedRoute>} />
+            <Route path="/users" element={<ProtectedRoute><AppLayout><Users /></AppLayout></ProtectedRoute>} />
+            <Route path="/scan" element={<ProtectedRoute><AppLayout><QRScanner /></AppLayout></ProtectedRoute>} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
