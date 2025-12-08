@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Search, Users as UsersIcon, MoreVertical, Shield, Mail, UserCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 const roleConfig: Record<string, { label: string; class: string; icon: typeof Shield }> = {
   admin: { label: "Administrator", class: "bg-destructive/10 text-destructive border-destructive/20", icon: Shield },
@@ -32,16 +33,50 @@ const roleConfig: Record<string, { label: string; class: string; icon: typeof Sh
 
 export default function Users() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const { user: currentUser } = useAuth();
+
+  // Check if current user is admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!currentUser) return;
+      
+      const { data, error } = await supabase
+        .rpc('has_role', { _user_id: currentUser.id, _role: 'admin' });
+      
+      if (!error && data) {
+        setIsAdmin(true);
+      }
+    };
+    checkAdminStatus();
+  }, [currentUser]);
 
   const { data: users = [], isLoading, refetch } = useQuery({
-    queryKey: ["profiles"],
+    queryKey: ["profiles-with-roles"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Fetch profiles
+      const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
+      
+      if (profilesError) throw profilesError;
+
+      // Fetch user roles
+      const { data: roles, error: rolesError } = await supabase
+        .from("user_roles")
+        .select("*");
+
+      if (rolesError) throw rolesError;
+
+      // Combine profiles with roles
+      return (profiles || []).map(profile => {
+        const userRole = roles?.find(r => r.user_id === profile.user_id);
+        return {
+          ...profile,
+          role: userRole?.role || 'customer',
+        };
+      });
     },
   });
 
@@ -60,19 +95,56 @@ export default function Users() {
       .slice(0, 2);
   };
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
-    const { error } = await supabase
-      .from("profiles")
-      .update({ role: newRole })
-      .eq("id", userId);
+  const handleRoleChange = async (userId: string, userAuthId: string, newRole: string) => {
+    if (!isAdmin) {
+      toast({ 
+        title: "Keine Berechtigung", 
+        description: "Nur Administratoren können Rollen ändern.", 
+        variant: "destructive" 
+      });
+      return;
+    }
 
-    if (error) {
-      toast({ title: "Fehler", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      // Cast role to proper type
+      const roleValue = newRole as "admin" | "intake" | "production" | "qa" | "customer";
+      
+      // Check if role exists for user
+      const { data: existingRole } = await supabase
+        .from("user_roles")
+        .select("id")
+        .eq("user_id", userAuthId)
+        .single();
+
+      if (existingRole) {
+        // Update existing role
+        const { error } = await supabase
+          .from("user_roles")
+          .update({ role: roleValue })
+          .eq("user_id", userAuthId);
+
+        if (error) throw error;
+      } else {
+        // Insert new role
+        const { error } = await supabase
+          .from("user_roles")
+          .insert([{ user_id: userAuthId, role: roleValue }]);
+
+        if (error) throw error;
+      }
+
       toast({ title: "Rolle aktualisiert" });
       refetch();
+    } catch (error: any) {
+      toast({ title: "Fehler", description: error.message, variant: "destructive" });
     }
   };
+
+  // Count by roles from user_roles table
+  const roleCounts = users.reduce((acc, u) => {
+    acc[u.role] = (acc[u.role] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -81,15 +153,17 @@ export default function Users() {
           <h1 className="text-2xl font-bold text-foreground">Benutzerverwaltung</h1>
           <p className="text-muted-foreground mt-1">Benutzer und Rollen verwalten</p>
         </div>
-        <Button>
-          <Plus className="h-4 w-4" />
-          Benutzer einladen
-        </Button>
+        {isAdmin && (
+          <Button>
+            <Plus className="h-4 w-4" />
+            Benutzer einladen
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {Object.entries(roleConfig).map(([key, config]) => {
-          const count = users.filter((u) => u.role === key).length;
+          const count = roleCounts[key] || 0;
           const Icon = config.icon;
           return (
             <div key={key} className="glass-card rounded-lg p-4">
@@ -132,13 +206,13 @@ export default function Users() {
                 <TableHead>E-Mail</TableHead>
                 <TableHead>Rolle</TableHead>
                 <TableHead>Erstellt am</TableHead>
-                <TableHead className="w-12"></TableHead>
+                {isAdmin && <TableHead className="w-12"></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={isAdmin ? 5 : 4} className="text-center text-muted-foreground py-8">
                     Keine Benutzer vorhanden
                   </TableCell>
                 </TableRow>
@@ -171,29 +245,31 @@ export default function Users() {
                       <TableCell className="text-muted-foreground text-sm">
                         {new Date(user.created_at).toLocaleDateString("de-DE")}
                       </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-popover">
-                            <DropdownMenuItem onClick={() => handleRoleChange(user.id, "admin")}>
-                              Admin setzen
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleRoleChange(user.id, "intake")}>
-                              Annahme setzen
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleRoleChange(user.id, "production")}>
-                              Produktion setzen
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleRoleChange(user.id, "qa")}>
-                              QA/Labor setzen
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+                      {isAdmin && (
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon-sm">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-popover">
+                              <DropdownMenuItem onClick={() => handleRoleChange(user.id, user.user_id, "admin")}>
+                                Admin setzen
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleRoleChange(user.id, user.user_id, "intake")}>
+                                Annahme setzen
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleRoleChange(user.id, user.user_id, "production")}>
+                                Produktion setzen
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleRoleChange(user.id, user.user_id, "qa")}>
+                                QA/Labor setzen
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })
