@@ -20,8 +20,9 @@ import {
 import { Inbox, Loader2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import { useMaterialFlowHistory } from "@/hooks/useMaterialFlowHistory";
 
 interface IntakeDialogProps {
   open: boolean;
@@ -38,6 +39,8 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
     container: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { logEvent } = useMaterialFlowHistory();
+  const queryClient = useQueryClient();
 
   const { data: containers = [] } = useQuery({
     queryKey: ["containers-empty"],
@@ -76,7 +79,7 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
         materialType = formData.resinType;
       }
 
-      const { error } = await supabase.from("material_inputs").insert({
+      const { data: insertedData, error } = await supabase.from("material_inputs").insert({
         input_id: inputId,
         supplier: formData.supplier,
         material_type: materialType,
@@ -85,7 +88,7 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
         waste_code: formData.wasteCode || null,
         container_id: formData.container && formData.container !== "new" ? formData.container : null,
         status: "received",
-      });
+      }).select().single();
 
       if (error) throw error;
 
@@ -97,11 +100,27 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
           .eq("id", formData.container);
       }
 
+      // Log event
+      await logEvent({
+        eventType: 'intake_received',
+        eventDescription: `Materialeingang ${inputId} von ${formData.supplier} erfasst`,
+        eventDetails: {
+          input_id: inputId,
+          supplier: formData.supplier,
+          material_type: materialType,
+          weight_kg: parseFloat(formData.weight),
+          waste_code: formData.wasteCode || null,
+        },
+        materialInputId: insertedData?.id,
+        containerId: formData.container && formData.container !== "new" ? formData.container : undefined,
+      });
+
       toast({
         title: "Materialeingang erfasst",
         description: `${inputId} wurde erfolgreich erstellt.`,
       });
 
+      queryClient.invalidateQueries({ queryKey: ['material-inputs'] });
       setFormData({ supplier: "", materialType: "", resinType: "", weight: "", wasteCode: "", container: "" });
       onOpenChange(false);
     } catch (error: any) {

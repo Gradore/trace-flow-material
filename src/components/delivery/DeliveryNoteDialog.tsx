@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -22,10 +22,30 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { generateDeliveryNotePDF, downloadPDF } from "@/lib/pdf";
 import { buildDeliveryNoteQRUrl } from "@/lib/qrcode";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useMaterialFlowHistory } from "@/hooks/useMaterialFlowHistory";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DeliveryNoteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+interface MaterialInput {
+  id: string;
+  input_id: string;
+  material_type: string;
+  weight_kg: number;
+  supplier: string;
+}
+
+interface OutputMaterial {
+  id: string;
+  output_id: string;
+  output_type: string;
+  weight_kg: number;
+  destination: string | null;
 }
 
 export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogProps) {
@@ -35,13 +55,76 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
     material: "",
     weight: "",
     wasteCode: "",
+    linkedId: "",
   });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [materialInputs, setMaterialInputs] = useState<MaterialInput[]>([]);
+  const [outputMaterials, setOutputMaterials] = useState<OutputMaterial[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const { logEvent } = useMaterialFlowHistory();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
 
-  const generateNoteId = (): string => {
-    const year = new Date().getFullYear();
-    const random = Math.floor(Math.random() * 9999).toString().padStart(4, "0");
-    return `LS-${year}-${random}`;
+  useEffect(() => {
+    if (open) {
+      fetchData();
+    }
+  }, [open, formData.type]);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      if (formData.type === 'incoming') {
+        const { data, error } = await supabase
+          .from('material_inputs')
+          .select('id, input_id, material_type, weight_kg, supplier')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        setMaterialInputs(data || []);
+      } else {
+        const { data, error } = await supabase
+          .from('output_materials')
+          .select('id, output_id, output_type, weight_kg, destination')
+          .eq('status', 'in_stock')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        setOutputMaterials(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLinkedItemChange = (id: string) => {
+    setFormData(prev => ({ ...prev, linkedId: id }));
+    
+    if (formData.type === 'incoming') {
+      const item = materialInputs.find(m => m.id === id);
+      if (item) {
+        setFormData(prev => ({
+          ...prev,
+          linkedId: id,
+          partner: item.supplier,
+          material: item.material_type,
+          weight: item.weight_kg.toString(),
+        }));
+      }
+    } else {
+      const item = outputMaterials.find(m => m.id === id);
+      if (item) {
+        setFormData(prev => ({
+          ...prev,
+          linkedId: id,
+          partner: item.destination || '',
+          material: item.output_type,
+          weight: item.weight_kg.toString(),
+        }));
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,9 +132,16 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
     
     setIsGenerating(true);
     try {
-      const noteId = generateNoteId();
+      // Generate note ID using database function
+      const { data: noteIdData, error: idError } = await supabase
+        .rpc('generate_unique_id', { prefix: 'LS' });
+      
+      if (idError) throw idError;
+      
+      const noteId = noteIdData;
       const qrUrl = buildDeliveryNoteQRUrl(noteId);
       
+      // Generate PDF
       const pdfBlob = await generateDeliveryNotePDF(
         {
           noteId,
@@ -65,12 +155,79 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
         qrUrl
       );
       
+      // Upload PDF to storage
+      const fileName = `${noteId}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(`delivery-notes/${fileName}`, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(`delivery-notes/${fileName}`);
+
+      // Save to database
+      const { data: savedNote, error: dbError } = await supabase
+        .from('delivery_notes')
+        .insert({
+          note_id: noteId,
+          type: formData.type,
+          partner_name: formData.partner,
+          material_description: formData.material,
+          weight_kg: parseFloat(formData.weight),
+          waste_code: formData.wasteCode || null,
+          qr_code: qrUrl,
+          pdf_url: urlData?.publicUrl || null,
+          material_input_id: formData.type === 'incoming' && formData.linkedId ? formData.linkedId : null,
+          output_material_id: formData.type === 'outgoing' && formData.linkedId ? formData.linkedId : null,
+          created_by: user?.id,
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      // Log event
+      await logEvent({
+        eventType: 'delivery_note_created',
+        eventDescription: `Lieferschein ${noteId} erstellt (${formData.type === 'incoming' ? 'Eingang' : 'Ausgang'})`,
+        eventDetails: {
+          note_id: noteId,
+          type: formData.type,
+          partner: formData.partner,
+          material: formData.material,
+          weight_kg: parseFloat(formData.weight),
+        },
+        materialInputId: formData.type === 'incoming' && formData.linkedId ? formData.linkedId : undefined,
+        outputMaterialId: formData.type === 'outgoing' && formData.linkedId ? formData.linkedId : undefined,
+        deliveryNoteId: savedNote?.id,
+      });
+
+      // Update output material status if outgoing
+      if (formData.type === 'outgoing' && formData.linkedId) {
+        await supabase
+          .from('output_materials')
+          .update({ status: 'shipped' })
+          .eq('id', formData.linkedId);
+      }
+      
+      // Download PDF
       downloadPDF(pdfBlob, `Lieferschein_${noteId}.pdf`);
       
       toast({
         title: "Lieferschein erstellt",
-        description: `${noteId} wurde als PDF heruntergeladen.`,
+        description: `${noteId} wurde gespeichert und als PDF heruntergeladen.`,
       });
+
+      queryClient.invalidateQueries({ queryKey: ['delivery-notes'] });
+      queryClient.invalidateQueries({ queryKey: ['output-materials'] });
       
       setFormData({
         type: "incoming",
@@ -78,6 +235,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
         material: "",
         weight: "",
         wasteCode: "",
+        linkedId: "",
       });
       onOpenChange(false);
     } catch (error) {
@@ -110,7 +268,14 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
             <Label>Lieferschein-Typ</Label>
             <RadioGroup
               value={formData.type}
-              onValueChange={(value) => setFormData({ ...formData, type: value as "incoming" | "outgoing" })}
+              onValueChange={(value) => setFormData({ 
+                ...formData, 
+                type: value as "incoming" | "outgoing",
+                linkedId: "",
+                partner: "",
+                material: "",
+                weight: "",
+              })}
               className="flex gap-4"
             >
               <div className="flex items-center space-x-2">
@@ -122,6 +287,34 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
                 <Label htmlFor="outgoing" className="cursor-pointer">Ausgang</Label>
               </div>
             </RadioGroup>
+          </div>
+
+          <div className="space-y-2">
+            <Label>{formData.type === 'incoming' ? 'Materialeingang verknüpfen' : 'Ausgangsmaterial verknüpfen'}</Label>
+            <Select
+              value={formData.linkedId}
+              onValueChange={handleLinkedItemChange}
+              disabled={isLoading}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={isLoading ? "Lädt..." : "Optional: Verknüpfung wählen"} />
+              </SelectTrigger>
+              <SelectContent>
+                {formData.type === 'incoming' ? (
+                  materialInputs.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.input_id} - {item.material_type} ({item.weight_kg} kg)
+                    </SelectItem>
+                  ))
+                ) : (
+                  outputMaterials.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.output_id} - {item.output_type} ({item.weight_kg} kg)
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
@@ -188,7 +381,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
 
           <div className="p-4 rounded-lg bg-info/10 border border-info/20">
             <p className="text-sm text-info">
-              Nach dem Erstellen wird der Lieferschein als PDF mit QR-Code generiert.
+              Nach dem Erstellen wird der Lieferschein als PDF mit QR-Code generiert und in der Datenbank gespeichert.
             </p>
           </div>
 

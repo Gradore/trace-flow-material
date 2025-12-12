@@ -19,8 +19,9 @@ import {
 } from "@/components/ui/select";
 import { FlaskConical, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import { useMaterialFlowHistory } from "@/hooks/useMaterialFlowHistory";
 
 interface SampleDialogProps {
   open: boolean;
@@ -34,7 +35,8 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
     sampler: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const { logEvent } = useMaterialFlowHistory();
+  const queryClient = useQueryClient();
   const { data: materialInputs = [] } = useQuery({
     queryKey: ["material-inputs-for-sampling"],
     queryFn: async () => {
@@ -77,21 +79,35 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
 
       const sampleId = idData as string;
 
-      const { error } = await supabase.from("samples").insert({
+      const { data: insertedData, error } = await supabase.from("samples").insert({
         sample_id: sampleId,
         sampler_name: formData.sampler,
         material_input_id: formData.materialInput || null,
         processing_step_id: formData.processingStep || null,
         status: "pending",
-      });
+      }).select().single();
 
       if (error) throw error;
+
+      // Log event
+      await logEvent({
+        eventType: 'sample_created',
+        eventDescription: `Probe ${sampleId} von ${formData.sampler} erstellt`,
+        eventDetails: {
+          sample_id: sampleId,
+          sampler_name: formData.sampler,
+        },
+        materialInputId: formData.materialInput || undefined,
+        processingStepId: formData.processingStep || undefined,
+        sampleId: insertedData?.id,
+      });
 
       toast({
         title: "Probe erstellt",
         description: `${sampleId} wurde erfolgreich erstellt.`,
       });
 
+      queryClient.invalidateQueries({ queryKey: ['samples'] });
       setFormData({ materialInput: "", processingStep: "", sampler: "" });
       onOpenChange(false);
     } catch (error: any) {
