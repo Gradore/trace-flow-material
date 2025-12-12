@@ -1,10 +1,14 @@
 import { useState } from "react";
-import { Plus, Search, Filter, Settings, MoreVertical, ArrowRight, FlaskConical, Play, Pause, CheckCircle } from "lucide-react";
+import { Plus, Search, Filter, Settings, MoreVertical, ArrowRight, FlaskConical, Play, Pause, CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ProcessingDialog } from "@/components/processing/ProcessingDialog";
 import { Progress } from "@/components/ui/progress";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { format, isToday } from "date-fns";
+import { de } from "date-fns/locale";
 
 const processSteps = [
   { id: "shredding", label: "Schreddern", icon: "⚙️" },
@@ -21,62 +25,63 @@ const statusConfig = {
   sample_required: { label: "Probe erforderlich", class: "status-badge-destructive" },
 };
 
-const mockProcessing = [
-  {
-    id: "VRB-2024-0045",
-    intake: "ME-2024-0089",
-    material: "GFK-UP",
-    currentStep: "shredding",
-    progress: 65,
-    status: "running",
-    weight: "2500 kg",
-    startTime: "08:30",
-    hasSample: false,
-  },
-  {
-    id: "VRB-2024-0044",
-    intake: "ME-2024-0088",
-    material: "PP",
-    currentStep: "milling",
-    progress: 100,
-    status: "sample_required",
-    weight: "1800 kg",
-    startTime: "07:15",
-    hasSample: false,
-  },
-  {
-    id: "VRB-2024-0043",
-    intake: "ME-2024-0087",
-    material: "GFK-EP",
-    currentStep: "separation",
-    progress: 30,
-    status: "running",
-    weight: "3200 kg",
-    startTime: "06:00",
-    hasSample: true,
-  },
-  {
-    id: "VRB-2024-0042",
-    intake: "ME-2024-0086",
-    material: "PA6",
-    currentStep: "sorting",
-    progress: 100,
-    status: "completed",
-    weight: "1200 kg",
-    startTime: "Gestern",
-    hasSample: true,
-  },
-];
-
 export default function Processing() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const filteredProcessing = mockProcessing.filter(
+  const { data: processingSteps = [], isLoading } = useQuery({
+    queryKey: ["processing-steps"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("processing_steps")
+        .select(`
+          *,
+          material_inputs (
+            input_id,
+            material_type,
+            material_subtype,
+            weight_kg
+          ),
+          samples (
+            id,
+            status
+          )
+        `)
+        .order("created_at", { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const filteredProcessing = processingSteps.filter(
     (p) =>
-      p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.material.toLowerCase().includes(searchTerm.toLowerCase())
+      p.processing_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.material_inputs?.material_type?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Calculate stats
+  const activeCount = processingSteps.filter(p => p.status !== 'completed').length;
+  const runningCount = processingSteps.filter(p => p.status === 'running').length;
+  const sampleRequiredCount = processingSteps.filter(p => p.status === 'sample_required').length;
+  const completedTodayCount = processingSteps.filter(p => 
+    p.status === 'completed' && p.completed_at && isToday(new Date(p.completed_at))
+  ).length;
+
+  const formatTime = (dateString: string | null) => {
+    if (!dateString) return "-";
+    const date = new Date(dateString);
+    if (isToday(date)) {
+      return format(date, "HH:mm", { locale: de });
+    }
+    return format(date, "dd.MM.", { locale: de });
+  };
+
+  const getMaterialLabel = (step: typeof processingSteps[0]) => {
+    const type = step.material_inputs?.material_type || "";
+    const subtype = step.material_inputs?.material_subtype || "";
+    return subtype ? `${type}-${subtype}` : type;
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -112,19 +117,19 @@ export default function Processing() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="glass-card rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Aktive Prozesse</p>
-          <p className="text-2xl font-bold text-foreground mt-1">4</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{activeCount}</p>
         </div>
         <div className="glass-card rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Laufend</p>
-          <p className="text-2xl font-bold text-info mt-1">2</p>
+          <p className="text-2xl font-bold text-info mt-1">{runningCount}</p>
         </div>
         <div className="glass-card rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Probe erforderlich</p>
-          <p className="text-2xl font-bold text-destructive mt-1">1</p>
+          <p className="text-2xl font-bold text-destructive mt-1">{sampleRequiredCount}</p>
         </div>
         <div className="glass-card rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Heute abgeschlossen</p>
-          <p className="text-2xl font-bold text-success mt-1">3</p>
+          <p className="text-2xl font-bold text-success mt-1">{completedTodayCount}</p>
         </div>
       </div>
 
@@ -146,97 +151,110 @@ export default function Processing() {
       </div>
 
       {/* Processing Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredProcessing.map((process) => {
-          const status = statusConfig[process.status as keyof typeof statusConfig];
-          const currentStepIndex = processSteps.findIndex((s) => s.id === process.currentStep);
-          
-          return (
-            <div key={process.id} className="glass-card rounded-xl p-5">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Settings className="h-5 w-5 text-primary" />
-                    <span className="font-mono font-bold text-lg">{process.id}</span>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : filteredProcessing.length === 0 ? (
+        <div className="text-center py-12 glass-card rounded-xl">
+          <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-lg font-medium text-foreground">Keine Verarbeitungen gefunden</p>
+          <p className="text-muted-foreground">Erstellen Sie eine neue Verarbeitung um zu beginnen.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredProcessing.map((process) => {
+            const status = statusConfig[process.status as keyof typeof statusConfig] || statusConfig.pending;
+            const currentStepIndex = processSteps.findIndex((s) => s.id === process.step_type);
+            const hasSample = process.samples && process.samples.length > 0;
+            
+            return (
+              <div key={process.id} className="glass-card rounded-xl p-5">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Settings className="h-5 w-5 text-primary" />
+                      <span className="font-mono font-bold text-lg">{process.processing_id}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Eingang: {process.material_inputs?.input_id || "-"} • {getMaterialLabel(process)}
+                    </p>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Eingang: {process.intake} • {process.material}
-                  </p>
+                  <span className={cn(status.class)}>{status.label}</span>
                 </div>
-                <span className={cn(status.class)}>{status.label}</span>
-              </div>
 
-              {/* Progress */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">
-                    {processSteps[currentStepIndex]?.icon} {processSteps[currentStepIndex]?.label}
-                  </span>
-                  <span className="font-medium">{process.progress}%</span>
+                {/* Progress */}
+                <div className="mb-4">
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="text-muted-foreground">
+                      {processSteps[currentStepIndex]?.icon} {processSteps[currentStepIndex]?.label || process.step_type}
+                    </span>
+                    <span className="font-medium">{process.progress || 0}%</span>
+                  </div>
+                  <Progress value={process.progress || 0} className="h-2" />
                 </div>
-                <Progress value={process.progress} className="h-2" />
-              </div>
 
-              {/* Process Steps Indicator */}
-              <div className="flex items-center gap-1 mb-4">
-                {processSteps.map((step, index) => (
-                  <div
-                    key={step.id}
-                    className={cn(
-                      "flex-1 h-1.5 rounded-full transition-colors",
-                      index < currentStepIndex
-                        ? "bg-success"
-                        : index === currentStepIndex
-                        ? "bg-primary"
-                        : "bg-secondary"
-                    )}
-                  />
-                ))}
-              </div>
+                {/* Process Steps Indicator */}
+                <div className="flex items-center gap-1 mb-4">
+                  {processSteps.map((step, index) => (
+                    <div
+                      key={step.id}
+                      className={cn(
+                        "flex-1 h-1.5 rounded-full transition-colors",
+                        index < currentStepIndex
+                          ? "bg-success"
+                          : index === currentStepIndex
+                          ? "bg-primary"
+                          : "bg-secondary"
+                      )}
+                    />
+                  ))}
+                </div>
 
-              {/* Info Row */}
-              <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
-                <span>Gewicht: {process.weight}</span>
-                <span>Gestartet: {process.startTime}</span>
-              </div>
+                {/* Info Row */}
+                <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
+                  <span>Gewicht: {process.material_inputs?.weight_kg ? `${process.material_inputs.weight_kg} kg` : "-"}</span>
+                  <span>Gestartet: {formatTime(process.started_at)}</span>
+                </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-2">
-                {process.status === "running" && (
-                  <Button variant="outline" size="sm">
-                    <Pause className="h-4 w-4" />
-                    Pausieren
-                  </Button>
-                )}
-                {process.status === "paused" && (
-                  <Button variant="outline" size="sm">
-                    <Play className="h-4 w-4" />
-                    Fortsetzen
-                  </Button>
-                )}
-                {process.status === "sample_required" && (
-                  <Button variant="warning" size="sm">
-                    <FlaskConical className="h-4 w-4" />
-                    Probe erstellen
-                  </Button>
-                )}
-                {!process.hasSample && process.status !== "sample_required" && (
-                  <Button variant="outline" size="sm">
-                    <FlaskConical className="h-4 w-4" />
-                    Probe hinzufügen
-                  </Button>
-                )}
-                {process.hasSample && (
-                  <Button variant="ghost" size="sm" className="text-success">
-                    <CheckCircle className="h-4 w-4" />
-                    Probe vorhanden
-                  </Button>
-                )}
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  {process.status === "running" && (
+                    <Button variant="outline" size="sm">
+                      <Pause className="h-4 w-4" />
+                      Pausieren
+                    </Button>
+                  )}
+                  {process.status === "paused" && (
+                    <Button variant="outline" size="sm">
+                      <Play className="h-4 w-4" />
+                      Fortsetzen
+                    </Button>
+                  )}
+                  {process.status === "sample_required" && (
+                    <Button variant="warning" size="sm">
+                      <FlaskConical className="h-4 w-4" />
+                      Probe erstellen
+                    </Button>
+                  )}
+                  {!hasSample && process.status !== "sample_required" && (
+                    <Button variant="outline" size="sm">
+                      <FlaskConical className="h-4 w-4" />
+                      Probe hinzufügen
+                    </Button>
+                  )}
+                  {hasSample && (
+                    <Button variant="ghost" size="sm" className="text-success">
+                      <CheckCircle className="h-4 w-4" />
+                      Probe vorhanden
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       <ProcessingDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} />
     </div>
