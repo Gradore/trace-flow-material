@@ -55,7 +55,17 @@ export default function Sampling() {
   );
 
   const openResults = (sample: any) => {
-    setSelectedSample(sample);
+    setSelectedSample({
+      id: sample.id,
+      sampleId: sample.sample_id,
+      batch: sample.material_inputs?.input_id || "-",
+      material: sample.material_inputs?.material_type || "-",
+      processStep: sample.processing_steps?.step_type || "-",
+      sampler: sample.sampler_name,
+      date: sample.sampled_at,
+      status: sample.status,
+      materialInputId: sample.material_input_id,
+    });
     setIsResultsDialogOpen(true);
   };
 

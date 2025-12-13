@@ -22,6 +22,8 @@ import { generateLabelPDF, downloadPDF } from "@/lib/pdf";
 import { buildContainerQRUrl } from "@/lib/qrcode";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useMaterialFlowHistory } from "@/hooks/useMaterialFlowHistory";
 
 interface ContainerDialogProps {
   open: boolean;
@@ -36,6 +38,8 @@ const containerTypes = {
 };
 
 export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
+  const queryClient = useQueryClient();
+  const { logEvent } = useMaterialFlowHistory();
   const [formData, setFormData] = useState({
     type: "",
     volume: "",
@@ -45,6 +49,7 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [createdContainer, setCreatedContainer] = useState<{
     id: string;
+    uuid: string;
     type: string;
   } | null>(null);
 
@@ -63,21 +68,36 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
       const containerId = idData as string;
       const qrUrl = buildContainerQRUrl(containerId);
 
-      const { error } = await supabase.from("containers").insert({
+      const { data: inserted, error } = await supabase.from("containers").insert({
         container_id: containerId,
         type: formData.type,
         volume_liters: formData.volume ? parseFloat(formData.volume) : null,
         location: formData.location || null,
         qr_code: qrUrl,
         status: "empty",
-      });
+      }).select().single();
 
       if (error) throw error;
 
+      // Log event
+      await logEvent({
+        eventType: "container_assigned",
+        eventDescription: `Container ${containerId} erstellt: ${containerTypes[formData.type as keyof typeof containerTypes]?.label || formData.type}`,
+        eventDetails: {
+          container_id: containerId,
+          type: formData.type,
+          location: formData.location || null,
+        },
+        containerId: inserted.id,
+      });
+
       setCreatedContainer({
         id: containerId,
+        uuid: inserted.id,
         type: containerTypes[formData.type as keyof typeof containerTypes]?.label || formData.type,
       });
+
+      queryClient.invalidateQueries({ queryKey: ["containers"] });
 
       toast({
         title: "Container erstellt",
