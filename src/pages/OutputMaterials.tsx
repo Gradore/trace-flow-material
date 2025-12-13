@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { OutputMaterialDialog } from "@/components/output/OutputMaterialDialog";
 
 const outputTypes: Record<string, { label: string; color: string }> = {
   glass_fiber: { label: "Recycelte Glasfasern", color: "bg-primary" },
@@ -35,6 +36,7 @@ const statusConfig: Record<string, { label: string; class: string }> = {
 
 export default function OutputMaterials() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const { data: outputs = [], isLoading } = useQuery({
     queryKey: ["output-materials"],
@@ -77,11 +79,13 @@ export default function OutputMaterials() {
           <h1 className="text-2xl font-bold text-foreground">Ausgangsmaterial</h1>
           <p className="text-muted-foreground mt-1">Fertige Produkte und recycelte Materialien</p>
         </div>
-        <Button>
+        <Button onClick={() => setDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           Neues Ausgangsmaterial
         </Button>
       </div>
+
+      <OutputMaterialDialog open={dialogOpen} onOpenChange={setDialogOpen} />
 
       {/* Material Type Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
