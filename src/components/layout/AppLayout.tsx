@@ -1,16 +1,21 @@
 import { ReactNode, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
-import { Bell, Search, Moon, Sun, Menu, LogOut } from "lucide-react";
+import { GlobalSearch } from "./GlobalSearch";
+import { Bell, Moon, Sun, Menu, LogOut, User, Settings, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useExport } from "@/hooks/useExport";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 
 interface AppLayoutProps {
@@ -22,6 +27,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { exportToCSV } = useExport();
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
@@ -65,16 +71,34 @@ export function AppLayout({ children }: AppLayoutProps) {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <div className="relative max-w-md flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Suchen nach Charge, Container, Material..."
-                className="pl-10 bg-secondary/50 border-0 focus-visible:ring-1"
-              />
-            </div>
+            <GlobalSearch />
           </div>
 
           <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Download className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => exportToCSV("material_inputs")}>
+                  Materialeingänge exportieren
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportToCSV("containers")}>
+                  Container exportieren
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportToCSV("samples")}>
+                  Proben exportieren
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportToCSV("output_materials")}>
+                  Ausgangsmaterialien exportieren
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportToCSV("delivery_notes")}>
+                  Lieferscheine exportieren
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="h-5 w-5" />
               <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-destructive" />
@@ -91,6 +115,15 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => navigate("/profile")}>
+                  <User className="mr-2 h-4 w-4" />
+                  Mein Profil
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Einstellungen
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="mr-2 h-4 w-4" />
                   Abmelden
