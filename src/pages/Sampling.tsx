@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Filter, FlaskConical, MoreVertical, CheckCircle, XCircle, Clock, FileText, Upload, Loader2 } from "lucide-react";
+import { Plus, Search, Filter, FlaskConical, MoreVertical, CheckCircle, XCircle, Clock, FileText, Upload, Loader2, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { SampleDialog } from "@/components/sampling/SampleDialog";
 import { SampleResultsDialog } from "@/components/sampling/SampleResultsDialog";
+import { SampleResultsInputDialog } from "@/components/sampling/SampleResultsInputDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
@@ -33,7 +34,9 @@ const statusConfig: Record<string, { label: string; class: string; icon: typeof 
 export default function Sampling() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isResultsDialogOpen, setIsResultsDialogOpen] = useState(false);
+  const [isResultsInputDialogOpen, setIsResultsInputDialogOpen] = useState(false);
   const [selectedSample, setSelectedSample] = useState<any>(null);
+  const [selectedSampleForInput, setSelectedSampleForInput] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
   const { data: samples = [], isLoading, refetch } = useQuery({
@@ -197,6 +200,19 @@ export default function Sampling() {
                               <FileText className="h-4 w-4 mr-2" />
                               Ergebnisse anzeigen
                             </DropdownMenuItem>
+                            {(sample.status === "pending" || sample.status === "in_analysis") && (
+                              <DropdownMenuItem onClick={() => {
+                                setSelectedSampleForInput({
+                                  id: sample.id,
+                                  sampleId: sample.sample_id,
+                                  materialInputId: sample.material_input_id,
+                                });
+                                setIsResultsInputDialogOpen(true);
+                              }}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Ergebnisse eingeben
+                              </DropdownMenuItem>
+                            )}
                             {sample.status === "pending" && (
                               <DropdownMenuItem onClick={() => handleStatusChange(sample.id, "in_analysis")}>
                                 <FlaskConical className="h-4 w-4 mr-2" />
@@ -232,6 +248,11 @@ export default function Sampling() {
         open={isResultsDialogOpen}
         onOpenChange={setIsResultsDialogOpen}
         sample={selectedSample}
+      />
+      <SampleResultsInputDialog
+        open={isResultsInputDialogOpen}
+        onOpenChange={(open) => { setIsResultsInputDialogOpen(open); if (!open) refetch(); }}
+        sample={selectedSampleForInput}
       />
     </div>
   );
