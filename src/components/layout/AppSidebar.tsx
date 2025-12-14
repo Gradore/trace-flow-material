@@ -5,7 +5,7 @@ import {
   LayoutDashboard,
   Package,
   Inbox,
-  Settings,
+  Cog,
   FlaskConical,
   FileOutput,
   FileText,
@@ -15,7 +15,8 @@ import {
   QrCode,
   ChevronLeft,
   Recycle,
-  Menu,
+  Settings,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -23,13 +24,15 @@ const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Package, label: "Container", path: "/containers" },
   { icon: Inbox, label: "Materialeingang", path: "/intake" },
-  { icon: Settings, label: "Verarbeitung", path: "/processing" },
+  { icon: Cog, label: "Verarbeitung", path: "/processing" },
   { icon: FlaskConical, label: "Beprobung", path: "/sampling" },
   { icon: FileOutput, label: "Ausgangsmaterial", path: "/output" },
   { icon: FileText, label: "Lieferscheine", path: "/delivery-notes" },
   { icon: FolderOpen, label: "Dokumente", path: "/documents" },
   { icon: History, label: "Rückverfolgung", path: "/traceability" },
   { icon: Users, label: "Benutzer", path: "/users" },
+  { icon: User, label: "Profil", path: "/profile" },
+  { icon: Settings, label: "Einstellungen", path: "/settings" },
 ];
 
 export function AppSidebar() {
