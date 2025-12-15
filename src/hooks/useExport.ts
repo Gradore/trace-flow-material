@@ -109,5 +109,30 @@ export function useExport() {
     }
   };
 
-  return { exportToCSV };
+  const exportDataToCSV = (data: Record<string, unknown>[], filename: string) => {
+    if (!data || data.length === 0) {
+      toast({ title: "Keine Daten zum Exportieren", variant: "destructive" });
+      return;
+    }
+
+    const header = Object.keys(data[0]);
+    const csvContent = [
+      header.join(";"),
+      ...data.map((row) => header.map(key => `"${row[key] ?? ""}"`).join(";")),
+    ].join("\n");
+
+    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${filename}_${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({ title: `${filename} exportiert`, description: `${data.length} Einträge` });
+  };
+
+  return { exportToCSV, exportDataToCSV };
 }
