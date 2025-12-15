@@ -28,7 +28,7 @@ import { toast } from "sonner";
 export default function LogisticsPortal() {
   const queryClient = useQueryClient();
 
-  // Get pending announcements
+  // Get pending announcements with contract info
   const { data: announcements, isLoading: announcementsLoading } = useQuery({
     queryKey: ["logistics-announcements"],
     queryFn: async () => {
@@ -42,7 +42,7 @@ export default function LogisticsPortal() {
     },
   });
 
-  // Get pending pickup requests
+  // Get pending pickup requests with payment info
   const { data: pickups, isLoading: pickupsLoading } = useQuery({
     queryKey: ["logistics-pickups"],
     queryFn: async () => {
@@ -55,6 +55,34 @@ export default function LogisticsPortal() {
       return data;
     },
   });
+
+  // Get company contracts for logistics info
+  const { data: contracts } = useQuery({
+    queryKey: ["logistics-contracts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("company_contracts")
+        .select("company_id, freight_payer, delivery_terms, price_per_kg, currency")
+        .eq("status", "active");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const getContractForCompany = (companyId: string | undefined) => {
+    if (!companyId || !contracts) return null;
+    return contracts.find((c) => c.company_id === companyId);
+  };
+
+  const getFreightPayerLabel = (payer: string | null) => {
+    if (!payer) return "-";
+    const labels: Record<string, string> = {
+      sender: "Absender",
+      receiver: "Empfänger",
+      shared: "Geteilt",
+    };
+    return labels[payer] || payer;
+  };
 
   // Get containers with materials
   const { data: containers, isLoading: containersLoading } = useQuery({
@@ -207,6 +235,7 @@ export default function LogisticsPortal() {
                         <TableHead>Lieferant</TableHead>
                         <TableHead>Material</TableHead>
                         <TableHead>Menge</TableHead>
+                        <TableHead>Fracht</TableHead>
                         <TableHead>Termin</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Aktionen</TableHead>

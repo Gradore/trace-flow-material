@@ -25,6 +25,7 @@ import Companies from "./pages/Companies";
 import SupplierPortal from "./pages/SupplierPortal";
 import CustomerPortal from "./pages/CustomerPortal";
 import LogisticsPortal from "./pages/LogisticsPortal";
+import AdminUsers from "./pages/AdminUsers";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -53,6 +54,7 @@ const App = () => (
             <Route path="/supplier-portal" element={<ProtectedRoute><AppLayout><SupplierPortal /></AppLayout></ProtectedRoute>} />
             <Route path="/customer-portal" element={<ProtectedRoute><AppLayout><CustomerPortal /></AppLayout></ProtectedRoute>} />
             <Route path="/logistics" element={<ProtectedRoute><AppLayout><LogisticsPortal /></AppLayout></ProtectedRoute>} />
+            <Route path="/admin/users" element={<ProtectedRoute><AppLayout><AdminUsers /></AppLayout></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute><AppLayout><Users /></AppLayout></ProtectedRoute>} />
             <Route path="/scan" element={<ProtectedRoute><AppLayout><QRScanner /></AppLayout></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><AppLayout><Profile /></AppLayout></ProtectedRoute>} />

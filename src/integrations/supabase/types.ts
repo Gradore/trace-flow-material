@@ -79,6 +79,138 @@ export type Database = {
           },
         ]
       }
+      company_contracts: {
+        Row: {
+          company_id: string
+          contract_number: string | null
+          created_at: string
+          created_by: string | null
+          currency: string | null
+          delivery_terms: string | null
+          extracted_data: Json | null
+          freight_payer: string | null
+          id: string
+          material_type: string | null
+          notes: string | null
+          payment_terms: string | null
+          pdf_url: string | null
+          price_per_kg: number | null
+          status: string | null
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          company_id: string
+          contract_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string | null
+          delivery_terms?: string | null
+          extracted_data?: Json | null
+          freight_payer?: string | null
+          id?: string
+          material_type?: string | null
+          notes?: string | null
+          payment_terms?: string | null
+          pdf_url?: string | null
+          price_per_kg?: number | null
+          status?: string | null
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          company_id?: string
+          contract_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string | null
+          delivery_terms?: string | null
+          extracted_data?: Json | null
+          freight_payer?: string | null
+          id?: string
+          material_type?: string | null
+          notes?: string | null
+          payment_terms?: string | null
+          pdf_url?: string | null
+          price_per_kg?: number | null
+          status?: string | null
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_contracts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_documents: {
+        Row: {
+          company_id: string
+          created_at: string
+          document_type: string | null
+          file_size: number | null
+          file_type: string | null
+          file_url: string
+          id: string
+          name: string
+          notes: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          document_type?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          file_url: string
+          id?: string
+          name: string
+          notes?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          document_type?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          file_url?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_documents_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contacts: {
         Row: {
           company_id: string
@@ -358,6 +490,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           estimated_weight_kg: number
+          freight_payer: string | null
           id: string
           material_input_id: string | null
           material_subtype: string | null
@@ -365,6 +498,7 @@ export type Database = {
           notes: string | null
           preferred_date: string | null
           preferred_time_slot: string | null
+          price_per_kg: number | null
           status: string
           updated_at: string
           waste_code: string | null
@@ -380,6 +514,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           estimated_weight_kg: number
+          freight_payer?: string | null
           id?: string
           material_input_id?: string | null
           material_subtype?: string | null
@@ -387,6 +522,7 @@ export type Database = {
           notes?: string | null
           preferred_date?: string | null
           preferred_time_slot?: string | null
+          price_per_kg?: number | null
           status?: string
           updated_at?: string
           waste_code?: string | null
@@ -402,6 +538,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           estimated_weight_kg?: number
+          freight_payer?: string | null
           id?: string
           material_input_id?: string | null
           material_subtype?: string | null
@@ -409,6 +546,7 @@ export type Database = {
           notes?: string | null
           preferred_date?: string | null
           preferred_time_slot?: string | null
+          price_per_kg?: number | null
           status?: string
           updated_at?: string
           waste_code?: string | null
@@ -807,6 +945,66 @@ export type Database = {
           },
         ]
       }
+      pending_registrations: {
+        Row: {
+          company_id: string | null
+          company_name: string | null
+          created_at: string
+          email: string
+          id: string
+          name: string
+          rejection_reason: string | null
+          requested_role: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          company_id?: string | null
+          company_name?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          name: string
+          rejection_reason?: string | null
+          requested_role: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          company_id?: string | null
+          company_name?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string
+          rejection_reason?: string | null
+          requested_role?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_registrations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_registrations_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pickup_requests: {
         Row: {
           assigned_to: string | null
@@ -816,14 +1014,17 @@ export type Database = {
           container_id: string | null
           created_at: string
           created_by: string | null
+          freight_payer: string | null
           id: string
           material_description: string
           notes: string | null
+          payment_terms: string | null
           pickup_address: string | null
           preferred_date: string | null
           preferred_time_slot: string | null
           request_id: string
           status: string
+          transport_cost: number | null
           updated_at: string
           weight_kg: number | null
         }
@@ -835,14 +1036,17 @@ export type Database = {
           container_id?: string | null
           created_at?: string
           created_by?: string | null
+          freight_payer?: string | null
           id?: string
           material_description: string
           notes?: string | null
+          payment_terms?: string | null
           pickup_address?: string | null
           preferred_date?: string | null
           preferred_time_slot?: string | null
           request_id: string
           status?: string
+          transport_cost?: number | null
           updated_at?: string
           weight_kg?: number | null
         }
@@ -854,14 +1058,17 @@ export type Database = {
           container_id?: string | null
           created_at?: string
           created_by?: string | null
+          freight_payer?: string | null
           id?: string
           material_description?: string
           notes?: string | null
+          payment_terms?: string | null
           pickup_address?: string | null
           preferred_date?: string | null
           preferred_time_slot?: string | null
           request_id?: string
           status?: string
+          transport_cost?: number | null
           updated_at?: string
           weight_kg?: number | null
         }
