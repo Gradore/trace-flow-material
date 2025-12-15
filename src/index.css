@@ -4,126 +4,126 @@
 
 @layer base {
   :root {
-    /* RecyTrack Industrial Light Theme */
-    --background: 210 20% 98%;
-    --foreground: 222 47% 11%;
+    /* LAUREKU Industrial Light Theme - Teal */
+    --background: 180 15% 97%;
+    --foreground: 200 50% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 200 50% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 200 50% 10%;
 
-    /* Recycling Green - Primary */
-    --primary: 160 84% 39%;
+    /* LAUREKU Teal - Primary */
+    --primary: 175 55% 40%;
     --primary-foreground: 0 0% 100%;
 
     /* Industrial Gray - Secondary */
-    --secondary: 215 20% 93%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 180 10% 92%;
+    --secondary-foreground: 200 50% 10%;
 
-    --muted: 215 20% 93%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 180 10% 92%;
+    --muted-foreground: 180 10% 45%;
 
-    /* Amber Accent */
-    --accent: 38 92% 50%;
-    --accent-foreground: 222 47% 11%;
+    /* Teal Accent */
+    --accent: 180 45% 50%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 160 84% 39%;
+    --border: 180 15% 88%;
+    --input: 180 15% 88%;
+    --ring: 175 55% 40%;
 
     --radius: 0.5rem;
 
     /* Custom tokens */
-    --success: 160 84% 39%;
+    --success: 160 60% 40%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 11%;
-    --info: 199 89% 48%;
+    --warning-foreground: 200 50% 10%;
+    --info: 175 55% 40%;
     --info-foreground: 0 0% 100%;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(160 84% 39%) 0%, hsl(160 84% 29%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(25 95% 53%) 100%);
-    --gradient-dark: linear-gradient(180deg, hsl(222 47% 11%) 0%, hsl(222 47% 5%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(175 55% 40%) 0%, hsl(180 50% 30%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(180 45% 50%) 0%, hsl(175 55% 40%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(200 50% 10%) 0%, hsl(200 50% 5%) 100%);
 
     /* Shadows */
-    --shadow-sm: 0 1px 2px 0 hsl(222 47% 11% / 0.05);
-    --shadow-md: 0 4px 6px -1px hsl(222 47% 11% / 0.1), 0 2px 4px -2px hsl(222 47% 11% / 0.1);
-    --shadow-lg: 0 10px 15px -3px hsl(222 47% 11% / 0.1), 0 4px 6px -4px hsl(222 47% 11% / 0.1);
-    --shadow-glow: 0 0 20px hsl(160 84% 39% / 0.3);
+    --shadow-sm: 0 1px 2px 0 hsl(200 50% 10% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(200 50% 10% / 0.1), 0 2px 4px -2px hsl(200 50% 10% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(200 50% 10% / 0.1), 0 4px 6px -4px hsl(200 50% 10% / 0.1);
+    --shadow-glow: 0 0 20px hsl(175 55% 40% / 0.3);
 
     /* Sidebar */
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 160 84% 39%;
+    --sidebar-background: 200 50% 10%;
+    --sidebar-foreground: 180 15% 97%;
+    --sidebar-primary: 175 55% 45%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 33% 17%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 17%;
-    --sidebar-ring: 160 84% 39%;
+    --sidebar-accent: 200 40% 15%;
+    --sidebar-accent-foreground: 180 15% 97%;
+    --sidebar-border: 200 40% 15%;
+    --sidebar-ring: 175 55% 45%;
   }
 
   .dark {
-    /* RecyTrack Industrial Dark Theme */
-    --background: 222 47% 5%;
-    --foreground: 210 40% 98%;
+    /* LAUREKU Industrial Dark Theme - Teal */
+    --background: 200 50% 5%;
+    --foreground: 180 15% 97%;
 
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
+    --card: 200 45% 8%;
+    --card-foreground: 180 15% 97%;
 
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 200 45% 8%;
+    --popover-foreground: 180 15% 97%;
 
-    /* Recycling Green - Primary */
-    --primary: 160 84% 45%;
-    --primary-foreground: 222 47% 5%;
+    /* LAUREKU Teal - Primary */
+    --primary: 175 55% 45%;
+    --primary-foreground: 200 50% 5%;
 
     /* Industrial Gray - Secondary */
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 200 40% 15%;
+    --secondary-foreground: 180 15% 97%;
 
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 200 40% 15%;
+    --muted-foreground: 180 15% 65%;
 
-    /* Amber Accent */
-    --accent: 38 92% 50%;
-    --accent-foreground: 222 47% 5%;
+    /* Teal Accent */
+    --accent: 180 45% 50%;
+    --accent-foreground: 200 50% 5%;
 
     --destructive: 0 62% 50%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 180 15% 97%;
 
-    --border: 217 33% 20%;
-    --input: 217 33% 17%;
-    --ring: 160 84% 45%;
+    --border: 200 35% 18%;
+    --input: 200 40% 15%;
+    --ring: 175 55% 45%;
 
     /* Custom tokens */
-    --success: 160 84% 45%;
-    --success-foreground: 222 47% 5%;
+    --success: 160 60% 45%;
+    --success-foreground: 200 50% 5%;
     --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 5%;
-    --info: 199 89% 48%;
-    --info-foreground: 222 47% 5%;
+    --warning-foreground: 200 50% 5%;
+    --info: 175 55% 45%;
+    --info-foreground: 200 50% 5%;
 
     /* Shadows */
     --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
     --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.4), 0 2px 4px -2px hsl(0 0% 0% / 0.3);
     --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.4), 0 4px 6px -4px hsl(0 0% 0% / 0.3);
-    --shadow-glow: 0 0 30px hsl(160 84% 45% / 0.2);
+    --shadow-glow: 0 0 30px hsl(175 55% 45% / 0.2);
 
     /* Sidebar */
-    --sidebar-background: 222 47% 8%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 160 84% 45%;
-    --sidebar-primary-foreground: 222 47% 5%;
-    --sidebar-accent: 217 33% 17%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 20%;
-    --sidebar-ring: 160 84% 45%;
+    --sidebar-background: 200 45% 8%;
+    --sidebar-foreground: 180 15% 97%;
+    --sidebar-primary: 175 55% 45%;
+    --sidebar-primary-foreground: 200 50% 5%;
+    --sidebar-accent: 200 40% 15%;
+    --sidebar-accent-foreground: 180 15% 97%;
+    --sidebar-border: 200 35% 18%;
+    --sidebar-ring: 175 55% 45%;
   }
 }
 
@@ -213,10 +213,10 @@
 
   @keyframes pulse-glow {
     0%, 100% {
-      box-shadow: 0 0 20px hsl(160 84% 45% / 0.2);
+      box-shadow: 0 0 20px hsl(175 55% 45% / 0.2);
     }
     50% {
-      box-shadow: 0 0 40px hsl(160 84% 45% / 0.4);
+      box-shadow: 0 0 40px hsl(175 55% 45% / 0.4);
     }
   }
 

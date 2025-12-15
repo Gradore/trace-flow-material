@@ -12,7 +12,6 @@ import {
   History,
   Users,
   QrCode,
-  Recycle,
   Settings,
   User,
   ClipboardList,
@@ -28,6 +27,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import laurekuLogo from "@/assets/laureku-logo.png";
 
 interface NavItem {
   icon: typeof LayoutDashboard;
@@ -83,12 +83,14 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
       <SheetContent side="left" className="w-[280px] p-0 bg-sidebar border-sidebar-border">
         <SheetHeader className="p-4 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Recycle className="h-6 w-6" />
-            </div>
+            <img 
+              src={laurekuLogo} 
+              alt="LAUREKU Logo" 
+              className="h-10 w-10 object-contain"
+            />
             <div className="flex flex-col">
-              <SheetTitle className="text-sidebar-foreground text-lg font-bold">RecyTrack</SheetTitle>
-              <span className="text-xs text-sidebar-foreground/60">Materialverfolgung</span>
+              <SheetTitle className="text-sidebar-foreground text-lg font-bold">LAUREKU</SheetTitle>
+              <span className="text-xs text-sidebar-foreground/60">RecyTrack</span>
             </div>
           </div>
         </SheetHeader>
