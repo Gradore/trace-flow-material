@@ -44,7 +44,7 @@ const navItems: NavItem[] = [
   { icon: ClipboardList, label: "Aufträge", path: "/orders", roles: ['admin', 'intake', 'production', 'qa', 'customer'] },
   { icon: Building2, label: "Firmen", path: "/companies", roles: ['admin', 'intake', 'logistics'] },
   { icon: Package, label: "Container", path: "/containers", roles: ['admin', 'intake', 'production', 'qa', 'logistics'] },
-  { icon: Inbox, label: "Materialeingang", path: "/intake", roles: ['admin', 'intake'] },
+  { icon: Inbox, label: "Materialeingang", path: "/intake", roles: ['admin', 'intake', 'production'] },
   { icon: Cog, label: "Verarbeitung", path: "/processing", roles: ['admin', 'production'] },
   { icon: FlaskConical, label: "Beprobung", path: "/sampling", roles: ['admin', 'qa', 'production'] },
   { icon: FileOutput, label: "Ausgangsmaterial", path: "/output", roles: ['admin', 'production', 'qa'] },
