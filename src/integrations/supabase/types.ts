@@ -389,6 +389,42 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          created_at: string
+          id: string
+          link: string | null
+          message: string
+          read: boolean
+          related_id: string | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          link?: string | null
+          message: string
+          read?: boolean
+          related_id?: string | null
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          link?: string | null
+          message?: string
+          read?: boolean
+          related_id?: string | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           created_at: string
@@ -459,7 +495,22 @@ export type Database = {
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_orders_delivery_note"
+            columns: ["delivery_note_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_orders_output_material"
+            columns: ["output_material_id"]
+            isOneToOne: false
+            referencedRelation: "output_materials"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       output_materials: {
         Row: {
@@ -774,6 +825,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_order_deadlines: { Args: never; Returns: undefined }
       generate_unique_id: { Args: { prefix: string }; Returns: string }
       get_user_role: {
         Args: { _user_id: string }

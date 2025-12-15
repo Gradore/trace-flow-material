@@ -2,11 +2,19 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>RecyTrack - Materialverfolgung für die Recyclingbranche</title>
     <meta name="description" content="RecyTrack - Professionelle Materialfluss-Dokumentation und QR-basiertes Tracking für GFK, PP und PA Recycling. Container-Management, Beprobung und Lieferschein-Generierung." />
     <meta name="author" content="RecyTrack" />
     <meta name="keywords" content="Recycling, GFK, Glasfaser, PP, PA, Materialverfolgung, QR-Tracking, Beprobung, Lieferschein" />
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#16a34a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="RecyTrack" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
 
     <meta property="og:title" content="RecyTrack - Materialverfolgung für die Recyclingbranche" />
     <meta property="og:description" content="Professionelle Materialfluss-Dokumentation und QR-basiertes Tracking für die Recyclingbranche" />
@@ -20,5 +28,19 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Register service worker for PWA
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('SW registered:', registration);
+            })
+            .catch(error => {
+              console.log('SW registration failed:', error);
+            });
+        });
+      }
+    </script>
   </body>
 </html>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import { format, isPast, isToday, addDays } from "date-fns";
 import { de } from "date-fns/locale";
 import { OrderDialog } from "@/components/orders/OrderDialog";
+import { notificationTemplates } from "@/lib/notifications";
 
 type Order = {
   id: string;
@@ -60,6 +62,7 @@ export default function Orders() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const { data: orders, isLoading } = useQuery({
     queryKey: ["orders"],
@@ -75,13 +78,30 @@ export default function Orders() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+    mutationFn: async ({ id, status, orderRef }: { id: string; status: string; orderRef: string }) => {
       const { error } = await supabase
         .from("orders")
         .update({ status })
         .eq("id", id);
 
       if (error) throw error;
+      
+      // Create notification for status change
+      if (user?.id) {
+        const statusLabels: Record<string, string> = {
+          in_production: "In Produktion",
+          produced: "Produziert",
+          shipped: "Versendet",
+          delivered: "Geliefert",
+          cancelled: "Storniert",
+        };
+        await notificationTemplates.orderStatusChanged(
+          user.id,
+          id,
+          orderRef,
+          statusLabels[status] || status
+        );
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -279,7 +299,7 @@ export default function Orders() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
-                              updateStatusMutation.mutate({ id: order.id, status: "in_production" })
+                              updateStatusMutation.mutate({ id: order.id, status: "in_production", orderRef: order.order_id })
                             }
                             disabled={order.status !== "pending"}
                           >
@@ -287,7 +307,7 @@ export default function Orders() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
-                              updateStatusMutation.mutate({ id: order.id, status: "produced" })
+                              updateStatusMutation.mutate({ id: order.id, status: "produced", orderRef: order.order_id })
                             }
                             disabled={order.status !== "in_production"}
                           >
@@ -295,7 +315,7 @@ export default function Orders() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
-                              updateStatusMutation.mutate({ id: order.id, status: "shipped" })
+                              updateStatusMutation.mutate({ id: order.id, status: "shipped", orderRef: order.order_id })
                             }
                             disabled={order.status !== "produced"}
                           >
@@ -303,7 +323,7 @@ export default function Orders() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
-                              updateStatusMutation.mutate({ id: order.id, status: "delivered" })
+                              updateStatusMutation.mutate({ id: order.id, status: "delivered", orderRef: order.order_id })
                             }
                             disabled={order.status !== "shipped"}
                           >
@@ -311,7 +331,7 @@ export default function Orders() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
-                              updateStatusMutation.mutate({ id: order.id, status: "cancelled" })
+                              updateStatusMutation.mutate({ id: order.id, status: "cancelled", orderRef: order.order_id })
                             }
                             className="text-destructive"
                           >
