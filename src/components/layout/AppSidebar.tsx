@@ -22,33 +22,61 @@ import {
   Truck,
   ShoppingCart,
   Shield,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useUserRole } from "@/hooks/useUserRole";
+import { Skeleton } from "@/components/ui/skeleton";
 
-const navItems = [
+interface NavItem {
+  icon: typeof LayoutDashboard;
+  label: string;
+  path: string;
+  roles?: string[];
+  adminOnly?: boolean;
+}
+
+const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: ClipboardList, label: "Aufträge", path: "/orders" },
-  { icon: Building2, label: "Firmen", path: "/companies" },
-  { icon: Package, label: "Container", path: "/containers" },
-  { icon: Inbox, label: "Materialeingang", path: "/intake" },
-  { icon: Cog, label: "Verarbeitung", path: "/processing" },
-  { icon: FlaskConical, label: "Beprobung", path: "/sampling" },
-  { icon: FileOutput, label: "Ausgangsmaterial", path: "/output" },
-  { icon: FileText, label: "Lieferscheine", path: "/delivery-notes" },
-  { icon: FolderOpen, label: "Dokumente", path: "/documents" },
-  { icon: History, label: "Rückverfolgung", path: "/traceability" },
-  { icon: Truck, label: "Logistik", path: "/logistics" },
-  { icon: ShoppingCart, label: "Kunden-Portal", path: "/customer-portal" },
-  { icon: Package, label: "Lieferanten-Portal", path: "/supplier-portal" },
-  { icon: Users, label: "Benutzer", path: "/users" },
-  { icon: Shield, label: "Admin", path: "/admin/users" },
+  { icon: BarChart3, label: "Reporting", path: "/reporting", roles: ['admin', 'intake', 'production', 'qa'] },
+  { icon: ClipboardList, label: "Aufträge", path: "/orders", roles: ['admin', 'intake', 'production', 'qa', 'customer'] },
+  { icon: Building2, label: "Firmen", path: "/companies", roles: ['admin', 'intake', 'logistics'] },
+  { icon: Package, label: "Container", path: "/containers", roles: ['admin', 'intake', 'production', 'qa', 'logistics'] },
+  { icon: Inbox, label: "Materialeingang", path: "/intake", roles: ['admin', 'intake'] },
+  { icon: Cog, label: "Verarbeitung", path: "/processing", roles: ['admin', 'production'] },
+  { icon: FlaskConical, label: "Beprobung", path: "/sampling", roles: ['admin', 'qa', 'production'] },
+  { icon: FileOutput, label: "Ausgangsmaterial", path: "/output", roles: ['admin', 'production', 'qa'] },
+  { icon: FileText, label: "Lieferscheine", path: "/delivery-notes", roles: ['admin', 'intake', 'production', 'logistics'] },
+  { icon: FolderOpen, label: "Dokumente", path: "/documents", roles: ['admin', 'intake', 'production', 'qa'] },
+  { icon: History, label: "Rückverfolgung", path: "/traceability", roles: ['admin', 'intake', 'production', 'qa'] },
+  { icon: Truck, label: "Logistik", path: "/logistics", roles: ['admin', 'logistics'] },
+  { icon: ShoppingCart, label: "Kunden-Portal", path: "/customer-portal", roles: ['customer'] },
+  { icon: Package, label: "Lieferanten-Portal", path: "/supplier-portal", roles: ['supplier'] },
+  { icon: Users, label: "Benutzer", path: "/users", roles: ['admin'] },
+  { icon: Shield, label: "Admin", path: "/admin/users", adminOnly: true },
   { icon: User, label: "Profil", path: "/profile" },
-  { icon: Settings, label: "Einstellungen", path: "/settings" },
+  { icon: Settings, label: "Einstellungen", path: "/settings", roles: ['admin'] },
 ];
 
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { role, isLoading, isAdmin } = useUserRole();
+
+  const filteredNavItems = navItems.filter(item => {
+    // Admin-only items
+    if (item.adminOnly) {
+      return isAdmin;
+    }
+    
+    // Items with role restrictions
+    if (item.roles) {
+      return role && item.roles.includes(role);
+    }
+    
+    // Items without role restrictions (visible to all)
+    return true;
+  });
 
   return (
     <aside
@@ -72,24 +100,32 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={cn(
-                "nav-link",
-                isActive && "nav-link-active"
-              )}
-            >
-              <item.icon className="h-5 w-5 shrink-0" />
-              {!collapsed && (
-                <span className="animate-fade-in">{item.label}</span>
-              )}
-            </NavLink>
-          );
-        })}
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3, 4, 5].map(i => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : (
+          filteredNavItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={cn(
+                  "nav-link",
+                  isActive && "nav-link-active"
+                )}
+              >
+                <item.icon className="h-5 w-5 shrink-0" />
+                {!collapsed && (
+                  <span className="animate-fade-in">{item.label}</span>
+                )}
+              </NavLink>
+            );
+          })
+        )}
       </nav>
 
       {/* QR Scanner Quick Action */}

@@ -26,6 +26,7 @@ import SupplierPortal from "./pages/SupplierPortal";
 import CustomerPortal from "./pages/CustomerPortal";
 import LogisticsPortal from "./pages/LogisticsPortal";
 import AdminUsers from "./pages/AdminUsers";
+import ReportingDashboard from "./pages/ReportingDashboard";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -41,6 +42,7 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+            <Route path="/reporting" element={<ProtectedRoute><AppLayout><ReportingDashboard /></AppLayout></ProtectedRoute>} />
             <Route path="/containers" element={<ProtectedRoute><AppLayout><Containers /></AppLayout></ProtectedRoute>} />
             <Route path="/intake" element={<ProtectedRoute><AppLayout><MaterialIntake /></AppLayout></ProtectedRoute>} />
             <Route path="/processing" element={<ProtectedRoute><AppLayout><Processing /></AppLayout></ProtectedRoute>} />
