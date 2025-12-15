@@ -27,6 +27,7 @@ import CustomerPortal from "./pages/CustomerPortal";
 import LogisticsPortal from "./pages/LogisticsPortal";
 import AdminUsers from "./pages/AdminUsers";
 import ReportingDashboard from "./pages/ReportingDashboard";
+import Maintenance from "./pages/Maintenance";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -61,6 +62,7 @@ const App = () => (
             <Route path="/scan" element={<ProtectedRoute><AppLayout><QRScanner /></AppLayout></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><AppLayout><Profile /></AppLayout></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><AppLayout><Settings /></AppLayout></ProtectedRoute>} />
+            <Route path="/maintenance" element={<ProtectedRoute><AppLayout><Maintenance /></AppLayout></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

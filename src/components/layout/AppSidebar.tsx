@@ -22,6 +22,7 @@ import {
   ShoppingCart,
   Shield,
   BarChart3,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -46,6 +47,7 @@ const navItems: NavItem[] = [
   { icon: Package, label: "Container", path: "/containers", roles: ['admin', 'intake', 'production', 'qa', 'logistics'] },
   { icon: Inbox, label: "Materialeingang", path: "/intake", roles: ['admin', 'intake', 'production'] },
   { icon: Cog, label: "Verarbeitung", path: "/processing", roles: ['admin', 'production'] },
+  { icon: Wrench, label: "Wartung", path: "/maintenance", roles: ['admin', 'production'] },
   { icon: FlaskConical, label: "Beprobung", path: "/sampling", roles: ['admin', 'qa', 'production'] },
   { icon: FileOutput, label: "Ausgangsmaterial", path: "/output", roles: ['admin', 'production', 'qa'] },
   { icon: FileText, label: "Lieferscheine", path: "/delivery-notes", roles: ['admin', 'intake', 'production', 'logistics'] },

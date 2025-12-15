@@ -1,7 +1,8 @@
 import { Package, Inbox, FlaskConical, FileOutput, Truck, AlertTriangle, Loader2 } from "lucide-react";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
-import { MaterialOverview } from "@/components/dashboard/MaterialOverview";
+import { StockOverviewCard } from "@/components/dashboard/StockOverviewCard";
+import { MaintenanceOverview } from "@/components/dashboard/MaintenanceOverview";
 import { PendingSamples } from "@/components/dashboard/PendingSamples";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -179,15 +180,16 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Stock & Maintenance Overview */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <StockOverviewCard />
+        <MaintenanceOverview />
+      </div>
+
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-        <div className="lg:col-span-2 space-y-4 md:space-y-6">
-          <PendingSamples />
-          <RecentActivity />
-        </div>
-        <div>
-          <MaterialOverview />
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <PendingSamples />
+        <RecentActivity />
       </div>
     </div>
   );
