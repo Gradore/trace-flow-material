@@ -26,6 +26,8 @@ import { CompanyDialog } from "@/components/companies/CompanyDialog";
 import { ContactsDialog } from "@/components/companies/ContactsDialog";
 import { useExport } from "@/hooks/useExport";
 
+// ... keep existing code
+
 type Company = {
   id: string;
   company_id: string;
@@ -51,7 +53,7 @@ export default function Companies() {
   const [contactsDialogOpen, setContactsDialogOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const queryClient = useQueryClient();
-  const { exportToCSV } = useExport();
+  const { exportDataToCSV } = useExport();
 
   const { data: companies, isLoading } = useQuery({
     queryKey: ["companies", search, typeFilter, statusFilter],
@@ -103,7 +105,7 @@ export default function Companies() {
 
   const handleExport = () => {
     if (companies) {
-      exportToCSV(companies as Record<string, unknown>[], "firmen");
+      exportDataToCSV(companies as Record<string, unknown>[], "firmen");
     }
   };
 
