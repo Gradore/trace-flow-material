@@ -22,6 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { InviteUserDialog } from "@/components/users/InviteUserDialog";
 
 const roleConfig: Record<string, { label: string; class: string; icon: typeof Shield }> = {
   admin: { label: "Administrator", class: "bg-destructive/10 text-destructive border-destructive/20", icon: Shield },
@@ -34,6 +35,7 @@ const roleConfig: Record<string, { label: string; class: string; icon: typeof Sh
 export default function Users() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const { user: currentUser } = useAuth();
 
   // Check if current user is admin
@@ -154,9 +156,9 @@ export default function Users() {
           <p className="text-muted-foreground mt-1">Benutzer und Rollen verwalten</p>
         </div>
         {isAdmin && (
-          <Button>
+          <Button onClick={() => setInviteDialogOpen(true)}>
             <Plus className="h-4 w-4" />
-            Benutzer einladen
+            Benutzer anlegen
           </Button>
         )}
       </div>
@@ -278,6 +280,12 @@ export default function Users() {
           </Table>
         )}
       </div>
+
+      <InviteUserDialog
+        open={inviteDialogOpen}
+        onOpenChange={setInviteDialogOpen}
+        onSuccess={() => refetch()}
+      />
     </div>
   );
 }
