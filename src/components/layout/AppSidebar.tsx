@@ -21,6 +21,7 @@ import {
   Building2,
   Truck,
   ShoppingCart,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -40,6 +41,7 @@ const navItems = [
   { icon: ShoppingCart, label: "Kunden-Portal", path: "/customer-portal" },
   { icon: Package, label: "Lieferanten-Portal", path: "/supplier-portal" },
   { icon: Users, label: "Benutzer", path: "/users" },
+  { icon: Shield, label: "Admin", path: "/admin/users" },
   { icon: User, label: "Profil", path: "/profile" },
   { icon: Settings, label: "Einstellungen", path: "/settings" },
 ];
