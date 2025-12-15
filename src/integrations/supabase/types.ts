@@ -389,6 +389,78 @@ export type Database = {
           },
         ]
       }
+      orders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_email: string | null
+          customer_name: string
+          customer_phone: string | null
+          delivery_address: string | null
+          delivery_deadline: string
+          delivery_note_id: string | null
+          delivery_partner: string | null
+          id: string
+          notes: string | null
+          order_id: string
+          output_material_id: string | null
+          product_category: string
+          product_grain_size: string
+          product_name: string | null
+          product_subcategory: string
+          production_deadline: string
+          quantity_kg: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_email?: string | null
+          customer_name: string
+          customer_phone?: string | null
+          delivery_address?: string | null
+          delivery_deadline: string
+          delivery_note_id?: string | null
+          delivery_partner?: string | null
+          id?: string
+          notes?: string | null
+          order_id: string
+          output_material_id?: string | null
+          product_category: string
+          product_grain_size: string
+          product_name?: string | null
+          product_subcategory: string
+          production_deadline: string
+          quantity_kg: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_email?: string | null
+          customer_name?: string
+          customer_phone?: string | null
+          delivery_address?: string | null
+          delivery_deadline?: string
+          delivery_note_id?: string | null
+          delivery_partner?: string | null
+          id?: string
+          notes?: string | null
+          order_id?: string
+          output_material_id?: string | null
+          product_category?: string
+          product_grain_size?: string
+          product_name?: string | null
+          product_subcategory?: string
+          production_deadline?: string
+          quantity_kg?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       output_materials: {
         Row: {
           attributes: Json | null

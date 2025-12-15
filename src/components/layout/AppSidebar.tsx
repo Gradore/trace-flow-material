@@ -17,11 +17,13 @@ import {
   Recycle,
   Settings,
   User,
+  ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+  { icon: ClipboardList, label: "Aufträge", path: "/orders" },
   { icon: Package, label: "Container", path: "/containers" },
   { icon: Inbox, label: "Materialeingang", path: "/intake" },
   { icon: Cog, label: "Verarbeitung", path: "/processing" },
