@@ -18,12 +18,16 @@ import {
   Settings,
   User,
   ClipboardList,
+  Building2,
+  Truck,
+  ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: ClipboardList, label: "Aufträge", path: "/orders" },
+  { icon: Building2, label: "Firmen", path: "/companies" },
   { icon: Package, label: "Container", path: "/containers" },
   { icon: Inbox, label: "Materialeingang", path: "/intake" },
   { icon: Cog, label: "Verarbeitung", path: "/processing" },
@@ -32,6 +36,9 @@ const navItems = [
   { icon: FileText, label: "Lieferscheine", path: "/delivery-notes" },
   { icon: FolderOpen, label: "Dokumente", path: "/documents" },
   { icon: History, label: "Rückverfolgung", path: "/traceability" },
+  { icon: Truck, label: "Logistik", path: "/logistics" },
+  { icon: ShoppingCart, label: "Kunden-Portal", path: "/customer-portal" },
+  { icon: Package, label: "Lieferanten-Portal", path: "/supplier-portal" },
   { icon: Users, label: "Benutzer", path: "/users" },
   { icon: User, label: "Profil", path: "/profile" },
   { icon: Settings, label: "Einstellungen", path: "/settings" },

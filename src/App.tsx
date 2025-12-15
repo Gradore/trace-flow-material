@@ -21,6 +21,10 @@ import QRScanner from "./pages/QRScanner";
 import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
 import Orders from "./pages/Orders";
+import Companies from "./pages/Companies";
+import SupplierPortal from "./pages/SupplierPortal";
+import CustomerPortal from "./pages/CustomerPortal";
+import LogisticsPortal from "./pages/LogisticsPortal";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -45,6 +49,10 @@ const App = () => (
             <Route path="/documents" element={<ProtectedRoute><AppLayout><Documents /></AppLayout></ProtectedRoute>} />
             <Route path="/traceability" element={<ProtectedRoute><AppLayout><Traceability /></AppLayout></ProtectedRoute>} />
             <Route path="/orders" element={<ProtectedRoute><AppLayout><Orders /></AppLayout></ProtectedRoute>} />
+            <Route path="/companies" element={<ProtectedRoute><AppLayout><Companies /></AppLayout></ProtectedRoute>} />
+            <Route path="/supplier-portal" element={<ProtectedRoute><AppLayout><SupplierPortal /></AppLayout></ProtectedRoute>} />
+            <Route path="/customer-portal" element={<ProtectedRoute><AppLayout><CustomerPortal /></AppLayout></ProtectedRoute>} />
+            <Route path="/logistics" element={<ProtectedRoute><AppLayout><LogisticsPortal /></AppLayout></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute><AppLayout><Users /></AppLayout></ProtectedRoute>} />
             <Route path="/scan" element={<ProtectedRoute><AppLayout><QRScanner /></AppLayout></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><AppLayout><Profile /></AppLayout></ProtectedRoute>} />

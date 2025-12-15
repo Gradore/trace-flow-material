@@ -14,6 +14,124 @@ export type Database = {
   }
   public: {
     Tables: {
+      companies: {
+        Row: {
+          address: string | null
+          city: string | null
+          company_id: string
+          country: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          postal_code: string | null
+          status: string
+          tax_id: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          company_id: string
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          status?: string
+          tax_id?: string | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          company_id?: string
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          status?: string
+          tax_id?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "companies_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contacts: {
+        Row: {
+          company_id: string
+          created_at: string
+          email: string | null
+          first_name: string
+          id: string
+          is_primary: boolean | null
+          last_name: string
+          notes: string | null
+          phone: string | null
+          position: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          email?: string | null
+          first_name: string
+          id?: string
+          is_primary?: boolean | null
+          last_name: string
+          notes?: string | null
+          phone?: string | null
+          position?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          email?: string | null
+          first_name?: string
+          id?: string
+          is_primary?: boolean | null
+          last_name?: string
+          notes?: string | null
+          phone?: string | null
+          position?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contacts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       containers: {
         Row: {
           container_id: string
@@ -228,6 +346,97 @@ export type Database = {
           },
         ]
       }
+      material_announcements: {
+        Row: {
+          announcement_id: string
+          company_id: string
+          confirmed_date: string | null
+          confirmed_time_slot: string | null
+          contact_id: string | null
+          container_count: number | null
+          container_type: string
+          created_at: string
+          created_by: string | null
+          estimated_weight_kg: number
+          id: string
+          material_input_id: string | null
+          material_subtype: string | null
+          material_type: string
+          notes: string | null
+          preferred_date: string | null
+          preferred_time_slot: string | null
+          status: string
+          updated_at: string
+          waste_code: string | null
+        }
+        Insert: {
+          announcement_id: string
+          company_id: string
+          confirmed_date?: string | null
+          confirmed_time_slot?: string | null
+          contact_id?: string | null
+          container_count?: number | null
+          container_type: string
+          created_at?: string
+          created_by?: string | null
+          estimated_weight_kg: number
+          id?: string
+          material_input_id?: string | null
+          material_subtype?: string | null
+          material_type: string
+          notes?: string | null
+          preferred_date?: string | null
+          preferred_time_slot?: string | null
+          status?: string
+          updated_at?: string
+          waste_code?: string | null
+        }
+        Update: {
+          announcement_id?: string
+          company_id?: string
+          confirmed_date?: string | null
+          confirmed_time_slot?: string | null
+          contact_id?: string | null
+          container_count?: number | null
+          container_type?: string
+          created_at?: string
+          created_by?: string | null
+          estimated_weight_kg?: number
+          id?: string
+          material_input_id?: string | null
+          material_subtype?: string | null
+          material_type?: string
+          notes?: string | null
+          preferred_date?: string | null
+          preferred_time_slot?: string | null
+          status?: string
+          updated_at?: string
+          waste_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_announcements_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_announcements_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_announcements_material_input_id_fkey"
+            columns: ["material_input_id"]
+            isOneToOne: false
+            referencedRelation: "material_inputs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       material_flow_history: {
         Row: {
           container_id: string | null
@@ -427,6 +636,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          company_id: string | null
           created_at: string
           created_by: string | null
           customer_email: string | null
@@ -450,6 +660,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          company_id?: string | null
           created_at?: string
           created_by?: string | null
           customer_email?: string | null
@@ -473,6 +684,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          company_id?: string | null
           created_at?: string
           created_by?: string | null
           customer_email?: string | null
@@ -508,6 +720,13 @@ export type Database = {
             columns: ["output_material_id"]
             isOneToOne: false
             referencedRelation: "output_materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]
@@ -584,6 +803,95 @@ export type Database = {
             columns: ["sample_id"]
             isOneToOne: false
             referencedRelation: "samples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pickup_requests: {
+        Row: {
+          assigned_to: string | null
+          company_id: string
+          confirmed_date: string | null
+          contact_id: string | null
+          container_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          material_description: string
+          notes: string | null
+          pickup_address: string | null
+          preferred_date: string | null
+          preferred_time_slot: string | null
+          request_id: string
+          status: string
+          updated_at: string
+          weight_kg: number | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          company_id: string
+          confirmed_date?: string | null
+          contact_id?: string | null
+          container_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          material_description: string
+          notes?: string | null
+          pickup_address?: string | null
+          preferred_date?: string | null
+          preferred_time_slot?: string | null
+          request_id: string
+          status?: string
+          updated_at?: string
+          weight_kg?: number | null
+        }
+        Update: {
+          assigned_to?: string | null
+          company_id?: string
+          confirmed_date?: string | null
+          contact_id?: string | null
+          container_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          material_description?: string
+          notes?: string | null
+          pickup_address?: string | null
+          preferred_date?: string | null
+          preferred_time_slot?: string | null
+          request_id?: string
+          status?: string
+          updated_at?: string
+          weight_kg?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_requests_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_requests_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_requests_container_id_fkey"
+            columns: ["container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
             referencedColumns: ["id"]
           },
         ]
@@ -840,7 +1148,14 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "intake" | "production" | "qa" | "customer"
+      app_role:
+        | "admin"
+        | "intake"
+        | "production"
+        | "qa"
+        | "customer"
+        | "supplier"
+        | "logistics"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -968,7 +1283,15 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "intake", "production", "qa", "customer"],
+      app_role: [
+        "admin",
+        "intake",
+        "production",
+        "qa",
+        "customer",
+        "supplier",
+        "logistics",
+      ],
     },
   },
 } as const
