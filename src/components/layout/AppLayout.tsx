@@ -1,6 +1,7 @@
 import { ReactNode, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
+import { MobileSidebar } from "./MobileSidebar";
 import { GlobalSearch } from "./GlobalSearch";
 import { NotificationDropdown } from "@/components/notifications/NotificationDropdown";
 import { Moon, Sun, Menu, LogOut, User, Settings, Download } from "lucide-react";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useExport } from "@/hooks/useExport";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,9 +25,11 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const [darkMode, setDarkMode] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { exportToCSV } = useExport();
+  const isMobile = useIsMobile();
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
@@ -54,28 +58,55 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <AppSidebar />
+      {/* Desktop Sidebar */}
+      {!isMobile && <AppSidebar collapsed={!sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />}
+      
+      {/* Mobile Sidebar Drawer */}
+      <MobileSidebar open={mobileMenuOpen} onOpenChange={setMobileMenuOpen} />
       
       {/* Main Content */}
-      <div className={cn("transition-all duration-300", sidebarOpen ? "ml-64" : "ml-16")}>
+      <div className={cn(
+        "transition-all duration-300",
+        !isMobile && (sidebarOpen ? "ml-64" : "ml-16"),
+        isMobile && "ml-0"
+      )}>
         {/* Top Header */}
-        <header className="sticky top-0 z-30 h-16 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-between px-6">
-          <div className="flex items-center gap-4 flex-1">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-            <GlobalSearch />
+        <header className="sticky top-0 z-30 h-14 md:h-16 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-between px-3 md:px-6">
+          <div className="flex items-center gap-2 md:gap-4 flex-1">
+            {/* Mobile menu button */}
+            {isMobile && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileMenuOpen(true)}
+                className="shrink-0"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            )}
+            
+            {/* Desktop sidebar toggle */}
+            {!isMobile && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="shrink-0"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            )}
+            
+            <div className="flex-1 max-w-md">
+              <GlobalSearch />
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 md:gap-2">
+            {/* Export menu - hidden on very small screens */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" className="hidden sm:flex">
                   <Download className="h-5 w-5" />
                 </Button>
               </DropdownMenuTrigger>
@@ -97,10 +128,13 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            
             <NotificationDropdown />
-            <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
+            
+            <Button variant="ghost" size="icon" onClick={toggleDarkMode} className="hidden sm:flex">
               {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
+            
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-8 w-8 rounded-full p-0">
@@ -114,12 +148,18 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <User className="mr-2 h-4 w-4" />
                   Mein Profil
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate("/settings")}>
+                <DropdownMenuItem onClick={() => navigate("/settings")} className="hidden md:flex">
                   <Settings className="mr-2 h-4 w-4" />
                   Einstellungen
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
+                {/* Mobile-only: Dark mode toggle */}
+                <DropdownMenuItem onClick={toggleDarkMode} className="sm:hidden">
+                  {darkMode ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
+                  {darkMode ? "Hellmodus" : "Dunkelmodus"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="sm:hidden" />
+                <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
                   <LogOut className="mr-2 h-4 w-4" />
                   Abmelden
                 </DropdownMenuItem>
@@ -129,7 +169,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="p-6">
+        <main className="p-3 md:p-6">
           {children}
         </main>
       </div>

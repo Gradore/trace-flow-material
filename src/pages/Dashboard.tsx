@@ -118,15 +118,15 @@ export default function Dashboard() {
   const awaitingApproval = sampleStats?.awaitingApproval || 0;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Übersicht über alle Materialflüsse und Aktivitäten</p>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">Dashboard</h1>
+        <p className="text-sm md:text-base text-muted-foreground mt-1">Übersicht über alle Materialflüsse und Aktivitäten</p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      {/* Stats Grid - Responsive */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-4">
         <StatCard
           title="Aktive Container"
           value={containerStats?.active ?? "-"}
@@ -170,18 +170,18 @@ export default function Dashboard() {
 
       {/* Alert Banner */}
       {awaitingApproval > 0 && (
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+        <div className="flex items-center gap-3 p-3 md:p-4 rounded-lg bg-destructive/10 border border-destructive/20">
           <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground">{awaitingApproval} Chargen warten auf Probenfreigabe</p>
-            <p className="text-xs text-muted-foreground">Chargen können ohne genehmigte Probe nicht freigegeben werden</p>
+            <p className="text-xs text-muted-foreground hidden sm:block">Chargen können ohne genehmigte Probe nicht freigegeben werden</p>
           </div>
         </div>
       )}
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        <div className="lg:col-span-2 space-y-4 md:space-y-6">
           <PendingSamples />
           <RecentActivity />
         </div>

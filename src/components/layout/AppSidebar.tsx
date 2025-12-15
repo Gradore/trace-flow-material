@@ -27,6 +27,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface NavItem {
   icon: typeof LayoutDashboard;
@@ -58,97 +60,127 @@ const navItems: NavItem[] = [
   { icon: Settings, label: "Einstellungen", path: "/settings", roles: ['admin'] },
 ];
 
-export function AppSidebar() {
-  const [collapsed, setCollapsed] = useState(false);
+interface AppSidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+}
+
+export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
   const location = useLocation();
   const { role, isLoading, isAdmin } = useUserRole();
 
   const filteredNavItems = navItems.filter(item => {
-    // Admin-only items
-    if (item.adminOnly) {
-      return isAdmin;
-    }
-    
-    // Items with role restrictions
-    if (item.roles) {
-      return role && item.roles.includes(role);
-    }
-    
-    // Items without role restrictions (visible to all)
+    if (item.adminOnly) return isAdmin;
+    if (item.roles) return role && item.roles.includes(role);
     return true;
   });
 
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 flex flex-col",
+        "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 flex-col hidden md:flex",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 p-4 border-b border-sidebar-border">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+      <div className="flex items-center gap-3 p-4 border-b border-sidebar-border h-16">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
           <Recycle className="h-6 w-6" />
         </div>
         {!collapsed && (
-          <div className="flex flex-col animate-fade-in">
-            <span className="font-bold text-sidebar-foreground text-lg">RecyTrack</span>
-            <span className="text-xs text-sidebar-foreground/60">Materialverfolgung</span>
+          <div className="flex flex-col animate-fade-in overflow-hidden">
+            <span className="font-bold text-sidebar-foreground text-lg truncate">RecyTrack</span>
+            <span className="text-xs text-sidebar-foreground/60 truncate">Materialverfolgung</span>
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {isLoading ? (
-          <div className="space-y-2">
-            {[1, 2, 3, 4, 5].map(i => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        ) : (
-          filteredNavItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "nav-link",
-                  isActive && "nav-link-active"
-                )}
-              >
-                <item.icon className="h-5 w-5 shrink-0" />
-                {!collapsed && (
-                  <span className="animate-fade-in">{item.label}</span>
-                )}
-              </NavLink>
-            );
-          })
-        )}
-      </nav>
+      <ScrollArea className="flex-1">
+        <nav className="p-2 space-y-1">
+          {isLoading ? (
+            <div className="space-y-2 p-1">
+              {[1, 2, 3, 4, 5].map(i => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : (
+            filteredNavItems.map((item) => {
+              const isActive = location.pathname === item.path;
+              
+              const linkContent = (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors",
+                    isActive && "bg-primary/10 text-primary font-medium",
+                    collapsed && "justify-center px-2"
+                  )}
+                >
+                  <item.icon className="h-5 w-5 shrink-0" />
+                  {!collapsed && (
+                    <span className="animate-fade-in truncate">{item.label}</span>
+                  )}
+                </NavLink>
+              );
+
+              if (collapsed) {
+                return (
+                  <Tooltip key={item.path} delayDuration={0}>
+                    <TooltipTrigger asChild>
+                      {linkContent}
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="font-medium">
+                      {item.label}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+
+              return linkContent;
+            })
+          )}
+        </nav>
+      </ScrollArea>
 
       {/* QR Scanner Quick Action */}
-      <div className="p-3 border-t border-sidebar-border">
-        <NavLink
-          to="/scan"
-          className={cn(
-            "flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-primary text-primary-foreground font-medium transition-all hover:bg-primary/90",
-            collapsed && "px-0"
-          )}
-        >
-          <QrCode className="h-5 w-5" />
-          {!collapsed && <span>QR Scannen</span>}
-        </NavLink>
+      <div className="p-2 border-t border-sidebar-border">
+        {collapsed ? (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <NavLink
+                to="/scan"
+                className="flex items-center justify-center w-full py-3 rounded-lg bg-primary text-primary-foreground font-medium transition-all hover:bg-primary/90"
+              >
+                <QrCode className="h-5 w-5" />
+              </NavLink>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="font-medium">
+              QR Scannen
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <NavLink
+            to="/scan"
+            className="flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-primary text-primary-foreground font-medium transition-all hover:bg-primary/90"
+          >
+            <QrCode className="h-5 w-5" />
+            <span>QR Scannen</span>
+          </NavLink>
+        )}
       </div>
 
       {/* Collapse Button */}
-      <div className="p-3 border-t border-sidebar-border">
+      <div className="p-2 border-t border-sidebar-border">
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setCollapsed(!collapsed)}
-          className="w-full text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+          onClick={onToggle}
+          className={cn(
+            "w-full text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent",
+            collapsed && "justify-center"
+          )}
         >
           <ChevronLeft className={cn("h-5 w-5 transition-transform", collapsed && "rotate-180")} />
           {!collapsed && <span className="ml-2">Einklappen</span>}

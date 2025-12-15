@@ -167,40 +167,40 @@ export function GlobalSearch() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/50 hover:bg-secondary text-muted-foreground text-sm transition-colors w-full max-w-xs"
+        className="flex items-center gap-2 px-2 md:px-3 py-2 rounded-lg bg-secondary/50 hover:bg-secondary text-muted-foreground text-sm transition-colors w-full"
       >
-        <Search className="h-4 w-4" />
-        <span className="flex-1 text-left">Suchen...</span>
-        <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+        <Search className="h-4 w-4 shrink-0" />
+        <span className="flex-1 text-left truncate hidden xs:inline">Suchen...</span>
+        <kbd className="hidden lg:inline-flex h-5 items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
           ⌘K
         </kbd>
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="p-0 max-w-lg overflow-hidden">
+        <DialogContent className="p-0 max-w-lg overflow-hidden mx-2 sm:mx-auto">
           <div className="flex items-center border-b border-border px-3">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Container, Material, Probe suchen..."
-              className="border-0 focus-visible:ring-0 px-3"
+              className="border-0 focus-visible:ring-0 px-3 text-base"
               autoFocus
             />
             {query && (
-              <button onClick={() => setQuery("")} className="text-muted-foreground hover:text-foreground">
+              <button onClick={() => setQuery("")} className="text-muted-foreground hover:text-foreground p-1">
                 <X className="h-4 w-4" />
               </button>
             )}
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-[60vh] overflow-y-auto">
             {isSearching ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : results.length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">
+              <div className="py-8 text-center text-sm text-muted-foreground px-4">
                 {query ? "Keine Ergebnisse gefunden" : "Beginne zu tippen..."}
               </div>
             ) : (
@@ -212,16 +212,16 @@ export function GlobalSearch() {
                     <button
                       key={`${result.type}-${result.id}`}
                       onClick={() => handleSelect(result)}
-                      className="flex items-center gap-3 w-full p-3 rounded-lg hover:bg-secondary/50 text-left transition-colors"
+                      className="flex items-center gap-3 w-full p-3 rounded-lg hover:bg-secondary/50 active:bg-secondary text-left transition-colors"
                     >
-                      <div className="p-2 rounded-lg bg-primary/10">
+                      <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                         <Icon className="h-4 w-4 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-foreground truncate">{result.title}</p>
                         <p className="text-xs text-muted-foreground truncate">{result.subtitle}</p>
                       </div>
-                      <span className="text-xs text-muted-foreground shrink-0">{config.label}</span>
+                      <span className="text-xs text-muted-foreground shrink-0 hidden sm:inline">{config.label}</span>
                     </button>
                   );
                 })}

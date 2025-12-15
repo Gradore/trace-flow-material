@@ -23,10 +23,10 @@ export function StatCard({ title, value, subtitle, icon: Icon, trend, variant = 
   };
 
   return (
-    <div className="stat-card group">
-      <div className="flex items-start justify-between">
-        <div className={cn("p-3 rounded-lg transition-transform group-hover:scale-110", iconColors[variant])}>
-          <Icon className="h-5 w-5" />
+    <div className="stat-card group p-3 md:p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className={cn("p-2 md:p-3 rounded-lg transition-transform group-hover:scale-110 shrink-0", iconColors[variant])}>
+          <Icon className="h-4 w-4 md:h-5 md:w-5" />
         </div>
         {trend && (
           <span className={cn(
@@ -37,11 +37,11 @@ export function StatCard({ title, value, subtitle, icon: Icon, trend, variant = 
           </span>
         )}
       </div>
-      <div className="mt-4">
-        <p className="text-2xl font-bold text-foreground">{value}</p>
-        <p className="text-sm text-muted-foreground mt-1">{title}</p>
+      <div className="mt-2 md:mt-4">
+        <p className="text-lg md:text-2xl font-bold text-foreground">{value}</p>
+        <p className="text-xs md:text-sm text-muted-foreground mt-0.5 md:mt-1 line-clamp-2">{title}</p>
         {subtitle && (
-          <p className="text-xs text-muted-foreground/70 mt-0.5">{subtitle}</p>
+          <p className="text-xs text-muted-foreground/70 mt-0.5 hidden sm:block">{subtitle}</p>
         )}
       </div>
     </div>
