@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Mail, Lock, Save, Loader2 } from "lucide-react";
+import { User, Mail, Lock, Save, Loader2, Download, FileJson } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,7 @@ export default function Profile() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   const { data: profile, refetch } = useQuery({
     queryKey: ["profile", user?.id],
@@ -91,6 +92,38 @@ export default function Profile() {
       toast({ title: "Fehler", description: error.message, variant: "destructive" });
     } finally {
       setIsUpdatingPassword(false);
+    }
+  };
+
+  const handleGdprExport = async () => {
+    setIsExporting(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) throw new Error("Nicht angemeldet");
+
+      const { data, error } = await supabase.functions.invoke('gdpr-export', {
+        headers: {
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      // Download the JSON file
+      const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = data.filename || `dsgvo-export-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast({ title: "Export erfolgreich", description: "Ihre Daten wurden heruntergeladen" });
+    } catch (error: any) {
+      toast({ title: "Export fehlgeschlagen", description: error.message, variant: "destructive" });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -184,6 +217,29 @@ export default function Profile() {
           <Button onClick={handleUpdatePassword} disabled={isUpdatingPassword || !newPassword}>
             {isUpdatingPassword ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
             Passwort ändern
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileJson className="h-5 w-5" />
+            Datenschutz (DSGVO)
+          </CardTitle>
+          <CardDescription>
+            Exportiere alle über dich gespeicherten Daten gemäß Art. 15 DSGVO
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Du hast das Recht, eine Kopie aller personenbezogenen Daten zu erhalten, 
+            die wir über dich gespeichert haben. Der Export enthält dein Profil, 
+            Rollen, Aktivitäten und alle zugehörigen Datensätze.
+          </p>
+          <Button onClick={handleGdprExport} disabled={isExporting} variant="outline">
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+            Meine Daten exportieren (JSON)
           </Button>
         </CardContent>
       </Card>
