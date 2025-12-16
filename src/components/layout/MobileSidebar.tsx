@@ -21,6 +21,8 @@ import {
   Shield,
   BarChart3,
   Wrench,
+  FileCode,
+  ScrollText,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -57,6 +59,8 @@ const navItems: NavItem[] = [
   { icon: Package, label: "Lieferanten-Portal", path: "/supplier-portal", roles: ['supplier'] },
   { icon: Users, label: "Benutzer", path: "/users", roles: ['admin'] },
   { icon: Shield, label: "Admin", path: "/admin/users", adminOnly: true },
+  { icon: ScrollText, label: "Audit-Log", path: "/audit-logs", roles: ['admin'] },
+  { icon: FileCode, label: "API-Docs", path: "/api-docs", roles: ['admin'] },
   { icon: User, label: "Profil", path: "/profile" },
   { icon: Settings, label: "Einstellungen", path: "/settings", roles: ['admin'] },
 ];

@@ -28,6 +28,8 @@ import LogisticsPortal from "./pages/LogisticsPortal";
 import AdminUsers from "./pages/AdminUsers";
 import ReportingDashboard from "./pages/ReportingDashboard";
 import Maintenance from "./pages/Maintenance";
+import AuditLogs from "./pages/AuditLogs";
+import ApiDocs from "./pages/ApiDocs";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -63,6 +65,8 @@ const App = () => (
             <Route path="/profile" element={<ProtectedRoute><AppLayout><Profile /></AppLayout></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><AppLayout><Settings /></AppLayout></ProtectedRoute>} />
             <Route path="/maintenance" element={<ProtectedRoute><AppLayout><Maintenance /></AppLayout></ProtectedRoute>} />
+            <Route path="/audit-logs" element={<ProtectedRoute><AppLayout><AuditLogs /></AppLayout></ProtectedRoute>} />
+            <Route path="/api-docs" element={<ProtectedRoute><AppLayout><ApiDocs /></AppLayout></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
