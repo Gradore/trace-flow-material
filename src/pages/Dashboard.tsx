@@ -133,12 +133,14 @@ export default function Dashboard() {
           value={containerStats?.active ?? "-"}
           icon={Package}
           variant="primary"
+          href="/containers"
         />
         <StatCard
           title="Offene Eingänge"
           value={intakeStats?.open ?? "-"}
           icon={Inbox}
           variant="warning"
+          href="/intake"
         />
         <StatCard
           title="In Verarbeitung"
@@ -146,12 +148,14 @@ export default function Dashboard() {
           subtitle={processingStats?.batches ? `${processingStats.batches} Chargen` : undefined}
           icon={FlaskConical}
           variant="default"
+          href="/processing"
         />
         <StatCard
           title="Offene Proben"
           value={sampleStats?.open ?? "-"}
           icon={FlaskConical}
           variant="warning"
+          href="/sampling"
         />
         <StatCard
           title="Ausgangsmaterial"
@@ -159,6 +163,7 @@ export default function Dashboard() {
           subtitle="diesen Monat"
           icon={FileOutput}
           variant="success"
+          href="/output"
         />
         <StatCard
           title="Lieferscheine"
@@ -166,6 +171,7 @@ export default function Dashboard() {
           subtitle="diesen Monat"
           icon={Truck}
           variant="default"
+          href="/delivery-notes"
         />
       </div>
 
