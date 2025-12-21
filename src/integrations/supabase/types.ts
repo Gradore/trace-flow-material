@@ -14,6 +14,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      applications: {
+        Row: {
+          application_id: string
+          category: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          image_url: string | null
+          industry: string | null
+          name: string
+          required_properties: Json | null
+          source: string | null
+          typical_materials: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          application_id: string
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          industry?: string | null
+          name: string
+          required_properties?: Json | null
+          source?: string | null
+          typical_materials?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          application_id?: string
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          industry?: string | null
+          name?: string
+          required_properties?: Json | null
+          source?: string | null
+          typical_materials?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "applications_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -359,6 +415,78 @@ export type Database = {
           },
         ]
       }
+      datasheet_analyses: {
+        Row: {
+          analysis_id: string
+          analysis_summary: string | null
+          analyzed_at: string | null
+          created_at: string
+          created_by: string | null
+          document_id: string | null
+          error_message: string | null
+          extracted_properties: Json | null
+          id: string
+          manufacturer: string | null
+          material_grade: string | null
+          material_type: string | null
+          original_filename: string | null
+          status: string | null
+          suggested_applications: string[] | null
+          suggested_recipes: string[] | null
+        }
+        Insert: {
+          analysis_id: string
+          analysis_summary?: string | null
+          analyzed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          error_message?: string | null
+          extracted_properties?: Json | null
+          id?: string
+          manufacturer?: string | null
+          material_grade?: string | null
+          material_type?: string | null
+          original_filename?: string | null
+          status?: string | null
+          suggested_applications?: string[] | null
+          suggested_recipes?: string[] | null
+        }
+        Update: {
+          analysis_id?: string
+          analysis_summary?: string | null
+          analyzed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          error_message?: string | null
+          extracted_properties?: Json | null
+          id?: string
+          manufacturer?: string | null
+          material_grade?: string | null
+          material_type?: string | null
+          original_filename?: string | null
+          status?: string | null
+          suggested_applications?: string[] | null
+          suggested_recipes?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "datasheet_analyses_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "datasheet_analyses_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       delivery_notes: {
         Row: {
           batch_reference: string | null
@@ -661,6 +789,81 @@ export type Database = {
           },
         ]
       }
+      manufacturer_matches: {
+        Row: {
+          address: string | null
+          application_areas: string[] | null
+          company_id: string | null
+          confidence_score: number | null
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          manufacturer_name: string
+          notes: string | null
+          product_name: string | null
+          search_query: string
+          source: string | null
+          source_urls: string[] | null
+          website: string | null
+        }
+        Insert: {
+          address?: string | null
+          application_areas?: string[] | null
+          company_id?: string | null
+          confidence_score?: number | null
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          manufacturer_name: string
+          notes?: string | null
+          product_name?: string | null
+          search_query: string
+          source?: string | null
+          source_urls?: string[] | null
+          website?: string | null
+        }
+        Update: {
+          address?: string | null
+          application_areas?: string[] | null
+          company_id?: string | null
+          confidence_score?: number | null
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          manufacturer_name?: string
+          notes?: string | null
+          product_name?: string | null
+          search_query?: string
+          source?: string | null
+          source_urls?: string[] | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manufacturer_matches_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manufacturer_matches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       material_announcements: {
         Row: {
           announcement_id: string
@@ -954,6 +1157,74 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      order_recipe_matches: {
+        Row: {
+          application_id: string | null
+          created_at: string
+          id: string
+          match_reason: string | null
+          match_score: number | null
+          order_id: string
+          recipe_id: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          created_at?: string
+          id?: string
+          match_reason?: string | null
+          match_score?: number | null
+          order_id: string
+          recipe_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          created_at?: string
+          id?: string
+          match_reason?: string | null
+          match_score?: number | null
+          order_id?: string
+          recipe_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_recipe_matches_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_recipe_matches_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_recipe_matches_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "recipes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_recipe_matches_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orders: {
         Row: {
@@ -1381,6 +1652,62 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      recipes: {
+        Row: {
+          applications: string[] | null
+          confidence_score: number | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          material_composition: Json | null
+          name: string
+          recipe_id: string
+          recommended_for: string[] | null
+          source: string | null
+          target_properties: Json | null
+          updated_at: string
+        }
+        Insert: {
+          applications?: string[] | null
+          confidence_score?: number | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          material_composition?: Json | null
+          name: string
+          recipe_id: string
+          recommended_for?: string[] | null
+          source?: string | null
+          target_properties?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          applications?: string[] | null
+          confidence_score?: number | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          material_composition?: Json | null
+          name?: string
+          recipe_id?: string
+          recommended_for?: string[] | null
+          source?: string | null
+          target_properties?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sample_results: {
         Row: {

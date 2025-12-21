@@ -25,6 +25,8 @@ import {
   Wrench,
   FileCode,
   ScrollText,
+  Sparkles,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -55,6 +57,8 @@ const navItems: NavItem[] = [
   { icon: FileText, label: "Lieferscheine", path: "/delivery-notes", roles: ['admin', 'intake', 'production', 'logistics'] },
   { icon: FolderOpen, label: "Dokumente", path: "/documents", roles: ['admin', 'intake', 'production', 'qa'] },
   { icon: History, label: "Rückverfolgung", path: "/traceability", roles: ['admin', 'intake', 'production', 'qa'] },
+  { icon: Sparkles, label: "KI Rezepturen", path: "/recipe-matching", roles: ['admin', 'production', 'qa'] },
+  { icon: Search, label: "KI Vertrieb", path: "/sales-search", roles: ['admin', 'intake'] },
   { icon: Truck, label: "Logistik", path: "/logistics", roles: ['admin', 'logistics'] },
   { icon: ShoppingCart, label: "Kunden-Portal", path: "/customer-portal", roles: ['customer'] },
   { icon: Package, label: "Lieferanten-Portal", path: "/supplier-portal", roles: ['supplier'] },

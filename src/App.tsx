@@ -31,6 +31,8 @@ import Maintenance from "./pages/Maintenance";
 import AuditLogs from "./pages/AuditLogs";
 import ApiDocs from "./pages/ApiDocs";
 import Auth from "./pages/Auth";
+import RecipeMatching from "./pages/RecipeMatching";
+import SalesSearch from "./pages/SalesSearch";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -67,6 +69,8 @@ const App = () => (
             <Route path="/maintenance" element={<ProtectedRoute><AppLayout><Maintenance /></AppLayout></ProtectedRoute>} />
             <Route path="/audit-logs" element={<ProtectedRoute><AppLayout><AuditLogs /></AppLayout></ProtectedRoute>} />
             <Route path="/api-docs" element={<ProtectedRoute><AppLayout><ApiDocs /></AppLayout></ProtectedRoute>} />
+            <Route path="/recipe-matching" element={<ProtectedRoute><RecipeMatching /></ProtectedRoute>} />
+            <Route path="/sales-search" element={<ProtectedRoute><SalesSearch /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
