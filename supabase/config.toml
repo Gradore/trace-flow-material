@@ -1,10 +1,19 @@
 project_id = "wkbqfckkaxyivbfzkhlt"
 
 [functions.extract-contract]
-verify_jwt = true
+verify_jwt = false
 
 [functions.analyze-datasheet]
-verify_jwt = true
+verify_jwt = false
 
 [functions.search-manufacturers]
-verify_jwt = true
+verify_jwt = false
+
+[functions.pipedrive-sync]
+verify_jwt = false
+
+[functions.send-notification-email]
+verify_jwt = false
+
+[functions.gdpr-export]
+verify_jwt = false

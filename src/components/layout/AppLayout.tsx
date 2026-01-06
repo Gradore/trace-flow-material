@@ -169,9 +169,21 @@ export function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="p-3 md:p-6">
+        <main className="p-3 md:p-6 min-h-[calc(100vh-3.5rem-4rem)] md:min-h-[calc(100vh-4rem-4rem)]">
           {children}
         </main>
+        
+        {/* Footer */}
+        <footer className="border-t border-border bg-muted/30 py-4 px-3 md:px-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
+            <span>© {new Date().getFullYear()} RecyTrack</span>
+            <nav className="flex items-center gap-4">
+              <a href="/impressum" className="hover:text-foreground transition-colors">Impressum</a>
+              <a href="/datenschutz" className="hover:text-foreground transition-colors">Datenschutz</a>
+              <a href="/agb" className="hover:text-foreground transition-colors">AGB</a>
+            </nav>
+          </div>
+        </footer>
       </div>
     </div>
   );

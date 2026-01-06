@@ -50,10 +50,46 @@ export default function Auth() {
   const [signupCompanyName, setSignupCompanyName] = useState("");
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+  const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
   
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotPasswordEmail || !z.string().email().safeParse(forgotPasswordEmail).success) {
+      toast({
+        variant: "destructive",
+        title: "Ungültige E-Mail",
+        description: "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotPasswordEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setIsLoading(false);
+
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Fehler",
+        description: error.message,
+      });
+      return;
+    }
+
+    setForgotPasswordSent(true);
+    toast({
+      title: "E-Mail gesendet",
+      description: "Falls ein Konto mit dieser E-Mail existiert, erhalten Sie einen Link zum Zurücksetzen des Passworts.",
+    });
+  };
 
   // Redirect if already logged in
   if (user) {
@@ -219,6 +255,80 @@ export default function Auth() {
     );
   }
 
+  // Forgot password view
+  if (showForgotPassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                <Recycle className="h-6 w-6 text-primary" />
+              </div>
+              <span className="text-2xl font-bold">RecyTrack</span>
+            </div>
+            <CardTitle>Passwort zurücksetzen</CardTitle>
+            <CardDescription>
+              {forgotPasswordSent 
+                ? "E-Mail wurde gesendet" 
+                : "Geben Sie Ihre E-Mail-Adresse ein"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {forgotPasswordSent ? (
+              <>
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    Falls ein Konto mit der E-Mail <strong>{forgotPasswordEmail}</strong> existiert, 
+                    erhalten Sie in Kürze einen Link zum Zurücksetzen des Passworts.
+                  </AlertDescription>
+                </Alert>
+                <Button 
+                  className="w-full" 
+                  variant="outline"
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setForgotPasswordSent(false);
+                    setForgotPasswordEmail("");
+                  }}
+                >
+                  Zurück zur Anmeldung
+                </Button>
+              </>
+            ) : (
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="forgot-email">E-Mail</Label>
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    placeholder="name@firma.de"
+                    value={forgotPasswordEmail}
+                    onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Link senden
+                </Button>
+                <Button 
+                  type="button"
+                  className="w-full" 
+                  variant="outline"
+                  onClick={() => setShowForgotPassword(false)}
+                >
+                  Zurück
+                </Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -274,6 +384,15 @@ export default function Auth() {
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Anmelden
                 </Button>
+                <div className="text-center mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPassword(true)}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Passwort vergessen?
+                  </button>
+                </div>
               </form>
             </TabsContent>
             
