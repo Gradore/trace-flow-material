@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Containers from "./pages/Containers";
@@ -31,52 +32,62 @@ import Maintenance from "./pages/Maintenance";
 import AuditLogs from "./pages/AuditLogs";
 import ApiDocs from "./pages/ApiDocs";
 import Auth from "./pages/Auth";
+import ResetPassword from "./pages/ResetPassword";
 import RecipeMatching from "./pages/RecipeMatching";
 import SalesSearch from "./pages/SalesSearch";
+import Impressum from "./pages/Impressum";
+import Datenschutz from "./pages/Datenschutz";
+import AGB from "./pages/AGB";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <Routes>
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-            <Route path="/reporting" element={<ProtectedRoute><AppLayout><ReportingDashboard /></AppLayout></ProtectedRoute>} />
-            <Route path="/containers" element={<ProtectedRoute><AppLayout><Containers /></AppLayout></ProtectedRoute>} />
-            <Route path="/intake" element={<ProtectedRoute><AppLayout><MaterialIntake /></AppLayout></ProtectedRoute>} />
-            <Route path="/processing" element={<ProtectedRoute><AppLayout><Processing /></AppLayout></ProtectedRoute>} />
-            <Route path="/sampling" element={<ProtectedRoute><AppLayout><Sampling /></AppLayout></ProtectedRoute>} />
-            <Route path="/output" element={<ProtectedRoute><AppLayout><OutputMaterials /></AppLayout></ProtectedRoute>} />
-            <Route path="/delivery-notes" element={<ProtectedRoute><AppLayout><DeliveryNotes /></AppLayout></ProtectedRoute>} />
-            <Route path="/documents" element={<ProtectedRoute><AppLayout><Documents /></AppLayout></ProtectedRoute>} />
-            <Route path="/traceability" element={<ProtectedRoute><AppLayout><Traceability /></AppLayout></ProtectedRoute>} />
-            <Route path="/orders" element={<ProtectedRoute><AppLayout><Orders /></AppLayout></ProtectedRoute>} />
-            <Route path="/companies" element={<ProtectedRoute><AppLayout><Companies /></AppLayout></ProtectedRoute>} />
-            <Route path="/supplier-portal" element={<ProtectedRoute><AppLayout><SupplierPortal /></AppLayout></ProtectedRoute>} />
-            <Route path="/customer-portal" element={<ProtectedRoute><AppLayout><CustomerPortal /></AppLayout></ProtectedRoute>} />
-            <Route path="/logistics" element={<ProtectedRoute><AppLayout><LogisticsPortal /></AppLayout></ProtectedRoute>} />
-            <Route path="/admin/users" element={<ProtectedRoute><AppLayout><AdminUsers /></AppLayout></ProtectedRoute>} />
-            <Route path="/users" element={<ProtectedRoute><AppLayout><Users /></AppLayout></ProtectedRoute>} />
-            <Route path="/scan" element={<ProtectedRoute><AppLayout><QRScanner /></AppLayout></ProtectedRoute>} />
-            <Route path="/profile" element={<ProtectedRoute><AppLayout><Profile /></AppLayout></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><AppLayout><Settings /></AppLayout></ProtectedRoute>} />
-            <Route path="/maintenance" element={<ProtectedRoute><AppLayout><Maintenance /></AppLayout></ProtectedRoute>} />
-            <Route path="/audit-logs" element={<ProtectedRoute><AppLayout><AuditLogs /></AppLayout></ProtectedRoute>} />
-            <Route path="/api-docs" element={<ProtectedRoute><AppLayout><ApiDocs /></AppLayout></ProtectedRoute>} />
-            <Route path="/recipe-matching" element={<ProtectedRoute><RecipeMatching /></ProtectedRoute>} />
-            <Route path="/sales-search" element={<ProtectedRoute><SalesSearch /></ProtectedRoute>} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AuthProvider>
+            <Routes>
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/impressum" element={<Impressum />} />
+              <Route path="/datenschutz" element={<Datenschutz />} />
+              <Route path="/agb" element={<AGB />} />
+              <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+              <Route path="/reporting" element={<ProtectedRoute><AppLayout><ReportingDashboard /></AppLayout></ProtectedRoute>} />
+              <Route path="/containers" element={<ProtectedRoute><AppLayout><Containers /></AppLayout></ProtectedRoute>} />
+              <Route path="/intake" element={<ProtectedRoute><AppLayout><MaterialIntake /></AppLayout></ProtectedRoute>} />
+              <Route path="/processing" element={<ProtectedRoute><AppLayout><Processing /></AppLayout></ProtectedRoute>} />
+              <Route path="/sampling" element={<ProtectedRoute><AppLayout><Sampling /></AppLayout></ProtectedRoute>} />
+              <Route path="/output" element={<ProtectedRoute><AppLayout><OutputMaterials /></AppLayout></ProtectedRoute>} />
+              <Route path="/delivery-notes" element={<ProtectedRoute><AppLayout><DeliveryNotes /></AppLayout></ProtectedRoute>} />
+              <Route path="/documents" element={<ProtectedRoute><AppLayout><Documents /></AppLayout></ProtectedRoute>} />
+              <Route path="/traceability" element={<ProtectedRoute><AppLayout><Traceability /></AppLayout></ProtectedRoute>} />
+              <Route path="/orders" element={<ProtectedRoute><AppLayout><Orders /></AppLayout></ProtectedRoute>} />
+              <Route path="/companies" element={<ProtectedRoute><AppLayout><Companies /></AppLayout></ProtectedRoute>} />
+              <Route path="/supplier-portal" element={<ProtectedRoute><AppLayout><SupplierPortal /></AppLayout></ProtectedRoute>} />
+              <Route path="/customer-portal" element={<ProtectedRoute><AppLayout><CustomerPortal /></AppLayout></ProtectedRoute>} />
+              <Route path="/logistics" element={<ProtectedRoute><AppLayout><LogisticsPortal /></AppLayout></ProtectedRoute>} />
+              <Route path="/admin/users" element={<ProtectedRoute><AppLayout><AdminUsers /></AppLayout></ProtectedRoute>} />
+              <Route path="/users" element={<ProtectedRoute><AppLayout><Users /></AppLayout></ProtectedRoute>} />
+              <Route path="/scan" element={<ProtectedRoute><AppLayout><QRScanner /></AppLayout></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><AppLayout><Profile /></AppLayout></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><AppLayout><Settings /></AppLayout></ProtectedRoute>} />
+              <Route path="/maintenance" element={<ProtectedRoute><AppLayout><Maintenance /></AppLayout></ProtectedRoute>} />
+              <Route path="/audit-logs" element={<ProtectedRoute><AppLayout><AuditLogs /></AppLayout></ProtectedRoute>} />
+              <Route path="/api-docs" element={<ProtectedRoute><AppLayout><ApiDocs /></AppLayout></ProtectedRoute>} />
+              <Route path="/recipe-matching" element={<ProtectedRoute><RecipeMatching /></ProtectedRoute>} />
+              <Route path="/sales-search" element={<ProtectedRoute><SalesSearch /></ProtectedRoute>} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;
