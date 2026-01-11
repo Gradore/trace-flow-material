@@ -1824,6 +1824,90 @@ export type Database = {
           },
         ]
       }
+      user_permissions: {
+        Row: {
+          can_view_admin: boolean | null
+          can_view_api_docs: boolean | null
+          can_view_audit_logs: boolean | null
+          can_view_companies: boolean | null
+          can_view_containers: boolean | null
+          can_view_dashboard: boolean | null
+          can_view_delivery_notes: boolean | null
+          can_view_documents: boolean | null
+          can_view_intake: boolean | null
+          can_view_logistics: boolean | null
+          can_view_maintenance: boolean | null
+          can_view_orders: boolean | null
+          can_view_output: boolean | null
+          can_view_processing: boolean | null
+          can_view_recipe_matching: boolean | null
+          can_view_reporting: boolean | null
+          can_view_sales_search: boolean | null
+          can_view_sampling: boolean | null
+          can_view_settings: boolean | null
+          can_view_traceability: boolean | null
+          can_view_users: boolean | null
+          created_at: string | null
+          id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          can_view_admin?: boolean | null
+          can_view_api_docs?: boolean | null
+          can_view_audit_logs?: boolean | null
+          can_view_companies?: boolean | null
+          can_view_containers?: boolean | null
+          can_view_dashboard?: boolean | null
+          can_view_delivery_notes?: boolean | null
+          can_view_documents?: boolean | null
+          can_view_intake?: boolean | null
+          can_view_logistics?: boolean | null
+          can_view_maintenance?: boolean | null
+          can_view_orders?: boolean | null
+          can_view_output?: boolean | null
+          can_view_processing?: boolean | null
+          can_view_recipe_matching?: boolean | null
+          can_view_reporting?: boolean | null
+          can_view_sales_search?: boolean | null
+          can_view_sampling?: boolean | null
+          can_view_settings?: boolean | null
+          can_view_traceability?: boolean | null
+          can_view_users?: boolean | null
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          can_view_admin?: boolean | null
+          can_view_api_docs?: boolean | null
+          can_view_audit_logs?: boolean | null
+          can_view_companies?: boolean | null
+          can_view_containers?: boolean | null
+          can_view_dashboard?: boolean | null
+          can_view_delivery_notes?: boolean | null
+          can_view_documents?: boolean | null
+          can_view_intake?: boolean | null
+          can_view_logistics?: boolean | null
+          can_view_maintenance?: boolean | null
+          can_view_orders?: boolean | null
+          can_view_output?: boolean | null
+          can_view_processing?: boolean | null
+          can_view_recipe_matching?: boolean | null
+          can_view_reporting?: boolean | null
+          can_view_sales_search?: boolean | null
+          can_view_sampling?: boolean | null
+          can_view_settings?: boolean | null
+          can_view_traceability?: boolean | null
+          can_view_users?: boolean | null
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1852,6 +1936,10 @@ export type Database = {
     Functions: {
       check_order_deadlines: { Args: never; Returns: undefined }
       generate_unique_id: { Args: { prefix: string }; Returns: string }
+      get_default_permissions_for_role: {
+        Args: { role_name: string }
+        Returns: Json
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -1884,6 +1972,7 @@ export type Database = {
         | "customer"
         | "supplier"
         | "logistics"
+        | "betriebsleiter"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2019,6 +2108,7 @@ export const Constants = {
         "customer",
         "supplier",
         "logistics",
+        "betriebsleiter",
       ],
     },
   },

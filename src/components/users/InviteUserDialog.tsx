@@ -29,6 +29,7 @@ interface InviteUserDialogProps {
 
 const roles = [
   { value: "admin", label: "Administrator" },
+  { value: "betriebsleiter", label: "Betriebsleiter" },
   { value: "intake", label: "Annahme" },
   { value: "production", label: "Produktion" },
   { value: "qa", label: "QA / Labor" },
@@ -101,7 +102,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           .from("user_roles")
           .insert({
             user_id: authData.user.id,
-            role: formData.role as "admin" | "intake" | "production" | "qa" | "customer" | "supplier" | "logistics",
+            role: formData.role as "admin" | "betriebsleiter" | "intake" | "production" | "qa" | "customer" | "supplier" | "logistics",
           });
 
         if (roleError) throw roleError;
