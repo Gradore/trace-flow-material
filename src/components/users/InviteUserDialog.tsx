@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,14 +38,34 @@ const roles = [
   { value: "logistics", label: "Logistik" },
 ];
 
+const generatePassword = () => {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
+  let password = "";
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+};
+
 export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     name: "",
     password: "",
     role: "customer",
   });
+
+  const handleGeneratePassword = () => {
+    const newPassword = generatePassword();
+    setFormData({ ...formData, password: newPassword });
+    setShowPassword(true);
+    toast({
+      title: "Passwort generiert",
+      description: "Ein sicheres Passwort wurde erstellt. Bitte notieren Sie es.",
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,10 +129,11 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
 
         toast({
           title: "Benutzer angelegt",
-          description: `${formData.name} wurde erfolgreich angelegt.`,
+          description: `${formData.name} (${formData.email}) wurde erfolgreich angelegt.`,
         });
 
         setFormData({ email: "", name: "", password: "", role: "customer" });
+        setShowPassword(false);
         onSuccess();
         onOpenChange(false);
       }
@@ -134,13 +155,13 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         <DialogHeader>
           <DialogTitle>Neuen Benutzer anlegen</DialogTitle>
           <DialogDescription>
-            Erstellen Sie einen neuen Benutzer mit E-Mail und Passwort.
+            Erstellen Sie einen neuen Benutzer mit E-Mail, Passwort und Rolle.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">Name *</Label>
               <Input
                 id="name"
                 value={formData.name}
@@ -149,7 +170,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="email">E-Mail</Label>
+              <Label htmlFor="email">E-Mail *</Label>
               <Input
                 id="email"
                 type="email"
@@ -159,17 +180,50 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="password">Passwort</Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Mindestens 6 Zeichen"
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Passwort *</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto py-1 px-2 text-xs"
+                  onClick={handleGeneratePassword}
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Generieren
+                </Button>
+              </div>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Mindestens 6 Zeichen"
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+              {formData.password && (
+                <p className="text-xs text-muted-foreground">
+                  {showPassword ? "Passwort ist sichtbar" : "Klicken Sie auf das Auge, um das Passwort anzuzeigen"}
+                </p>
+              )}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="role">Rolle</Label>
+              <Label htmlFor="role">Rolle *</Label>
               <Select
                 value={formData.role}
                 onValueChange={(value) => setFormData({ ...formData, role: value })}
