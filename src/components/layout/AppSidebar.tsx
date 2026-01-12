@@ -27,6 +27,7 @@ import {
   ScrollText,
   Sparkles,
   Search,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -68,6 +69,7 @@ const navItems: NavItem[] = [
   { icon: FileCode, label: "API-Docs", path: "/api-docs", roles: ['admin'] }, // betriebsleiter excluded
   { icon: User, label: "Profil", path: "/profile" },
   { icon: Settings, label: "Einstellungen", path: "/settings", roles: ['admin', 'betriebsleiter'] },
+  { icon: SlidersHorizontal, label: "Admin-Einstellungen", path: "/admin-settings", adminOnly: true },
 ];
 
 interface AppSidebarProps {
