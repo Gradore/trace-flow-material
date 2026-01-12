@@ -105,15 +105,9 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      // Generate order ID
-      const year = new Date().getFullYear();
-      const { data: existingOrders } = await supabase
-        .from("orders")
-        .select("order_id")
-        .like("order_id", `AUF-${year}-%`);
-
-      const nextNum = (existingOrders?.length || 0) + 1;
-      const orderId = `AUF-${year}-${String(nextNum).padStart(4, "0")}`;
+      // Generate order ID using database function
+      const { data: orderId, error: idError } = await supabase.rpc("generate_unique_id", { prefix: "AUF" });
+      if (idError) throw new Error("Fehler bei ID-Generierung: " + idError.message);
 
       const { error } = await supabase.from("orders").insert({
         order_id: orderId,
@@ -136,12 +130,12 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
-      toast.success("Auftrag erstellt");
+      toast.success("Auftrag erfolgreich erstellt");
       onOpenChange(false);
     },
-    onError: (error) => {
-      console.error(error);
-      toast.error("Fehler beim Erstellen");
+    onError: (error: Error) => {
+      console.error("Order creation error:", error);
+      toast.error("Fehler beim Erstellen: " + (error.message || "Bitte überprüfen Sie Ihre Eingaben und Berechtigungen."));
     },
   });
 
@@ -171,12 +165,12 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
-      toast.success("Auftrag aktualisiert");
+      toast.success("Auftrag erfolgreich aktualisiert");
       onOpenChange(false);
     },
-    onError: (error) => {
-      console.error(error);
-      toast.error("Fehler beim Aktualisieren");
+    onError: (error: Error) => {
+      console.error("Order update error:", error);
+      toast.error("Fehler beim Aktualisieren: " + (error.message || "Bitte überprüfen Sie Ihre Berechtigungen."));
     },
   });
 

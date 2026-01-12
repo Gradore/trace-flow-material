@@ -153,11 +153,11 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
       
       setFormData({ intake: "", steps: [] });
       onOpenChange(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating processing:', error);
       toast({
-        title: "Fehler",
-        description: "Die Verarbeitung konnte nicht gestartet werden.",
+        title: "Fehler beim Starten",
+        description: error.message || "Die Verarbeitung konnte nicht gestartet werden. Bitte überprüfen Sie Ihre Berechtigungen.",
         variant: "destructive",
       });
     } finally {

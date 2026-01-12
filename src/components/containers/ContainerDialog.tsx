@@ -104,9 +104,10 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
         description: `${containerId} wurde erfolgreich erstellt.`,
       });
     } catch (error: any) {
+      console.error("Container creation error:", error);
       toast({
-        title: "Fehler",
-        description: error.message || "Container konnte nicht erstellt werden.",
+        title: "Fehler beim Erstellen",
+        description: error.message || "Container konnte nicht erstellt werden. Bitte überprüfen Sie Ihre Berechtigungen.",
         variant: "destructive",
       });
     } finally {

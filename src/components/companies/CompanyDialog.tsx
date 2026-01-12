@@ -136,11 +136,12 @@ export function CompanyDialog({ open, onOpenChange, company }: CompanyDialogProp
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["companies"] });
-      toast.success(company ? "Firma aktualisiert" : "Firma erstellt");
+      toast.success(company ? "Firma erfolgreich aktualisiert" : "Firma erfolgreich erstellt");
       onOpenChange(false);
     },
-    onError: (error) => {
-      toast.error("Fehler: " + error.message);
+    onError: (error: Error) => {
+      console.error("Company save error:", error);
+      toast.error("Fehler beim Speichern: " + (error.message || "Bitte überprüfen Sie Ihre Eingaben und Berechtigungen."));
     },
   });
 
