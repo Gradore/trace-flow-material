@@ -33,6 +33,7 @@ import AuditLogs from "./pages/AuditLogs";
 import ApiDocs from "./pages/ApiDocs";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
+import ForgotPassword from "./pages/ForgotPassword";
 import RecipeMatching from "./pages/RecipeMatching";
 import SalesSearch from "./pages/SalesSearch";
 import Impressum from "./pages/Impressum";
@@ -54,6 +55,7 @@ const App = () => (
           <AuthProvider>
             <Routes>
               <Route path="/auth" element={<Auth />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/impressum" element={<Impressum />} />
               <Route path="/datenschutz" element={<Datenschutz />} />

@@ -10,10 +10,16 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.pipedrive-sync]
-verify_jwt = false
+verify_jwt = true
 
 [functions.send-notification-email]
-verify_jwt = false
+verify_jwt = true
 
 [functions.gdpr-export]
+verify_jwt = true
+
+[functions.admin-reset-password]
+verify_jwt = true
+
+[functions.analyze-document-ocr]
 verify_jwt = false
