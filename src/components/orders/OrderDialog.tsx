@@ -109,6 +109,9 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
       const { data: orderId, error: idError } = await supabase.rpc("generate_unique_id", { prefix: "AUF" });
       if (idError) throw new Error("Fehler bei ID-Generierung: " + idError.message);
 
+      // Generate product name from configuration
+      const productName = `${data.product_category}-${data.product_grain_size}-${data.product_subcategory}`;
+
       const { error } = await supabase.from("orders").insert({
         order_id: orderId,
         customer_name: data.customer_name,
@@ -117,6 +120,7 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
         product_category: data.product_category,
         product_grain_size: data.product_grain_size,
         product_subcategory: data.product_subcategory,
+        product_name: productName,
         quantity_kg: parseFloat(data.quantity_kg),
         production_deadline: data.production_deadline,
         delivery_deadline: data.delivery_deadline,
@@ -143,6 +147,9 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
     mutationFn: async (data: typeof formData) => {
       if (!order) return;
 
+      // Generate product name from configuration
+      const productName = `${data.product_category}-${data.product_grain_size}-${data.product_subcategory}`;
+
       const { error } = await supabase
         .from("orders")
         .update({
@@ -152,6 +159,7 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
           product_category: data.product_category,
           product_grain_size: data.product_grain_size,
           product_subcategory: data.product_subcategory,
+          product_name: productName,
           quantity_kg: parseFloat(data.quantity_kg),
           production_deadline: data.production_deadline,
           delivery_deadline: data.delivery_deadline,
