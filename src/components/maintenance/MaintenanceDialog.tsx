@@ -114,11 +114,13 @@ export function MaintenanceDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["maintenance-records"] });
       queryClient.invalidateQueries({ queryKey: ["maintenance-overview"] });
-      toast.success("Wartung erstellt");
+      queryClient.invalidateQueries({ queryKey: ["equipment"] });
+      toast.success("Wartung erfolgreich erstellt");
       onOpenChange(false);
     },
-    onError: (error) => {
-      toast.error("Fehler beim Erstellen: " + error.message);
+    onError: (error: Error) => {
+      console.error("Maintenance creation error:", error);
+      toast.error("Fehler beim Erstellen: " + (error.message || "Bitte überprüfen Sie Ihre Berechtigungen."));
     },
   });
 
@@ -142,11 +144,13 @@ export function MaintenanceDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["maintenance-records"] });
       queryClient.invalidateQueries({ queryKey: ["maintenance-overview"] });
-      toast.success("Wartung aktualisiert");
+      queryClient.invalidateQueries({ queryKey: ["equipment"] });
+      toast.success("Wartung erfolgreich aktualisiert");
       onOpenChange(false);
     },
-    onError: (error) => {
-      toast.error("Fehler beim Aktualisieren: " + error.message);
+    onError: (error: Error) => {
+      console.error("Maintenance update error:", error);
+      toast.error("Fehler beim Aktualisieren: " + (error.message || "Bitte überprüfen Sie Ihre Berechtigungen."));
     },
   });
 
