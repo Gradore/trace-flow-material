@@ -14,7 +14,9 @@ export default function Profile() {
   const { user } = useAuth();
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [name, setName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -64,6 +66,38 @@ export default function Profile() {
       toast({ title: "Fehler", description: error.message, variant: "destructive" });
     } finally {
       setIsUpdatingProfile(false);
+    }
+  };
+
+  const handleUpdateEmail = async () => {
+    if (!newEmail.trim() || !newEmail.includes("@")) {
+      toast({ title: "Fehler", description: "Bitte gib eine gültige E-Mail-Adresse ein", variant: "destructive" });
+      return;
+    }
+    
+    setIsUpdatingEmail(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
+      
+      if (error) throw error;
+      
+      // Also update the profile table
+      if (user) {
+        await supabase
+          .from("profiles")
+          .update({ email: newEmail.trim() })
+          .eq("user_id", user.id);
+      }
+      
+      toast({ 
+        title: "E-Mail-Änderung angefordert", 
+        description: "Bitte bestätige die Änderung über den Link in deiner neuen E-Mail." 
+      });
+      setNewEmail("");
+    } catch (error: any) {
+      toast({ title: "Fehler", description: error.message, variant: "destructive" });
+    } finally {
+      setIsUpdatingEmail(false);
     }
   };
 
@@ -166,15 +200,33 @@ export default function Profile() {
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="email">E-Mail</Label>
+            <Label htmlFor="email">Aktuelle E-Mail</Label>
             <Input
               id="email"
               value={profile?.email || ""}
               disabled
               className="bg-muted"
             />
-            <p className="text-xs text-muted-foreground">E-Mail kann nicht geändert werden</p>
           </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="newEmail">Neue E-Mail-Adresse</Label>
+            <Input
+              id="newEmail"
+              type="email"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              placeholder="neue.email@beispiel.de"
+            />
+            <p className="text-xs text-muted-foreground">Nach der Änderung erhältst du eine Bestätigungs-E-Mail</p>
+          </div>
+          
+          <Button onClick={handleUpdateEmail} disabled={isUpdatingEmail || !newEmail}>
+            {isUpdatingEmail ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Mail className="h-4 w-4 mr-2" />}
+            E-Mail ändern
+          </Button>
+          
+          <div className="border-t border-border pt-4" />
           
           <Button onClick={handleUpdateProfile} disabled={isUpdatingProfile}>
             {isUpdatingProfile ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}

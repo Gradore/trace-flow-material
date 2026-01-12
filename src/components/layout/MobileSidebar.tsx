@@ -23,9 +23,10 @@ import {
   Wrench,
   FileCode,
   ScrollText,
-  X,
+  Sparkles,
+  Search,
+  SlidersHorizontal,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -42,27 +43,30 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: BarChart3, label: "Reporting", path: "/reporting", roles: ['admin', 'intake', 'production', 'qa'] },
-  { icon: ClipboardList, label: "Aufträge", path: "/orders", roles: ['admin', 'intake', 'production', 'qa', 'customer'] },
-  { icon: Building2, label: "Firmen", path: "/companies", roles: ['admin', 'intake', 'logistics'] },
-  { icon: Package, label: "Container", path: "/containers", roles: ['admin', 'intake', 'production', 'qa', 'logistics'] },
-  { icon: Inbox, label: "Materialeingang", path: "/intake", roles: ['admin', 'intake', 'production'] },
-  { icon: Cog, label: "Verarbeitung", path: "/processing", roles: ['admin', 'production'] },
-  { icon: Wrench, label: "Wartung", path: "/maintenance", roles: ['admin', 'production'] },
-  { icon: FlaskConical, label: "Beprobung", path: "/sampling", roles: ['admin', 'qa', 'production'] },
-  { icon: FileOutput, label: "Ausgangsmaterial", path: "/output", roles: ['admin', 'production', 'qa'] },
-  { icon: FileText, label: "Lieferscheine", path: "/delivery-notes", roles: ['admin', 'intake', 'production', 'logistics'] },
-  { icon: FolderOpen, label: "Dokumente", path: "/documents", roles: ['admin', 'intake', 'production', 'qa'] },
-  { icon: History, label: "Rückverfolgung", path: "/traceability", roles: ['admin', 'intake', 'production', 'qa'] },
-  { icon: Truck, label: "Logistik", path: "/logistics", roles: ['admin', 'logistics'] },
+  { icon: BarChart3, label: "Reporting", path: "/reporting", roles: ['admin', 'intake', 'production', 'qa'] }, // betriebsleiter excluded
+  { icon: ClipboardList, label: "Aufträge", path: "/orders", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa', 'customer'] },
+  { icon: Building2, label: "Firmen", path: "/companies", roles: ['admin', 'betriebsleiter', 'intake', 'logistics'] },
+  { icon: Package, label: "Container", path: "/containers", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa', 'logistics'] },
+  { icon: Inbox, label: "Materialeingang", path: "/intake", roles: ['admin', 'betriebsleiter', 'intake', 'production'] },
+  { icon: Cog, label: "Verarbeitung", path: "/processing", roles: ['admin', 'betriebsleiter', 'production'] },
+  { icon: Wrench, label: "Wartung", path: "/maintenance", roles: ['admin', 'betriebsleiter', 'production'] },
+  { icon: FlaskConical, label: "Beprobung", path: "/sampling", roles: ['admin', 'betriebsleiter', 'qa', 'production'] },
+  { icon: FileOutput, label: "Ausgangsmaterial", path: "/output", roles: ['admin', 'betriebsleiter', 'production', 'qa'] },
+  { icon: FileText, label: "Lieferscheine", path: "/delivery-notes", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'logistics'] },
+  { icon: FolderOpen, label: "Dokumente", path: "/documents", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
+  { icon: History, label: "Rückverfolgung", path: "/traceability", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
+  { icon: Sparkles, label: "KI Rezepturen", path: "/recipe-matching", roles: ['admin', 'production', 'qa', 'intake'] }, // betriebsleiter excluded
+  { icon: Search, label: "KI Vertrieb", path: "/sales-search", roles: ['admin', 'production', 'qa', 'intake'] }, // betriebsleiter excluded
+  { icon: Truck, label: "Logistik", path: "/logistics", roles: ['admin', 'betriebsleiter', 'logistics'] },
   { icon: ShoppingCart, label: "Kunden-Portal", path: "/customer-portal", roles: ['customer'] },
   { icon: Package, label: "Lieferanten-Portal", path: "/supplier-portal", roles: ['supplier'] },
-  { icon: Users, label: "Benutzer", path: "/users", roles: ['admin'] },
+  { icon: Users, label: "Benutzer", path: "/users", roles: ['admin', 'betriebsleiter'] },
   { icon: Shield, label: "Admin", path: "/admin/users", adminOnly: true },
-  { icon: ScrollText, label: "Audit-Log", path: "/audit-logs", roles: ['admin'] },
-  { icon: FileCode, label: "API-Docs", path: "/api-docs", roles: ['admin'] },
+  { icon: ScrollText, label: "Audit-Log", path: "/audit-logs", roles: ['admin', 'betriebsleiter'] },
+  { icon: FileCode, label: "API-Docs", path: "/api-docs", roles: ['admin'] }, // betriebsleiter excluded
   { icon: User, label: "Profil", path: "/profile" },
-  { icon: Settings, label: "Einstellungen", path: "/settings", roles: ['admin'] },
+  { icon: Settings, label: "Einstellungen", path: "/settings", roles: ['admin', 'betriebsleiter'] },
+  { icon: SlidersHorizontal, label: "Admin-Einstellungen", path: "/admin-settings", adminOnly: true },
 ];
 
 interface MobileSidebarProps {
