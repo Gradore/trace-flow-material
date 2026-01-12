@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Filter, FileText, MoreVertical, Download, Mail, Eye, ArrowDownLeft, ArrowUpRight, Loader2 } from "lucide-react";
+import { Plus, Search, Filter, FileText, MoreVertical, Download, Mail, Eye, ArrowDownLeft, ArrowUpRight, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,14 +14,27 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { DeliveryNoteDialog } from "@/components/delivery/DeliveryNoteDialog";
-import { useQuery } from "@tanstack/react-query";
+import { DeliveryNoteDetailsDialog } from "@/components/delivery/DeliveryNoteDetailsDialog";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { de } from "date-fns/locale";
+import { toast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const typeConfig = {
   incoming: { label: "Eingang", icon: ArrowDownLeft, class: "bg-info/10 text-info" },
@@ -31,6 +44,11 @@ const typeConfig = {
 export default function DeliveryNotes() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedNote, setSelectedNote] = useState<any>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<any>(null);
+  const queryClient = useQueryClient();
 
   const { data: deliveryNotes = [], isLoading } = useQuery({
     queryKey: ["delivery-notes"],
@@ -67,6 +85,40 @@ export default function DeliveryNotes() {
     const date = new Date(n.created_at);
     return n.type === 'outgoing' && date >= monthStart && date <= monthEnd;
   }).length;
+
+  const handleViewDetails = (note: any) => {
+    setSelectedNote(note);
+    setDetailsOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!noteToDelete) return;
+    
+    try {
+      if (noteToDelete.pdf_url) {
+        await supabase.storage.from("documents").remove([noteToDelete.pdf_url]);
+      }
+      
+      const { error } = await supabase
+        .from("delivery_notes")
+        .delete()
+        .eq("id", noteToDelete.id);
+      
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ["delivery-notes"] });
+      toast({ title: "Lieferschein gelöscht" });
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: error.message || "Lieferschein konnte nicht gelöscht werden.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+      setNoteToDelete(null);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -151,7 +203,11 @@ export default function DeliveryNotes() {
                 const type = typeConfig[note.type as keyof typeof typeConfig] || typeConfig.incoming;
                 const TypeIcon = type.icon;
                 return (
-                  <TableRow key={note.id} className="cursor-pointer">
+                  <TableRow 
+                    key={note.id} 
+                    className="cursor-pointer"
+                    onClick={() => handleViewDetails(note)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-primary" />
@@ -170,15 +226,15 @@ export default function DeliveryNotes() {
                     <TableCell className="font-mono text-sm">{note.batch_reference || "-"}</TableCell>
                     <TableCell>{Number(note.weight_kg).toLocaleString("de-DE")} kg</TableCell>
                     <TableCell className="font-mono text-sm">{note.waste_code || "-"}</TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon-sm">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                        <DropdownMenuContent align="end" className="bg-popover">
+                          <DropdownMenuItem onClick={() => handleViewDetails(note)}>
                             <Eye className="h-4 w-4 mr-2" />
                             Anzeigen
                           </DropdownMenuItem>
@@ -189,6 +245,17 @@ export default function DeliveryNotes() {
                           <DropdownMenuItem>
                             <Mail className="h-4 w-4 mr-2" />
                             Per E-Mail senden
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            className="text-destructive"
+                            onClick={() => {
+                              setNoteToDelete(note);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Löschen
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -202,6 +269,29 @@ export default function DeliveryNotes() {
       </div>
 
       <DeliveryNoteDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} />
+      
+      <DeliveryNoteDetailsDialog 
+        open={detailsOpen} 
+        onOpenChange={setDetailsOpen} 
+        note={selectedNote} 
+      />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Lieferschein löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Diese Aktion kann nicht rückgängig gemacht werden. Der Lieferschein {noteToDelete?.note_id} wird dauerhaft gelöscht.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
