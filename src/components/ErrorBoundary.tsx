@@ -48,9 +48,9 @@ export class ErrorBoundary extends Component<Props, State> {
                   <AlertTriangle className="h-8 w-8 text-destructive" />
                 </div>
               </div>
-              <CardTitle className="text-xl">Etwas ist schiefgelaufen</CardTitle>
+              <CardTitle className="text-xl">Hoppla, hier ist etwas schiefgelaufen</CardTitle>
               <CardDescription>
-                Es ist ein unerwarteter Fehler aufgetreten. Wir arbeiten daran, das Problem zu beheben.
+                Bitte versuchen Sie es später erneut. Wir arbeiten daran, das Problem zu beheben.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -82,12 +82,12 @@ export class ErrorBoundary extends Component<Props, State> {
                   variant="outline"
                 >
                   <Home className="mr-2 h-4 w-4" />
-                  Zur Startseite
+                  Zurück zur Startseite
                 </Button>
               </div>
               
               <p className="text-center text-sm text-muted-foreground">
-                Falls das Problem weiterhin besteht, kontaktieren Sie bitte den Support.
+                Falls das Problem weiterhin besteht, kontaktieren Sie bitte den Support unter info@gradore.de
               </p>
             </CardContent>
           </Card>
