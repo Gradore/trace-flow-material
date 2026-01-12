@@ -1,17 +1,45 @@
+import { useState, useEffect } from "react";
 import { Package, Inbox, FlaskConical, FileOutput, Truck, AlertTriangle, Loader2 } from "lucide-react";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { StockOverviewCard } from "@/components/dashboard/StockOverviewCard";
 import { MaintenanceOverview } from "@/components/dashboard/MaintenanceOverview";
 import { PendingSamples } from "@/components/dashboard/PendingSamples";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { isToday, startOfMonth, endOfMonth } from "date-fns";
 
 export default function Dashboard() {
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const { user } = useAuth();
+  
   const today = new Date();
   const monthStart = startOfMonth(today);
   const monthEnd = endOfMonth(today);
+
+  // Check if admin and first login
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      if (!user) return;
+      
+      const hasSeenOnboarding = localStorage.getItem("onboarding_completed");
+      if (hasSeenOnboarding) return;
+
+      // Check if user is admin
+      const { data: isAdmin } = await supabase.rpc("has_role", {
+        _user_id: user.id,
+        _role: "admin",
+      });
+
+      if (isAdmin) {
+        setShowOnboarding(true);
+      }
+    };
+
+    checkOnboarding();
+  }, [user]);
 
   // Fetch containers count
   const { data: containerStats } = useQuery({
@@ -120,6 +148,15 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4 md:space-y-6 animate-fade-in">
+      {/* Onboarding Wizard for new admins */}
+      <OnboardingWizard 
+        open={showOnboarding} 
+        onClose={() => {
+          setShowOnboarding(false);
+          localStorage.setItem("onboarding_completed", "true");
+        }} 
+      />
+
       {/* Page Header */}
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-foreground">Dashboard</h1>
