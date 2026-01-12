@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,10 +53,24 @@ export default function Auth() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
+  const [forceLogout, setForceLogout] = useState(false);
   
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
+
+  // If user navigated to /auth with ?logout=true, force sign out
+  useEffect(() => {
+    const shouldLogout = searchParams.get('logout') === 'true';
+    if (shouldLogout && !forceLogout) {
+      setForceLogout(true);
+      supabase.auth.signOut().then(() => {
+        // Clear the URL parameter
+        window.history.replaceState({}, '', '/auth');
+      });
+    }
+  }, [searchParams, forceLogout]);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,8 +105,8 @@ export default function Auth() {
     });
   };
 
-  // Redirect if already logged in
-  if (user) {
+  // Redirect if already logged in (but not if we're forcing logout)
+  if (user && !forceLogout) {
     navigate("/", { replace: true });
     return null;
   }
