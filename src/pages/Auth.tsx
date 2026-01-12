@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -399,13 +399,12 @@ export default function Auth() {
                   Anmelden
                 </Button>
                 <div className="text-center mt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowForgotPassword(true)}
+                  <Link
+                    to="/forgot-password"
                     className="text-sm text-primary hover:underline"
                   >
                     Passwort vergessen?
-                  </button>
+                  </Link>
                 </div>
               </form>
             </TabsContent>

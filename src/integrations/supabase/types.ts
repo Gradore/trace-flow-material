@@ -1951,17 +1951,29 @@ export type Database = {
         }
         Returns: boolean
       }
-      log_audit: {
-        Args: {
-          _action: string
-          _changed_fields?: string[]
-          _new_data?: Json
-          _old_data?: Json
-          _record_id: string
-          _table_name: string
-        }
-        Returns: string
-      }
+      log_audit:
+        | {
+            Args: {
+              _action: string
+              _changed_fields?: string[]
+              _new_data?: Json
+              _old_data?: Json
+              _record_id: string
+              _table_name: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              _action: string
+              _changed_fields?: string[]
+              _new_data?: Json
+              _old_data?: Json
+              _record_id: string
+              _table_name: string
+            }
+            Returns: string
+          }
     }
     Enums: {
       app_role:
