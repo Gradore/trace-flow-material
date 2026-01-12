@@ -285,27 +285,22 @@ export function UserPermissionsDialog({
     
     setIsSaving(true);
     try {
-      // Update role
+      // Update role - first delete all existing roles for this user, then insert the new one
       const roleValue = selectedRole as "admin" | "intake" | "production" | "qa" | "customer" | "supplier" | "logistics" | "betriebsleiter";
       
-      const { data: existingRole } = await supabase
+      // Delete all existing roles for this user
+      const { error: deleteError } = await supabase
         .from("user_roles")
-        .select("id")
-        .eq("user_id", user.user_id)
-        .single();
-
-      if (existingRole) {
-        const { error: roleError } = await supabase
-          .from("user_roles")
-          .update({ role: roleValue })
-          .eq("user_id", user.user_id);
-        if (roleError) throw roleError;
-      } else {
-        const { error: roleError } = await supabase
-          .from("user_roles")
-          .insert([{ user_id: user.user_id, role: roleValue }]);
-        if (roleError) throw roleError;
-      }
+        .delete()
+        .eq("user_id", user.user_id);
+      
+      if (deleteError) throw deleteError;
+      
+      // Insert the new role
+      const { error: roleError } = await supabase
+        .from("user_roles")
+        .insert([{ user_id: user.user_id, role: roleValue }]);
+      if (roleError) throw roleError;
 
       // Update or insert permissions
       const { data: existingPerms } = await supabase
