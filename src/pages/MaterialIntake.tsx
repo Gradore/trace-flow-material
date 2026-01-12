@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Filter, Inbox, MoreVertical, FileText, Upload, Calendar, Building2, Loader2 } from "lucide-react";
+import { Plus, Search, Filter, Inbox, MoreVertical, FileText, Upload, Calendar, Building2, Loader2, Trash2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,13 +14,24 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { IntakeDialog } from "@/components/intake/IntakeDialog";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const statusConfig: Record<string, { label: string; class: string }> = {
   received: { label: "Eingegangen", class: "status-badge-info" },
@@ -42,6 +53,9 @@ const materialTypes: Record<string, string> = {
 export default function MaterialIntake() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [intakeToDelete, setIntakeToDelete] = useState<any>(null);
+  const queryClient = useQueryClient();
 
   const { data: intakes = [], isLoading, refetch } = useQuery({
     queryKey: ["material_inputs"],
@@ -67,6 +81,44 @@ export default function MaterialIntake() {
   );
   const todayWeight = todayIntakes.reduce((sum, i) => sum + (i.weight_kg || 0), 0);
   const inProcessingCount = intakes.filter((i) => i.status === "in_processing").length;
+
+  const handleDelete = async () => {
+    if (!intakeToDelete) return;
+    
+    try {
+      // Delete related documents first
+      await supabase
+        .from("documents")
+        .delete()
+        .eq("material_input_id", intakeToDelete.id);
+      
+      // Delete related samples
+      await supabase
+        .from("samples")
+        .delete()
+        .eq("material_input_id", intakeToDelete.id);
+      
+      // Delete the material input
+      const { error } = await supabase
+        .from("material_inputs")
+        .delete()
+        .eq("id", intakeToDelete.id);
+      
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ["material_inputs"] });
+      toast({ title: "Materialeingang gelöscht" });
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: error.message || "Materialeingang konnte nicht gelöscht werden.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+      setIntakeToDelete(null);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -184,11 +236,25 @@ export default function MaterialIntake() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="bg-popover">
                             <DropdownMenuItem>
+                              <Eye className="h-4 w-4 mr-2" />
+                              Details anzeigen
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
                               <Upload className="h-4 w-4 mr-2" />
                               Dokumente hochladen
                             </DropdownMenuItem>
-                            <DropdownMenuItem>Details anzeigen</DropdownMenuItem>
                             <DropdownMenuItem>Verarbeitung starten</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              className="text-destructive"
+                              onClick={() => {
+                                setIntakeToDelete(intake);
+                                setDeleteDialogOpen(true);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Löschen
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -202,6 +268,23 @@ export default function MaterialIntake() {
       </div>
 
       <IntakeDialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) refetch(); }} />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Materialeingang löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Diese Aktion kann nicht rückgängig gemacht werden. Der Materialeingang {intakeToDelete?.input_id} und alle verknüpften Dokumente und Proben werden dauerhaft gelöscht.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

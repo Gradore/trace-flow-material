@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Search, FolderOpen, FileText, Image, File, MoreVertical, Upload, Trash2, Download, Tag, Loader2 } from "lucide-react";
+import { Search, FolderOpen, FileText, Image, File, MoreVertical, Upload, Trash2, Download, Tag, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { DocumentUploadDialog } from "@/components/documents/DocumentUploadDialog";
+import { BulkUploadDialog } from "@/components/documents/BulkUploadDialog";
 
 const tagConfig: Record<string, { label: string; class: string }> = {
   reach: { label: "REACH", class: "bg-info/10 text-info border-info/20" },
@@ -42,6 +43,7 @@ export default function Documents() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: documents = [], isLoading } = useQuery({
@@ -125,10 +127,16 @@ export default function Documents() {
           <h1 className="text-2xl font-bold text-foreground">Dokumente</h1>
           <p className="text-muted-foreground mt-1">Alle Dokumente zentral verwalten</p>
         </div>
-        <Button onClick={() => setUploadDialogOpen(true)}>
-          <Upload className="h-4 w-4" />
-          Dokument hochladen
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
+            <Sparkles className="h-4 w-4" />
+            Massenupload mit KI
+          </Button>
+          <Button onClick={() => setUploadDialogOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Dokument hochladen
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -255,6 +263,11 @@ export default function Documents() {
       <DocumentUploadDialog
         open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
+      />
+      
+      <BulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
       />
     </div>
   );
