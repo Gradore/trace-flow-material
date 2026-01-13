@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Plus, Search, Filter, FlaskConical, MoreVertical, CheckCircle, XCircle, Clock, FileText, Upload, Loader2, Edit } from "lucide-react";
+import { Plus, Search, Filter, FlaskConical, MoreVertical, CheckCircle, XCircle, Clock, FileText, Upload, Loader2, Edit, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -174,8 +175,17 @@ export default function Sampling() {
                     <TableRow key={sample.id} className="cursor-pointer" onClick={() => openResults(sample)}>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <FlaskConical className="h-4 w-4 text-primary" />
+                          {sample.is_retention_sample ? (
+                            <Archive className="h-4 w-4 text-warning" />
+                          ) : (
+                            <FlaskConical className="h-4 w-4 text-primary" />
+                          )}
                           <span className="font-mono font-medium">{sample.sample_id}</span>
+                          {sample.is_retention_sample && (
+                            <Badge variant="outline" className="text-xs bg-warning/10 text-warning border-warning/30">
+                              RST
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="font-medium">{materialType}</TableCell>
