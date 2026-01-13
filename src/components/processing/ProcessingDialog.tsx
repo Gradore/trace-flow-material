@@ -21,6 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useMaterialFlowHistory } from "@/hooks/useMaterialFlowHistory";
+import { useUserRole } from "@/hooks/useUserRole";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface ProcessingDialogProps {
@@ -35,6 +36,7 @@ interface MaterialInput {
   material_subtype: string | null;
   weight_kg: number;
   supplier: string;
+  status?: string;
 }
 
 const processSteps = [
@@ -53,6 +55,7 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { logEvent } = useMaterialFlowHistory();
+  const { role, isLoading: isRoleLoading } = useUserRole();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -66,12 +69,12 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
     try {
       const { data, error } = await supabase
         .from('material_inputs')
-        .select('id, input_id, material_type, material_subtype, weight_kg, supplier')
-        .in('status', ['received', 'in_processing'])
+        .select('id, input_id, material_type, material_subtype, weight_kg, supplier, status')
+        .in('status', ['received'])
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setMaterialInputs(data || []);
+      setMaterialInputs((data as any) || []);
     } catch (error) {
       console.error('Error fetching material inputs:', error);
       toast({
@@ -95,7 +98,26 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    if (isRoleLoading) {
+      toast({
+        title: "Bitte warten",
+        description: "Berechtigungen werden noch geladen.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const canStartProcessing = role === 'admin' || role === 'production' || role === 'betriebsleiter';
+    if (!canStartProcessing) {
+      toast({
+        title: "Keine Berechtigung",
+        description: "Sie haben keine Berechtigung, eine Verarbeitung zu starten.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Validate input before submission
     if (!formData.intake) {
       toast({
@@ -129,6 +151,21 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
 
       const processingId = processingIdData;
 
+      // Prevent duplicate starts for the same intake
+      const { data: existingSteps, error: existingError } = await supabase
+        .from('processing_steps')
+        .select('id, status')
+        .eq('material_input_id', formData.intake)
+        .in('status', ['in_progress', 'pending']);
+
+      if (existingError) {
+        console.warn('Could not check existing processing steps:', existingError);
+      }
+
+      if (existingSteps && existingSteps.length > 0) {
+        throw new Error('Dieser Materialeingang ist bereits in Verarbeitung.');
+      }
+
       // Create processing steps
       const stepsToInsert = formData.steps.map((stepId, index) => ({
         processing_id: processingId,
@@ -146,6 +183,10 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
 
       if (stepsError) {
         console.error('Error inserting processing steps:', stepsError);
+        // Most common: RLS permissions
+        if ((stepsError as any).message?.toLowerCase?.().includes('row level security')) {
+          throw new Error('Keine Berechtigung: Verarbeitungsschritte dürfen nicht erstellt werden.');
+        }
         throw new Error(`Verarbeitungsschritte konnten nicht erstellt werden: ${stepsError.message}`);
       }
 
@@ -282,7 +323,16 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Abbrechen
             </Button>
-            <Button type="submit" disabled={!formData.intake || formData.steps.length === 0 || isSubmitting}>
+            <Button
+              type="submit"
+              disabled={
+                isRoleLoading ||
+                !(role === 'admin' || role === 'production' || role === 'betriebsleiter') ||
+                !formData.intake ||
+                formData.steps.length === 0 ||
+                isSubmitting
+              }
+            >
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Verarbeitung starten
             </Button>

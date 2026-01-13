@@ -22,6 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { useMaterialFlowHistory } from "@/hooks/useMaterialFlowHistory";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface SampleDialogProps {
   open: boolean;
@@ -36,6 +37,7 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { logEvent } = useMaterialFlowHistory();
+  const { role, isLoading: isRoleLoading } = useUserRole();
   const queryClient = useQueryClient();
   const { data: materialInputs = [] } = useQuery({
     queryKey: ["material-inputs-for-sampling"],
@@ -67,40 +69,86 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.sampler) {
-      toast({ title: "Fehler", description: "Bitte Probenehmer angeben.", variant: "destructive" });
+
+    if (isRoleLoading) {
+      toast({
+        title: "Bitte warten",
+        description: "Berechtigungen werden noch geladen.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const canCreateSample = role === 'admin' || role === 'production' || role === 'qa';
+    if (!canCreateSample) {
+      toast({
+        title: "Keine Berechtigung",
+        description: "Sie haben keine Berechtigung, Proben zu erstellen.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const samplerName = formData.sampler.trim();
+    if (!samplerName) {
+      toast({
+        title: "Fehler",
+        description: "Probenehmer darf nicht leer sein.",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsSubmitting(true);
     try {
       const { data: idData, error: idError } = await supabase.rpc("generate_unique_id", { prefix: "PRB" });
-      if (idError) throw idError;
+      if (idError) {
+        console.error('Error generating sample id:', idError);
+        throw new Error("Proben-ID konnte nicht generiert werden.");
+      }
 
       const sampleId = idData as string;
 
-      const { data: insertedData, error } = await supabase.from("samples").insert({
-        sample_id: sampleId,
-        sampler_name: formData.sampler,
-        material_input_id: formData.materialInput || null,
-        processing_step_id: formData.processingStep || null,
-        status: "pending",
-      }).select().single();
-
-      if (error) throw error;
-
-      // Log event
-      await logEvent({
-        eventType: 'sample_created',
-        eventDescription: `Probe ${sampleId} von ${formData.sampler} erstellt`,
-        eventDetails: {
+      const { data: insertedData, error } = await supabase
+        .from("samples")
+        .insert({
           sample_id: sampleId,
-          sampler_name: formData.sampler,
-        },
-        materialInputId: formData.materialInput || undefined,
-        processingStepId: formData.processingStep || undefined,
-        sampleId: insertedData?.id,
-      });
+          sampler_name: samplerName,
+          material_input_id: formData.materialInput || null,
+          processing_step_id: formData.processingStep || null,
+          status: "pending",
+        })
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error creating sample:', error);
+        const msg = (error as any).message?.toLowerCase?.() || '';
+        if (msg.includes('row level security')) {
+          throw new Error('Keine Berechtigung: Probe darf nicht erstellt werden.');
+        }
+        if ((error as any).code === '23505') {
+          throw new Error('Proben-ID ist bereits vergeben. Bitte erneut versuchen.');
+        }
+        throw new Error((error as any).message || 'Probe konnte nicht erstellt werden.');
+      }
+
+      // Log event (non-critical)
+      try {
+        await logEvent({
+          eventType: 'sample_created',
+          eventDescription: `Probe ${sampleId} von ${samplerName} erstellt`,
+          eventDetails: {
+            sample_id: sampleId,
+            sampler_name: samplerName,
+          },
+          materialInputId: formData.materialInput || undefined,
+          processingStepId: formData.processingStep || undefined,
+          sampleId: insertedData?.id,
+        });
+      } catch (logError) {
+        console.warn('Could not log sample_created event:', logError);
+      }
 
       toast({
         title: "Probe erstellt",
@@ -111,6 +159,7 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
       setFormData({ materialInput: "", processingStep: "", sampler: "" });
       onOpenChange(false);
     } catch (error: any) {
+      console.error('SampleDialog submit failed:', error);
       toast({
         title: "Fehler",
         description: error.message || "Probe konnte nicht erstellt werden.",
@@ -208,7 +257,14 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Abbrechen
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button
+              type="submit"
+              disabled={
+                isSubmitting ||
+                isRoleLoading ||
+                !(role === 'admin' || role === 'production' || role === 'qa')
+              }
+            >
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Probe erstellen
             </Button>
