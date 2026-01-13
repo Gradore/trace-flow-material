@@ -45,7 +45,7 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
       const { data, error } = await supabase
         .from("material_inputs")
         .select("id, input_id, material_type")
-        .in("status", ["received", "in_processing"])
+        .in("status", ["received", "in_processing", "processed"])
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -59,7 +59,7 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
       const { data, error } = await supabase
         .from("processing_steps")
         .select("id, processing_id, step_type, material_input_id, status")
-        .in("status", ["running", "paused", "pending", "sample_required"])
+        .in("status", ["running", "paused", "pending", "sample_required", "completed"])
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
