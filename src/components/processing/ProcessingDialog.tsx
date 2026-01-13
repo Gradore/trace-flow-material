@@ -95,6 +95,26 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate input before submission
+    if (!formData.intake) {
+      toast({
+        title: "Fehler",
+        description: "Bitte wählen Sie einen Materialeingang aus.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (formData.steps.length === 0) {
+      toast({
+        title: "Fehler",
+        description: "Bitte wählen Sie mindestens einen Verarbeitungsschritt aus.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -102,7 +122,10 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
       const { data: processingIdData, error: idError } = await supabase
         .rpc('generate_unique_id', { prefix: 'VRB' });
       
-      if (idError) throw idError;
+      if (idError) {
+        console.error('Error generating processing ID:', idError);
+        throw new Error('Verarbeitungs-ID konnte nicht generiert werden.');
+      }
 
       const processingId = processingIdData;
 
@@ -121,27 +144,41 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
         .insert(stepsToInsert)
         .select();
 
-      if (stepsError) throw stepsError;
+      if (stepsError) {
+        console.error('Error inserting processing steps:', stepsError);
+        throw new Error(`Verarbeitungsschritte konnten nicht erstellt werden: ${stepsError.message}`);
+      }
 
       // Update material input status
-      await supabase
+      const { error: updateError } = await supabase
         .from('material_inputs')
         .update({ status: 'in_processing' })
         .eq('id', formData.intake);
 
-      // Log event
+      if (updateError) {
+        console.error('Error updating material input status:', updateError);
+        // Don't throw here - the processing steps were created successfully
+        console.warn('Material input status could not be updated, but processing was created');
+      }
+
+      // Log event (non-critical - don't fail if this fails)
       const selectedInput = materialInputs.find(m => m.id === formData.intake);
-      await logEvent({
-        eventType: 'processing_started',
-        eventDescription: `Verarbeitung ${processingId} gestartet für ${selectedInput?.input_id}`,
-        eventDetails: {
-          processing_id: processingId,
-          steps: formData.steps,
-          step_labels: formData.steps.map(s => processSteps.find(ps => ps.id === s)?.label),
-        },
-        materialInputId: formData.intake,
-        processingStepId: insertedSteps?.[0]?.id,
-      });
+      try {
+        await logEvent({
+          eventType: 'processing_started',
+          eventDescription: `Verarbeitung ${processingId} gestartet für ${selectedInput?.input_id}`,
+          eventDetails: {
+            processing_id: processingId,
+            steps: formData.steps,
+            step_labels: formData.steps.map(s => processSteps.find(ps => ps.id === s)?.label),
+          },
+          materialInputId: formData.intake,
+          processingStepId: insertedSteps?.[0]?.id,
+        });
+      } catch (logError) {
+        // Non-critical - just log warning
+        console.warn('Could not log event to material flow history:', logError);
+      }
 
       toast({
         title: "Verarbeitung gestartet",

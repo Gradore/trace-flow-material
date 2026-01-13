@@ -40,8 +40,14 @@ export function useMaterialFlowHistory() {
     sampleId,
     outputMaterialId,
     deliveryNoteId,
-  }: LogEventParams) => {
+  }: LogEventParams): Promise<boolean> => {
     try {
+      // Don't fail the main operation if user is not available
+      if (!user?.id) {
+        console.warn('Material flow history: No user available for logging');
+        return false;
+      }
+
       const { error } = await supabase.from('material_flow_history').insert({
         event_type: eventType,
         event_description: eventDescription,
@@ -52,14 +58,20 @@ export function useMaterialFlowHistory() {
         sample_id: sampleId || null,
         output_material_id: outputMaterialId || null,
         delivery_note_id: deliveryNoteId || null,
-        created_by: user?.id || null,
+        created_by: user.id,
       });
 
       if (error) {
-        console.error('Error logging event:', error);
+        // Log the error but don't throw - this is a non-critical operation
+        console.warn('Material flow history logging failed:', error.message);
+        return false;
       }
+
+      return true;
     } catch (err) {
-      console.error('Error logging event:', err);
+      // Silently fail for logging - don't break the main operation
+      console.warn('Material flow history logging error:', err);
+      return false;
     }
   };
 
