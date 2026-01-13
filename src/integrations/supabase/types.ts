@@ -1808,16 +1808,20 @@ export type Database = {
           approved_at: string | null
           approved_by: string | null
           created_at: string
+          customer_order_id: string | null
           id: string
           is_retention_sample: boolean
           material_input_id: string | null
           notes: string | null
+          output_material_id: string | null
           processing_step_id: string | null
+          retention_purpose: string | null
           sample_id: string
           sampled_at: string
           sampler_id: string | null
           sampler_name: string
           status: string
+          storage_location: string | null
           updated_at: string
         }
         Insert: {
@@ -1825,16 +1829,20 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
+          customer_order_id?: string | null
           id?: string
           is_retention_sample?: boolean
           material_input_id?: string | null
           notes?: string | null
+          output_material_id?: string | null
           processing_step_id?: string | null
+          retention_purpose?: string | null
           sample_id: string
           sampled_at?: string
           sampler_id?: string | null
           sampler_name: string
           status?: string
+          storage_location?: string | null
           updated_at?: string
         }
         Update: {
@@ -1842,16 +1850,20 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
+          customer_order_id?: string | null
           id?: string
           is_retention_sample?: boolean
           material_input_id?: string | null
           notes?: string | null
+          output_material_id?: string | null
           processing_step_id?: string | null
+          retention_purpose?: string | null
           sample_id?: string
           sampled_at?: string
           sampler_id?: string | null
           sampler_name?: string
           status?: string
+          storage_location?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1863,10 +1875,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "samples_customer_order_id_fkey"
+            columns: ["customer_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "samples_material_input_id_fkey"
             columns: ["material_input_id"]
             isOneToOne: false
             referencedRelation: "material_inputs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "samples_output_material_id_fkey"
+            columns: ["output_material_id"]
+            isOneToOne: false
+            referencedRelation: "output_materials"
             referencedColumns: ["id"]
           },
           {
