@@ -88,7 +88,7 @@ export default function ReportingDashboard() {
       
       const total = data?.length || 0;
       const completed = data?.filter(p => p.status === 'completed').length || 0;
-      const inProgress = data?.filter(p => p.status === 'in_progress').length || 0;
+      const inProgress = data?.filter(p => p.status === 'running' || p.status === 'paused' || p.status === 'sample_required').length || 0;
       const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
       
       return { total, completed, inProgress, completionRate };

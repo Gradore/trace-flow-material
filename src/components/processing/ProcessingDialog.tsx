@@ -156,7 +156,7 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
         .from('processing_steps')
         .select('id, status')
         .eq('material_input_id', formData.intake)
-        .in('status', ['in_progress', 'pending']);
+        .in('status', ['running', 'paused', 'pending', 'sample_required']);
 
       if (existingError) {
         console.warn('Could not check existing processing steps:', existingError);
@@ -172,7 +172,7 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
         material_input_id: formData.intake,
         step_type: stepId,
         step_order: index + 1,
-        status: index === 0 ? 'in_progress' : 'pending',
+        status: index === 0 ? 'running' : 'pending',
         started_at: index === 0 ? new Date().toISOString() : null,
       }));
 
