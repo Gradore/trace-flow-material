@@ -174,17 +174,25 @@ export default function Sampling() {
                   return (
                     <TableRow key={sample.id} className="cursor-pointer" onClick={() => openResults(sample)}>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          {sample.is_retention_sample ? (
-                            <Archive className="h-4 w-4 text-warning" />
-                          ) : (
-                            <FlaskConical className="h-4 w-4 text-primary" />
-                          )}
-                          <span className="font-mono font-medium">{sample.sample_id}</span>
-                          {sample.is_retention_sample && (
-                            <Badge variant="outline" className="text-xs bg-warning/10 text-warning border-warning/30">
-                              RST
-                            </Badge>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            {sample.is_retention_sample ? (
+                              <Archive className="h-4 w-4 text-warning" />
+                            ) : (
+                              <FlaskConical className="h-4 w-4 text-primary" />
+                            )}
+                            <span className="font-mono font-medium">{sample.sample_id}</span>
+                            {sample.is_retention_sample && (
+                              <Badge variant="outline" className="text-xs bg-warning/10 text-warning border-warning/30">
+                                {(sample as any).retention_purpose === "warehouse" ? "RST-Lager" : 
+                                 (sample as any).retention_purpose === "lab_complaint" ? "RST-Labor" : "RST"}
+                              </Badge>
+                            )}
+                          </div>
+                          {sample.is_retention_sample && (sample as any).storage_location && (
+                            <span className="text-xs text-muted-foreground pl-6">
+                              📍 {(sample as any).storage_location}
+                            </span>
                           )}
                         </div>
                       </TableCell>
