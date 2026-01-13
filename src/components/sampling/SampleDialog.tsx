@@ -58,8 +58,8 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("processing_steps")
-        .select("id, processing_id, step_type, material_input_id")
-        .in("status", ["in_progress", "pending"])
+        .select("id, processing_id, step_type, material_input_id, status")
+        .in("status", ["running", "paused", "pending", "sample_required"])
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
