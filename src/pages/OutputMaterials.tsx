@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Filter, FileOutput, MoreVertical, QrCode, Truck, FileText, Package, Loader2 } from "lucide-react";
+import { Plus, Search, Filter, FileOutput, MoreVertical, QrCode, Truck, FileText, Package, Loader2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { OutputMaterialDialog } from "@/components/output/OutputMaterialDialog";
+import { BatchAllocationDialog } from "@/components/processing/BatchAllocationDialog";
 
 const outputTypes: Record<string, { label: string; color: string }> = {
   glass_fiber: { label: "Recycelte Glasfasern", color: "bg-primary" },
@@ -37,6 +38,8 @@ const statusConfig: Record<string, { label: string; class: string }> = {
 export default function OutputMaterials() {
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [allocationDialogOpen, setAllocationDialogOpen] = useState(false);
+  const [selectedOutput, setSelectedOutput] = useState<any>(null);
 
   const { data: outputs = [], isLoading } = useQuery({
     queryKey: ["output-materials"],
@@ -195,7 +198,14 @@ export default function OutputMaterials() {
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align="end" className="bg-popover">
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedOutput(output);
+                            setAllocationDialogOpen(true);
+                          }}>
+                            <Users className="h-4 w-4 mr-2" />
+                            Kunde zuordnen
+                          </DropdownMenuItem>
                           <DropdownMenuItem>
                             <QrCode className="h-4 w-4 mr-2" />
                             Etikett drucken
@@ -219,6 +229,12 @@ export default function OutputMaterials() {
           </Table>
         )}
       </div>
+
+      <BatchAllocationDialog 
+        open={allocationDialogOpen} 
+        onOpenChange={setAllocationDialogOpen} 
+        outputMaterial={selectedOutput}
+      />
     </div>
   );
 }

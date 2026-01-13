@@ -115,6 +115,54 @@ export type Database = {
         }
         Relationships: []
       }
+      batch_allocations: {
+        Row: {
+          allocated_at: string
+          allocated_by: string | null
+          allocated_weight_kg: number
+          created_at: string
+          id: string
+          notes: string | null
+          order_id: string
+          output_material_id: string
+        }
+        Insert: {
+          allocated_at?: string
+          allocated_by?: string | null
+          allocated_weight_kg: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          order_id: string
+          output_material_id: string
+        }
+        Update: {
+          allocated_at?: string
+          allocated_by?: string | null
+          allocated_weight_kg?: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          order_id?: string
+          output_material_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "batch_allocations_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "batch_allocations_output_material_id_fkey"
+            columns: ["output_material_id"]
+            isOneToOne: false
+            referencedRelation: "output_materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       companies: {
         Row: {
           address: string | null
@@ -1334,6 +1382,7 @@ export type Database = {
           id: string
           output_id: string
           output_type: string
+          processing_step_id: string | null
           qr_code: string | null
           quality_grade: string | null
           sample_id: string | null
@@ -1351,6 +1400,7 @@ export type Database = {
           id?: string
           output_id: string
           output_type: string
+          processing_step_id?: string | null
           qr_code?: string | null
           quality_grade?: string | null
           sample_id?: string | null
@@ -1368,6 +1418,7 @@ export type Database = {
           id?: string
           output_id?: string
           output_type?: string
+          processing_step_id?: string | null
           qr_code?: string | null
           quality_grade?: string | null
           sample_id?: string | null
@@ -1388,6 +1439,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "output_materials_processing_step_id_fkey"
+            columns: ["processing_step_id"]
+            isOneToOne: false
+            referencedRelation: "processing_steps"
             referencedColumns: ["id"]
           },
           {
@@ -1751,6 +1809,7 @@ export type Database = {
           approved_by: string | null
           created_at: string
           id: string
+          is_retention_sample: boolean
           material_input_id: string | null
           notes: string | null
           processing_step_id: string | null
@@ -1767,6 +1826,7 @@ export type Database = {
           approved_by?: string | null
           created_at?: string
           id?: string
+          is_retention_sample?: boolean
           material_input_id?: string | null
           notes?: string | null
           processing_step_id?: string | null
@@ -1783,6 +1843,7 @@ export type Database = {
           approved_by?: string | null
           created_at?: string
           id?: string
+          is_retention_sample?: boolean
           material_input_id?: string | null
           notes?: string | null
           processing_step_id?: string | null

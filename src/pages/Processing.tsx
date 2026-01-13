@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { Plus, Search, Filter, Settings, MoreVertical, ArrowRight, FlaskConical, Play, Pause, CheckCircle, Loader2 } from "lucide-react";
+import { Plus, Search, Filter, Settings, MoreVertical, ArrowRight, FlaskConical, Play, Pause, CheckCircle, Loader2, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ProcessingDialog } from "@/components/processing/ProcessingDialog";
+import { CompleteProcessingDialog } from "@/components/processing/CompleteProcessingDialog";
 import { Progress } from "@/components/ui/progress";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday } from "date-fns";
 import { de } from "date-fns/locale";
+import { toast } from "@/hooks/use-toast";
 
 const processSteps = [
   { id: "shredding", label: "Schreddern", icon: "⚙️" },
@@ -28,6 +30,9 @@ const statusConfig = {
 export default function Processing() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [selectedProcessingStep, setSelectedProcessingStep] = useState<any>(null);
+  const queryClient = useQueryClient();
 
   const { data: processingSteps = [], isLoading } = useQuery({
     queryKey: ["processing-steps"],
@@ -218,34 +223,82 @@ export default function Processing() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {process.status === "running" && (
-                    <Button variant="outline" size="sm">
-                      <Pause className="h-4 w-4" />
-                      Pausieren
-                    </Button>
+                    <>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={async () => {
+                          const { error } = await supabase
+                            .from("processing_steps")
+                            .update({ status: "paused" })
+                            .eq("id", process.id);
+                          if (error) {
+                            toast({ title: "Fehler", description: "Konnte nicht pausieren.", variant: "destructive" });
+                          } else {
+                            queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
+                          }
+                        }}
+                      >
+                        <Pause className="h-4 w-4" />
+                        Pausieren
+                      </Button>
+                      <Button 
+                        variant="default" 
+                        size="sm"
+                        onClick={() => {
+                          setSelectedProcessingStep(process);
+                          setCompleteDialogOpen(true);
+                        }}
+                      >
+                        <StopCircle className="h-4 w-4" />
+                        Abschließen
+                      </Button>
+                    </>
                   )}
                   {process.status === "paused" && (
-                    <Button variant="outline" size="sm">
-                      <Play className="h-4 w-4" />
-                      Fortsetzen
-                    </Button>
+                    <>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={async () => {
+                          const { error } = await supabase
+                            .from("processing_steps")
+                            .update({ status: "running" })
+                            .eq("id", process.id);
+                          if (error) {
+                            toast({ title: "Fehler", description: "Konnte nicht fortsetzen.", variant: "destructive" });
+                          } else {
+                            queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
+                          }
+                        }}
+                      >
+                        <Play className="h-4 w-4" />
+                        Fortsetzen
+                      </Button>
+                      <Button 
+                        variant="default" 
+                        size="sm"
+                        onClick={() => {
+                          setSelectedProcessingStep(process);
+                          setCompleteDialogOpen(true);
+                        }}
+                      >
+                        <StopCircle className="h-4 w-4" />
+                        Abschließen
+                      </Button>
+                    </>
                   )}
-                  {process.status === "sample_required" && (
-                    <Button variant="warning" size="sm">
-                      <FlaskConical className="h-4 w-4" />
-                      Probe erstellen
-                    </Button>
-                  )}
-                  {!hasSample && process.status !== "sample_required" && (
-                    <Button variant="outline" size="sm">
-                      <FlaskConical className="h-4 w-4" />
-                      Probe hinzufügen
-                    </Button>
-                  )}
-                  {hasSample && (
-                    <Button variant="ghost" size="sm" className="text-success">
+                  {process.status === "completed" && (
+                    <Button variant="ghost" size="sm" className="text-success pointer-events-none">
                       <CheckCircle className="h-4 w-4" />
+                      Abgeschlossen
+                    </Button>
+                  )}
+                  {hasSample && process.status !== "completed" && (
+                    <Button variant="ghost" size="sm" className="text-success pointer-events-none">
+                      <FlaskConical className="h-4 w-4" />
                       Probe vorhanden
                     </Button>
                   )}
@@ -257,6 +310,11 @@ export default function Processing() {
       )}
 
       <ProcessingDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} />
+      <CompleteProcessingDialog 
+        open={completeDialogOpen} 
+        onOpenChange={setCompleteDialogOpen} 
+        processingStep={selectedProcessingStep}
+      />
     </div>
   );
 }
