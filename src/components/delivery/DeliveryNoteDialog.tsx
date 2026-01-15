@@ -127,8 +127,37 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
     }
   };
 
+  const validateForm = () => {
+    const errors: string[] = [];
+    
+    if (!formData.partner.trim()) {
+      errors.push(formData.type === "incoming" ? "Lieferant ist erforderlich" : "Kunde ist erforderlich");
+    }
+    
+    if (!formData.material) {
+      errors.push("Material ist erforderlich");
+    }
+    
+    if (!formData.weight || parseFloat(formData.weight) <= 0) {
+      errors.push("Gültiges Gewicht (> 0 kg) ist erforderlich");
+    }
+    
+    return errors;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate form
+    const validationErrors = validateForm();
+    if (validationErrors.length > 0) {
+      toast({
+        title: "Fehlende Angaben",
+        description: validationErrors.join(". "),
+        variant: "destructive",
+      });
+      return;
+    }
     
     setIsGenerating(true);
     try {
@@ -136,24 +165,37 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
       const { data: noteIdData, error: idError } = await supabase
         .rpc('generate_unique_id', { prefix: 'LS' });
       
-      if (idError) throw idError;
+      if (idError) {
+        console.error('ID generation error:', idError);
+        throw new Error("Lieferschein-ID konnte nicht generiert werden. Bitte versuchen Sie es erneut.");
+      }
+      
+      if (!noteIdData) {
+        throw new Error("Lieferschein-ID wurde nicht erstellt.");
+      }
       
       const noteId = noteIdData;
       const qrUrl = buildDeliveryNoteQRUrl(noteId);
       
       // Generate PDF
-      const pdfBlob = await generateDeliveryNotePDF(
-        {
-          noteId,
-          type: formData.type,
-          date: new Date().toLocaleDateString("de-DE"),
-          partner: formData.partner,
-          material: formData.material,
-          weight: `${formData.weight} kg`,
-          wasteCode: formData.wasteCode || undefined,
-        },
-        qrUrl
-      );
+      let pdfBlob: Blob;
+      try {
+        pdfBlob = await generateDeliveryNotePDF(
+          {
+            noteId,
+            type: formData.type,
+            date: new Date().toLocaleDateString("de-DE"),
+            partner: formData.partner.trim(),
+            material: formData.material,
+            weight: `${formData.weight} kg`,
+            wasteCode: formData.wasteCode || undefined,
+          },
+          qrUrl
+        );
+      } catch (pdfError) {
+        console.error('PDF generation error:', pdfError);
+        throw new Error("PDF konnte nicht erstellt werden. Bitte prüfen Sie Ihre Eingaben.");
+      }
       
       // Upload PDF to storage
       const fileName = `${noteId}.pdf`;
@@ -166,6 +208,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
+        // Continue anyway - PDF will still be downloaded
       }
 
       // Get public URL
@@ -179,7 +222,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
         .insert({
           note_id: noteId,
           type: formData.type,
-          partner_name: formData.partner,
+          partner_name: formData.partner.trim(),
           material_description: formData.material,
           weight_kg: parseFloat(formData.weight),
           waste_code: formData.wasteCode || null,
@@ -192,10 +235,16 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
         .select()
         .single();
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        console.error('Database error:', dbError);
+        if (dbError.code === '42501') {
+          throw new Error("Keine Berechtigung zum Erstellen von Lieferscheinen. Bitte kontaktieren Sie den Administrator.");
+        }
+        throw new Error("Lieferschein konnte nicht in der Datenbank gespeichert werden.");
+      }
 
-      // Log event
-      await logEvent({
+      // Log event (non-blocking)
+      logEvent({
         eventType: 'delivery_note_created',
         eventDescription: `Lieferschein ${noteId} erstellt (${formData.type === 'incoming' ? 'Eingang' : 'Ausgang'})`,
         eventDetails: {
@@ -208,7 +257,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
         materialInputId: formData.type === 'incoming' && formData.linkedId ? formData.linkedId : undefined,
         outputMaterialId: formData.type === 'outgoing' && formData.linkedId ? formData.linkedId : undefined,
         deliveryNoteId: savedNote?.id,
-      });
+      }).catch(console.error);
 
       // Update output material status if outgoing
       if (formData.type === 'outgoing' && formData.linkedId) {
@@ -240,9 +289,10 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
       onOpenChange(false);
     } catch (error) {
       console.error("Error generating delivery note:", error);
+      const message = error instanceof Error ? error.message : "Der Lieferschein konnte nicht erstellt werden.";
       toast({
-        title: "Fehler",
-        description: "Der Lieferschein konnte nicht erstellt werden.",
+        title: "Fehler bei der Erstellung",
+        description: message,
         variant: "destructive",
       });
     } finally {
