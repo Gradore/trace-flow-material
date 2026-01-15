@@ -29,6 +29,7 @@ import {
   Search,
   SlidersHorizontal,
   Upload,
+  Archive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -58,6 +59,7 @@ const navItems: NavItem[] = [
   { icon: FileOutput, label: "Ausgangsmaterial", path: "/output", roles: ['admin', 'betriebsleiter', 'production', 'qa'] },
   { icon: FileText, label: "Lieferscheine", path: "/delivery-notes", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'logistics'] },
   { icon: FolderOpen, label: "Dokumente", path: "/documents", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
+  { icon: Archive, label: "Archiv", path: "/archive", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
   { icon: History, label: "Rückverfolgung", path: "/traceability", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
   { icon: Upload, label: "Datenblatt-Upload", path: "/datasheet-upload", roles: ['admin', 'intake', 'production', 'qa'] },
   { icon: Sparkles, label: "KI Rezepturen", path: "/recipe-matching", roles: ['admin', 'production', 'qa', 'intake'] }, // betriebsleiter excluded
