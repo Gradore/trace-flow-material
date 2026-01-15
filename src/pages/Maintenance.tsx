@@ -369,13 +369,14 @@ export default function Maintenance() {
                       <TableHead>Anlage</TableHead>
                       <TableHead>Wartung</TableHead>
                       <TableHead>Erledigt am</TableHead>
-                      <TableHead>Nächste Fälligkeit</TableHead>
+                      <TableHead>Intervall</TableHead>
+                      <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {completedRecords.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                           Keine erledigten Wartungen
                         </TableCell>
                       </TableRow>
@@ -387,14 +388,23 @@ export default function Maintenance() {
                           </TableCell>
                           <TableCell>{record.title}</TableCell>
                           <TableCell>
-                            {record.completed_date ? 
-                              format(new Date(record.completed_date), "dd.MM.yyyy", { locale: de }) : '-'
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4 text-success" />
+                              {record.completed_date ? 
+                                format(new Date(record.completed_date), "dd.MM.yyyy", { locale: de }) : '-'
+                              }
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {record.interval_days ? 
+                              `${record.interval_days} Tage` : 'Einmalig'
                             }
                           </TableCell>
                           <TableCell>
-                            {record.next_due_date ? 
-                              format(new Date(record.next_due_date), "dd.MM.yyyy", { locale: de }) : '-'
-                            }
+                            <Badge variant="secondary" className="bg-success/10 text-success">
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              Erledigt
+                            </Badge>
                           </TableCell>
                         </TableRow>
                       ))
