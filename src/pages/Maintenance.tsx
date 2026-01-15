@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MaintenanceDialog } from "@/components/maintenance/MaintenanceDialog";
+import { EquipmentDetailsDialog } from "@/components/maintenance/EquipmentDetailsDialog";
 
 interface Equipment {
   id: string;
@@ -58,9 +59,21 @@ interface MaintenanceRecord {
 
 export default function Maintenance() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [equipmentDialogOpen, setEquipmentDialogOpen] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
   const [selectedMaintenance, setSelectedMaintenance] = useState<MaintenanceRecord | null>(null);
   const queryClient = useQueryClient();
+
+  const handleEquipmentClick = (eq: Equipment) => {
+    setSelectedEquipment(eq);
+    setEquipmentDialogOpen(true);
+  };
+
+  const handleAddMaintenanceFromEquipment = () => {
+    setEquipmentDialogOpen(false);
+    setSelectedMaintenance(null);
+    setDialogOpen(true);
+  };
 
   const { data: equipment = [], isLoading: loadingEquipment } = useQuery({
     queryKey: ["equipment"],
@@ -233,12 +246,15 @@ export default function Maintenance() {
                       m.next_due_date && isPast(new Date(m.next_due_date)) && m.status !== 'completed'
                     );
                     const nextMaintenance = eqMaintenance.find(m => m.status !== 'completed');
+                    const pendingCount = eqMaintenance.filter(m => m.status === 'pending').length;
 
                     return (
                       <Card key={eq.id} className={cn(
-                        "transition-colors",
+                        "transition-colors cursor-pointer hover:shadow-md",
                         hasOverdue && "border-destructive/50"
-                      )}>
+                      )}
+                      onClick={() => handleEquipmentClick(eq)}
+                      >
                         <CardContent className="pt-4">
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
@@ -261,6 +277,11 @@ export default function Maintenance() {
                               Hersteller: {eq.manufacturer}
                             </p>
                           )}
+                          {pendingCount > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {pendingCount} ausstehende Wartung(en)
+                            </p>
+                          )}
                           {nextMaintenance?.next_due_date && (
                             <div className={cn(
                               "mt-3 flex items-center gap-2 text-sm",
@@ -270,6 +291,20 @@ export default function Maintenance() {
                               Nächste Wartung: {format(new Date(nextMaintenance.next_due_date), "dd.MM.yyyy", { locale: de })}
                             </div>
                           )}
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="mt-3 w-full"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Create new maintenance for this equipment
+                              setSelectedMaintenance(null);
+                              setDialogOpen(true);
+                            }}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Wartung hinzufügen
+                          </Button>
                         </CardContent>
                       </Card>
                     );
@@ -422,6 +457,13 @@ export default function Maintenance() {
         onOpenChange={setDialogOpen}
         equipment={equipment}
         maintenance={selectedMaintenance}
+      />
+
+      <EquipmentDetailsDialog
+        open={equipmentDialogOpen}
+        onOpenChange={setEquipmentDialogOpen}
+        equipment={selectedEquipment}
+        onAddMaintenance={handleAddMaintenanceFromEquipment}
       />
     </div>
   );
