@@ -1379,6 +1379,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           destination: string | null
+          fiber_size: string | null
           id: string
           output_id: string
           output_type: string
@@ -1397,6 +1398,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           destination?: string | null
+          fiber_size?: string | null
           id?: string
           output_id: string
           output_type: string
@@ -1415,6 +1417,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           destination?: string | null
+          fiber_size?: string | null
           id?: string
           output_id?: string
           output_type?: string

@@ -52,6 +52,7 @@ export function OutputMaterialDialog({ open, onOpenChange }: OutputMaterialDialo
     sampleId: "",
     destination: "",
     notes: "",
+    fiberSize: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -113,6 +114,7 @@ export function OutputMaterialDialog({ open, onOpenChange }: OutputMaterialDialo
         container_id: formData.containerId || null,
         sample_id: formData.sampleId || null,
         destination: formData.destination || null,
+        fiber_size: formData.fiberSize || null,
         qr_code: qrUrl,
         status: "in_stock",
         attributes: formData.notes ? { notes: formData.notes } : {},
@@ -211,6 +213,7 @@ export function OutputMaterialDialog({ open, onOpenChange }: OutputMaterialDialo
       sampleId: "",
       destination: "",
       notes: "",
+      fiberSize: "",
     });
     setCreatedOutput(null);
     onOpenChange(false);
@@ -339,14 +342,35 @@ export function OutputMaterialDialog({ open, onOpenChange }: OutputMaterialDialo
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="destination">Bestimmung / Kunde</Label>
-              <Input
-                id="destination"
-                placeholder="z.B. Kunde XY, Lager B"
-                value={formData.destination}
-                onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="fiberSize">Fasergröße</Label>
+                <Select
+                  value={formData.fiberSize}
+                  onValueChange={(value) => setFormData({ ...formData, fiberSize: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Optional" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    <SelectItem value="0.125mm">0.125mm</SelectItem>
+                    <SelectItem value="1mm">1mm</SelectItem>
+                    <SelectItem value="3mm">3mm</SelectItem>
+                    <SelectItem value="5mm">5mm</SelectItem>
+                    <SelectItem value="Überkorn">Überkorn</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="destination">Bestimmung / Kunde</Label>
+                <Input
+                  id="destination"
+                  placeholder="z.B. Kunde XY, Lager B"
+                  value={formData.destination}
+                  onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
