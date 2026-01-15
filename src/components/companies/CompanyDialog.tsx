@@ -116,10 +116,21 @@ export function CompanyDialog({ open, onOpenChange, company }: CompanyDialogProp
           .eq("id", company.id);
         if (error) throw error;
       } else {
+        // Check if company with same name already exists
+        const { data: existing } = await supabase
+          .from("companies")
+          .select("id")
+          .ilike("name", data.name.trim())
+          .maybeSingle();
+        
+        if (existing) {
+          throw new Error("Eine Firma mit diesem Namen existiert bereits.");
+        }
+        
         const companyId = await generateCompanyId();
         const { error } = await supabase.from("companies").insert({
           company_id: companyId,
-          name: data.name,
+          name: data.name.trim(),
           type: data.type,
           email: data.email || null,
           phone: data.phone || null,
@@ -131,7 +142,12 @@ export function CompanyDialog({ open, onOpenChange, company }: CompanyDialogProp
           notes: data.notes || null,
           status: data.status,
         });
-        if (error) throw error;
+        if (error) {
+          if (error.code === '23505') {
+            throw new Error("Eine Firma mit dieser ID existiert bereits. Bitte versuchen Sie es erneut.");
+          }
+          throw error;
+        }
       }
     },
     onSuccess: () => {
@@ -141,7 +157,7 @@ export function CompanyDialog({ open, onOpenChange, company }: CompanyDialogProp
     },
     onError: (error: Error) => {
       console.error("Company save error:", error);
-      toast.error("Fehler beim Speichern: " + (error.message || "Bitte überprüfen Sie Ihre Eingaben und Berechtigungen."));
+      toast.error(error.message || "Fehler beim Speichern. Bitte überprüfen Sie Ihre Eingaben und Berechtigungen.");
     },
   });
 

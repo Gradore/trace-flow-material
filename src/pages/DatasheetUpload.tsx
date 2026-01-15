@@ -25,12 +25,23 @@ export default function DatasheetUpload() {
   const { user } = useAuth();
 
   const validateFile = (file: File): string | null => {
-    if (!file.type.includes("pdf") && !file.name.toLowerCase().endsWith(".pdf")) {
-      return "Nur PDF-Dateien sind erlaubt.";
+    // Check file type first
+    const isPDF = file.type === "application/pdf" || 
+                  file.type.includes("pdf") || 
+                  file.name.toLowerCase().endsWith(".pdf");
+    
+    if (!isPDF) {
+      return "Ungültiges Dateiformat. Es werden nur PDF-Dateien akzeptiert (.pdf).";
     }
+    
     if (file.size > MAX_FILE_SIZE) {
-      return `Die Datei ist zu groß (max. 10 MB). Aktuelle Größe: ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+      return `Die Datei ist zu groß (max. 10 MB). Aktuelle Größe: ${(file.size / 1024 / 1024).toFixed(2)} MB. Bitte komprimieren Sie die Datei.`;
     }
+    
+    if (file.size === 0) {
+      return "Die Datei ist leer oder beschädigt. Bitte wählen Sie eine gültige PDF-Datei.";
+    }
+    
     return null;
   };
 
@@ -150,16 +161,29 @@ export default function DatasheetUpload() {
       });
     } catch (error: any) {
       console.error("Upload/Analysis error:", error);
+      
+      // Provide specific error messages based on error type
+      let errorMessage = "Unbekannter Fehler";
+      if (error.message?.includes("storage")) {
+        errorMessage = "Fehler beim Hochladen. Bitte überprüfen Sie Ihre Internetverbindung.";
+      } else if (error.message?.includes("timeout")) {
+        errorMessage = "Zeitüberschreitung bei der Analyse. Die Datei ist möglicherweise zu komplex.";
+      } else if (error.message?.includes("parse") || error.message?.includes("PDF")) {
+        errorMessage = "Die PDF-Datei konnte nicht gelesen werden. Möglicherweise ist sie beschädigt oder passwortgeschützt.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       setFiles((prev) =>
         prev.map((f) =>
           f.id === uploadFile.id
-            ? { ...f, status: "error", error: error.message || "Unbekannter Fehler" }
+            ? { ...f, status: "error", error: errorMessage }
             : f
         )
       );
       toast({
-        title: "Fehler",
-        description: `${uploadFile.file.name}: ${error.message || "Analyse fehlgeschlagen"}`,
+        title: "Fehler bei der Verarbeitung",
+        description: `${uploadFile.file.name}: ${errorMessage}`,
         variant: "destructive",
       });
     }
