@@ -201,13 +201,16 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
                 <SelectValue placeholder="Materialeingang wählen" />
               </SelectTrigger>
               <SelectContent className="bg-popover">
-                {materialInputs.map((mi) => (
-                  <SelectItem key={mi.id} value={mi.id}>
-                    {mi.input_id} - {mi.material_type}
-                  </SelectItem>
-                ))}
-                {materialInputs.length === 0 && (
-                  <SelectItem value="none" disabled>Keine Materialeingänge verfügbar</SelectItem>
+                {materialInputs.length === 0 ? (
+                  <div className="p-2 text-sm text-muted-foreground text-center">
+                    Keine Materialeingänge verfügbar
+                  </div>
+                ) : (
+                  materialInputs.map((mi) => (
+                    <SelectItem key={mi.id} value={mi.id}>
+                      {mi.input_id} - {mi.material_type}
+                    </SelectItem>
+                  ))
                 )}
               </SelectContent>
             </Select>
@@ -223,13 +226,16 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
                 <SelectValue placeholder="Prozessschritt wählen" />
               </SelectTrigger>
               <SelectContent className="bg-popover">
-                {processingSteps.map((ps) => (
-                  <SelectItem key={ps.id} value={ps.id}>
-                    {ps.processing_id} - {stepTypeLabels[ps.step_type] || ps.step_type}
-                  </SelectItem>
-                ))}
-                {processingSteps.length === 0 && (
-                  <SelectItem value="none" disabled>Keine Verarbeitungsschritte verfügbar</SelectItem>
+                {processingSteps.length === 0 ? (
+                  <div className="p-2 text-sm text-muted-foreground text-center">
+                    Keine Verarbeitungsschritte verfügbar
+                  </div>
+                ) : (
+                  processingSteps.map((ps) => (
+                    <SelectItem key={ps.id} value={ps.id}>
+                      {ps.processing_id} - {stepTypeLabels[ps.step_type] || ps.step_type}
+                    </SelectItem>
+                  ))
                 )}
               </SelectContent>
             </Select>
