@@ -142,8 +142,7 @@ export default function Containers() {
               <TableRow className="hover:bg-transparent">
                 <TableHead>Container-ID</TableHead>
                 <TableHead>Typ</TableHead>
-                <TableHead>Volumen</TableHead>
-                <TableHead>Gewicht</TableHead>
+                <TableHead>Gewicht (kg)</TableHead>
                 <TableHead>Standort</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-12"></TableHead>
@@ -152,7 +151,7 @@ export default function Containers() {
             <TableBody>
               {filteredContainers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     Keine Container vorhanden
                   </TableCell>
                 </TableRow>
@@ -171,11 +170,10 @@ export default function Containers() {
                       <TableCell>
                         <span>{type.icon} {type.label}</span>
                       </TableCell>
-                      <TableCell>{container.volume_liters ? `${container.volume_liters}L` : "-"}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Scale className="h-3 w-3 text-muted-foreground" />
-                          {container.weight_kg ? `${container.weight_kg}kg` : "0kg"}
+                          {container.weight_kg ? `${container.weight_kg} kg` : "-"}
                         </div>
                       </TableCell>
                       <TableCell>

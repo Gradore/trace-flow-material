@@ -91,26 +91,55 @@ export default function Maintenance() {
   const completeMutation = useMutation({
     mutationFn: async (record: MaintenanceRecord) => {
       const now = new Date();
+      
+      // Always mark as completed first
       const updates: Record<string, unknown> = {
         status: 'completed',
         completed_date: now.toISOString().split('T')[0],
       };
-      
-      // If recurring, calculate next due date
-      if (record.interval_days) {
-        updates.next_due_date = format(
-          addDays(now, record.interval_days),
-          'yyyy-MM-dd'
-        );
-        updates.status = 'pending';
-      }
 
-      const { error } = await supabase
-        .from("maintenance_records")
-        .update(updates)
-        .eq("id", record.id);
-      
-      if (error) throw error;
+      // If recurring, calculate next due date but keep status as completed for THIS record
+      // We need to create a NEW record for the next occurrence
+      if (record.interval_days) {
+        const nextDueDate = format(addDays(now, record.interval_days), 'yyyy-MM-dd');
+        
+        // Update current record as completed
+        const { error: updateError } = await supabase
+          .from("maintenance_records")
+          .update({
+            status: 'completed',
+            completed_date: now.toISOString().split('T')[0],
+          })
+          .eq("id", record.id);
+        
+        if (updateError) throw updateError;
+        
+        // Create new record for next occurrence
+        const maintenanceId = `MAINT-${Date.now().toString(36).toUpperCase()}`;
+        const { error: insertError } = await supabase
+          .from("maintenance_records")
+          .insert({
+            maintenance_id: maintenanceId,
+            equipment_id: record.equipment_id,
+            title: record.title,
+            description: record.description,
+            maintenance_type: record.maintenance_type,
+            priority: record.priority,
+            interval_days: record.interval_days,
+            next_due_date: nextDueDate,
+            status: 'pending',
+          });
+        
+        if (insertError) throw insertError;
+      } else {
+        // No interval - just mark as completed
+        const { error } = await supabase
+          .from("maintenance_records")
+          .update(updates)
+          .eq("id", record.id);
+        
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["maintenance-records"] });

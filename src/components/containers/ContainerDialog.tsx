@@ -42,7 +42,7 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
   const { logEvent } = useMaterialFlowHistory();
   const [formData, setFormData] = useState({
     type: "",
-    volume: "",
+    weight: "",
     location: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -71,7 +71,7 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
       const { data: inserted, error } = await supabase.from("containers").insert({
         container_id: containerId,
         type: formData.type,
-        volume_liters: formData.volume ? parseFloat(formData.volume) : null,
+        weight_kg: formData.weight ? parseFloat(formData.weight) : null,
         location: formData.location || null,
         qr_code: qrUrl,
         status: "empty",
@@ -150,7 +150,7 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
   };
 
   const handleClose = () => {
-    setFormData({ type: "", volume: "", location: "" });
+    setFormData({ type: "", weight: "", location: "" });
     setCreatedContainer(null);
     onOpenChange(false);
   };
@@ -192,13 +192,14 @@ export function ContainerDialog({ open, onOpenChange }: ContainerDialogProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="volume">Volumen (Liter)</Label>
+                <Label htmlFor="weight">Gewicht (kg)</Label>
                 <Input
-                  id="volume"
+                  id="weight"
                   type="number"
-                  placeholder="z.B. 1000"
-                  value={formData.volume}
-                  onChange={(e) => setFormData({ ...formData, volume: e.target.value })}
+                  step="0.01"
+                  placeholder="z.B. 500"
+                  value={formData.weight}
+                  onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
                 />
               </div>
             </div>

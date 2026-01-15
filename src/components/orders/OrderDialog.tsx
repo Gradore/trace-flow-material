@@ -107,14 +107,21 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
     mutationFn: async (data: typeof formData) => {
       // Generate order ID using database function
       const { data: orderId, error: idError } = await supabase.rpc("generate_unique_id", { prefix: "AUF" });
-      if (idError) throw new Error("Fehler bei ID-Generierung: " + idError.message);
+      if (idError) {
+        console.error("ID generation error:", idError);
+        throw new Error("Fehler bei ID-Generierung. Bitte versuchen Sie es erneut.");
+      }
+      
+      if (!orderId) {
+        throw new Error("Keine Auftrags-ID generiert. Bitte versuchen Sie es erneut.");
+      }
 
       // Generate product name from configuration
       const productName = `${data.product_category}-${data.product_grain_size}-${data.product_subcategory}`;
 
       const { error } = await supabase.from("orders").insert({
         order_id: orderId,
-        customer_name: data.customer_name,
+        customer_name: data.customer_name.trim(),
         customer_email: data.customer_email || null,
         customer_phone: data.customer_phone || null,
         product_category: data.product_category,
@@ -130,7 +137,12 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
         created_by: user?.id,
       });
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error("Ein Auftrag mit dieser ID existiert bereits. Bitte versuchen Sie es erneut.");
+        }
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -139,7 +151,7 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
     },
     onError: (error: Error) => {
       console.error("Order creation error:", error);
-      toast.error("Fehler beim Erstellen: " + (error.message || "Bitte überprüfen Sie Ihre Eingaben und Berechtigungen."));
+      toast.error(error.message || "Fehler beim Erstellen. Bitte überprüfen Sie Ihre Eingaben und Berechtigungen.");
     },
   });
 
