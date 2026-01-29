@@ -71,13 +71,9 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
 
       const inputId = idData as string;
       
-      // Determine full material type
-      let materialType = formData.materialType;
-      if (formData.materialType === "gfk" && formData.resinType) {
-        materialType = `gfk-${formData.resinType}`;
-      } else if (formData.materialType === "pa" && formData.resinType) {
-        materialType = formData.resinType;
-      }
+      // Use base material type for DB constraint (gfk, pp, pa)
+      // Subtype is stored separately in material_subtype
+      const materialType = formData.materialType;
 
       const { data: insertedData, error } = await supabase.from("material_inputs").insert({
         input_id: inputId,
