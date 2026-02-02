@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Plus, Search, Filter, Settings, MoreVertical, ArrowRight, FlaskConical, Play, Pause, CheckCircle, Loader2, StopCircle } from "lucide-react";
+import { Plus, Search, Filter, Settings, MoreVertical, ArrowRight, FlaskConical, Play, Pause, CheckCircle, Loader2, StopCircle, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ProcessingDialog } from "@/components/processing/ProcessingDialog";
 import { CompleteProcessingDialog } from "@/components/processing/CompleteProcessingDialog";
+import { PageDescription } from "@/components/layout/PageDescription";
 import { Progress } from "@/components/ui/progress";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,10 +43,12 @@ export default function Processing() {
         .select(`
           *,
           material_inputs (
+            id,
             input_id,
             material_type,
             material_subtype,
-            weight_kg
+            weight_kg,
+            status
           ),
           samples (
             id,
@@ -88,8 +91,54 @@ export default function Processing() {
     return subtype ? `${type}-${subtype}` : type;
   };
 
+  const handlePause = async (processId: string) => {
+    const { error } = await supabase
+      .from("processing_steps")
+      .update({ status: "paused" })
+      .eq("id", processId);
+    if (error) {
+      toast({ title: "Fehler", description: "Konnte nicht pausieren.", variant: "destructive" });
+    } else {
+      queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
+      toast({ title: "Verarbeitung pausiert" });
+    }
+  };
+
+  const handleResume = async (processId: string) => {
+    const { error } = await supabase
+      .from("processing_steps")
+      .update({ status: "running" })
+      .eq("id", processId);
+    if (error) {
+      toast({ title: "Fehler", description: "Konnte nicht fortsetzen.", variant: "destructive" });
+    } else {
+      queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
+      toast({ title: "Verarbeitung fortgesetzt" });
+    }
+  };
+
+  const handleComplete = (process: any) => {
+    setSelectedProcessingStep(process);
+    setCompleteDialogOpen(true);
+  };
+
+  // Check if material is rejected
+  const isMaterialRejected = (process: any) => {
+    return process.material_inputs?.status === "rejected";
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageDescription
+        title="Verarbeitung & Produktion"
+        description="Starten und überwachen Sie Verarbeitungsprozesse für eingehende Materialien. Jeder Prozess durchläuft definierte Schritte (Schreddern, Sortieren, Mahlen, Trennung)."
+        nextSteps={[
+          "Nach Abschluss → Probe erstellen und Rückstellmuster anlegen",
+          "Freigabe durch QA → Material kann Kunden zugeordnet werden",
+          "Ausgangsmaterial → Lieferschein erstellen"
+        ]}
+      />
+
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -172,20 +221,39 @@ export default function Processing() {
             const status = statusConfig[process.status as keyof typeof statusConfig] || statusConfig.pending;
             const currentStepIndex = processSteps.findIndex((s) => s.id === process.step_type);
             const hasSample = process.samples && process.samples.length > 0;
+            const isRejected = isMaterialRejected(process);
             
             return (
-              <div key={process.id} className="glass-card rounded-xl p-5">
+              <div 
+                key={process.id} 
+                className={cn(
+                  "glass-card rounded-xl p-5",
+                  isRejected && "border-2 border-destructive/50 bg-destructive/5"
+                )}
+              >
+                {/* Rejection Warning Banner */}
+                {isRejected && (
+                  <div className="flex items-center gap-2 p-3 mb-4 rounded-lg bg-destructive/10 border border-destructive/30">
+                    <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+                    <p className="text-sm text-destructive font-medium">
+                      Charge abgelehnt – keine weiteren Aktionen möglich
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <Settings className="h-5 w-5 text-primary" />
+                      <Settings className={cn("h-5 w-5", isRejected ? "text-destructive" : "text-primary")} />
                       <span className="font-mono font-bold text-lg">{process.processing_id}</span>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
                       Eingang: {process.material_inputs?.input_id || "-"} • {getMaterialLabel(process)}
                     </p>
                   </div>
-                  <span className={cn(status.class)}>{status.label}</span>
+                  <span className={cn(isRejected ? "status-badge-destructive" : status.class)}>
+                    {isRejected ? "Abgelehnt" : status.label}
+                  </span>
                 </div>
 
                 {/* Progress */}
@@ -206,7 +274,9 @@ export default function Processing() {
                       key={step.id}
                       className={cn(
                         "flex-1 h-1.5 rounded-full transition-colors",
-                        index < currentStepIndex
+                        isRejected
+                          ? "bg-destructive/30"
+                          : index < currentStepIndex
                           ? "bg-success"
                           : index === currentStepIndex
                           ? "bg-primary"
@@ -222,85 +292,88 @@ export default function Processing() {
                   <span>Gestartet: {formatTime(process.started_at)}</span>
                 </div>
 
-                {/* Actions */}
+                {/* Actions - Disabled if rejected */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  {process.status === "running" && (
-                    <>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={async () => {
-                          const { error } = await supabase
-                            .from("processing_steps")
-                            .update({ status: "paused" })
-                            .eq("id", process.id);
-                          if (error) {
-                            toast({ title: "Fehler", description: "Konnte nicht pausieren.", variant: "destructive" });
-                          } else {
-                            queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
-                          }
-                        }}
-                      >
-                        <Pause className="h-4 w-4" />
-                        Pausieren
-                      </Button>
-                      <Button 
-                        variant="default" 
-                        size="sm"
-                        onClick={() => {
-                          setSelectedProcessingStep(process);
-                          setCompleteDialogOpen(true);
-                        }}
-                      >
-                        <StopCircle className="h-4 w-4" />
-                        Abschließen
-                      </Button>
-                    </>
-                  )}
-                  {process.status === "paused" && (
-                    <>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={async () => {
-                          const { error } = await supabase
-                            .from("processing_steps")
-                            .update({ status: "running" })
-                            .eq("id", process.id);
-                          if (error) {
-                            toast({ title: "Fehler", description: "Konnte nicht fortsetzen.", variant: "destructive" });
-                          } else {
-                            queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
-                          }
-                        }}
-                      >
-                        <Play className="h-4 w-4" />
-                        Fortsetzen
-                      </Button>
-                      <Button 
-                        variant="default" 
-                        size="sm"
-                        onClick={() => {
-                          setSelectedProcessingStep(process);
-                          setCompleteDialogOpen(true);
-                        }}
-                      >
-                        <StopCircle className="h-4 w-4" />
-                        Abschließen
-                      </Button>
-                    </>
-                  )}
-                  {process.status === "completed" && (
-                    <Button variant="ghost" size="sm" className="text-success pointer-events-none">
-                      <CheckCircle className="h-4 w-4" />
-                      Abgeschlossen
+                  {isRejected ? (
+                    <Button variant="ghost" size="sm" className="text-destructive pointer-events-none">
+                      <XCircle className="h-4 w-4" />
+                      Charge abgelehnt
                     </Button>
-                  )}
-                  {hasSample && process.status !== "completed" && (
-                    <Button variant="ghost" size="sm" className="text-success pointer-events-none">
-                      <FlaskConical className="h-4 w-4" />
-                      Probe vorhanden
-                    </Button>
+                  ) : (
+                    <>
+                      {process.status === "running" && (
+                        <>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handlePause(process.id)}
+                          >
+                            <Pause className="h-4 w-4" />
+                            Pausieren
+                          </Button>
+                          <Button 
+                            variant="default" 
+                            size="sm"
+                            onClick={() => handleComplete(process)}
+                          >
+                            <StopCircle className="h-4 w-4" />
+                            Abschließen
+                          </Button>
+                        </>
+                      )}
+                      {process.status === "paused" && (
+                        <>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleResume(process.id)}
+                          >
+                            <Play className="h-4 w-4" />
+                            Fortsetzen
+                          </Button>
+                          <Button 
+                            variant="default" 
+                            size="sm"
+                            onClick={() => handleComplete(process)}
+                          >
+                            <StopCircle className="h-4 w-4" />
+                            Abschließen
+                          </Button>
+                        </>
+                      )}
+                      {process.status === "pending" && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleResume(process.id)}
+                        >
+                          <Play className="h-4 w-4" />
+                          Starten
+                        </Button>
+                      )}
+                      {process.status === "sample_required" && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleComplete(process)}
+                        >
+                          <FlaskConical className="h-4 w-4" />
+                          Probe erstellen
+                        </Button>
+                      )}
+                      {process.status === "completed" && (
+                        <Button variant="ghost" size="sm" className="text-success pointer-events-none">
+                          <CheckCircle className="h-4 w-4" />
+                          Abgeschlossen
+                        </Button>
+                      )}
+                      {hasSample && process.status !== "completed" && (
+                        <Button variant="ghost" size="sm" className="text-success pointer-events-none">
+                          <FlaskConical className="h-4 w-4" />
+                          Probe vorhanden
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

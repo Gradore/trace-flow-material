@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Search, Filter, Package, QrCode, MoreVertical, MapPin, Scale, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageDescription } from "@/components/layout/PageDescription";
 import {
   Table,
   TableBody,
@@ -93,6 +94,16 @@ export default function Containers() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageDescription
+        title="Container & Behälterverwaltung"
+        description="Verwalten Sie alle BigBags, Gitterboxen und Container. Jeder Behälter erhält eine eindeutige ID und kann mit QR-Codes gekennzeichnet werden."
+        nextSteps={[
+          "QR-Code drucken → Behälter kennzeichnen",
+          "Materialeingang → Container zuweisen",
+          "Standort aktualisieren → Nachverfolgung"
+        ]}
+      />
+      
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Container & BigBags</h1>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Search, Filter, FileOutput, MoreVertical, QrCode, Truck, FileText, Package, Loader2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageDescription } from "@/components/layout/PageDescription";
 import {
   Table,
   TableBody,
@@ -76,6 +77,16 @@ export default function OutputMaterials() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageDescription
+        title="Ausgangsmaterial & Fertigprodukte"
+        description="Übersicht aller recycelten Materialien und fertigen Produkte. Jede Charge wird mit Qualitätsstufe, Gewicht und Zielbestimmung erfasst."
+        nextSteps={[
+          "Kunde zuordnen → Charge für Auftrag reservieren",
+          "Etikett drucken → Versandvorbereitung",
+          "Lieferschein erstellen → Warenausgang dokumentieren"
+        ]}
+      />
+
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
