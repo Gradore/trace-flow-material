@@ -374,7 +374,9 @@ export default function Sampling() {
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem 
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
                                     setSampleToRevert(sample);
                                     setRevertDialogOpen(true);
                                   }}
