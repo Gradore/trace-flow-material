@@ -129,11 +129,17 @@ export default function MaterialIntake() {
     <div className="space-y-6 animate-fade-in">
       <PageDescription
         title="Materialeingang & Wareneingang"
-        description="Erfassen Sie eingehende Materialien von Lieferanten. Jeder Eingang wird eindeutig identifiziert und einem Container zugewiesen."
+        description="Erfassen Sie eingehende Materialien von Lieferanten. Jeder Eingang erhält eine eindeutige ID (ME-XXXX) und wird mit Lieferant, Materialtyp, Gewicht und Container dokumentiert. Das ist der Startpunkt des Materialflusses."
         nextSteps={[
-          "Container zuweisen → Material lagern",
-          "Verarbeitung starten → Produktion beginnen",
-          "Probe entnehmen → Qualitätskontrolle"
+          "Neuen Eingang erfassen → Lieferanten und Material angeben",
+          "Container zuweisen → Für Nachverfolgung im Lager",
+          "Verarbeitung starten → Material in Produktion geben"
+        ]}
+        workflowLinks={[
+          { label: "Container", path: "/containers", direction: "previous" },
+          { label: "Firmen", path: "/companies", direction: "previous" },
+          { label: "Verarbeitung", path: "/processing", direction: "next" },
+          { label: "Beprobung", path: "/sampling", direction: "next" },
         ]}
       />
 

@@ -79,11 +79,17 @@ export default function OutputMaterials() {
     <div className="space-y-6 animate-fade-in">
       <PageDescription
         title="Ausgangsmaterial & Fertigprodukte"
-        description="Übersicht aller recycelten Materialien und fertigen Produkte. Jede Charge wird mit Qualitätsstufe, Gewicht und Zielbestimmung erfasst."
+        description="Übersicht aller recycelten Materialien (Glasfasern, Harzpulver, PP/PA-Regranulat). Jede Charge erhält eine Batch-ID und kann Kundenaufträgen zugewiesen werden. Hier beginnt die Auslieferungsvorbereitung."
         nextSteps={[
+          "Neues Material anlegen → Nach Verarbeitungsabschluss",
           "Kunde zuordnen → Charge für Auftrag reservieren",
-          "Etikett drucken → Versandvorbereitung",
-          "Lieferschein erstellen → Warenausgang dokumentieren"
+          "Lieferschein erstellen → Versand dokumentieren"
+        ]}
+        workflowLinks={[
+          { label: "Verarbeitung", path: "/processing", direction: "previous" },
+          { label: "Beprobung", path: "/sampling", direction: "previous" },
+          { label: "Aufträge", path: "/orders", direction: "next" },
+          { label: "Lieferscheine", path: "/delivery-notes", direction: "next" },
         ]}
       />
 

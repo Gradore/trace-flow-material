@@ -189,11 +189,17 @@ export default function Sampling() {
     <div className="space-y-6 animate-fade-in">
       <PageDescription
         title="Beprobung & Qualitätskontrolle"
-        description="Erstellen und verwalten Sie Proben für Laboranalysen. Jede Probe wird mit Material und Verarbeitungsschritt verknüpft. Nach der Analyse können Proben freigegeben oder abgelehnt werden."
+        description="Erstellen und verwalten Sie Proben für Laboranalysen. Jede Probe (PRB-XXXX) wird mit Material und Verarbeitungsschritt verknüpft. Laborergebnisse bestimmen, ob eine Charge freigegeben oder abgelehnt wird."
         nextSteps={[
-          "Freigabe → Material kann verarbeitet/ausgeliefert werden",
-          "Ablehnung → Charge wird blockiert, keine weitere Verarbeitung möglich",
-          "Rückstellmuster werden automatisch bei Verarbeitungsabschluss erstellt"
+          "Probe erstellen → Für Laboranalyse",
+          "Ergebnisse eintragen → Nach Laborprüfung",
+          "Freigeben oder Ablehnen → Entscheidet über Materialfluss"
+        ]}
+        workflowLinks={[
+          { label: "Verarbeitung", path: "/processing", direction: "previous" },
+          { label: "Materialeingang", path: "/intake", direction: "previous" },
+          { label: "Rückstellmuster", path: "/retention-samples", direction: "next" },
+          { label: "Ausgangsmaterial", path: "/output", direction: "next" },
         ]}
       />
 

@@ -182,11 +182,16 @@ export default function Containers() {
     <div className="space-y-6 animate-fade-in">
       <PageDescription
         title="Container & Behälterverwaltung"
-        description="Verwalten Sie alle BigBags, Gitterboxen und Container. Jeder Behälter erhält eine eindeutige ID und kann mit QR-Codes gekennzeichnet werden."
+        description="Verwalten Sie alle BigBags, Gitterboxen und Container. Jeder Behälter erhält eine eindeutige ID und kann mit QR-Codes gekennzeichnet werden. Container werden beim Materialeingang und bei der Verarbeitung zugewiesen."
         nextSteps={[
-          "QR-Code drucken → Behälter kennzeichnen",
-          "Materialeingang → Container zuweisen",
-          "Standort aktualisieren → Nachverfolgung"
+          "Neuen Container anlegen → QR-Etikett drucken",
+          "Container einem Materialeingang zuweisen",
+          "Standort aktualisieren für Lagerverwaltung"
+        ]}
+        workflowLinks={[
+          { label: "Materialeingang", path: "/intake", direction: "next" },
+          { label: "Verarbeitung", path: "/processing", direction: "next" },
+          { label: "Ausgangsmaterial", path: "/output", direction: "next" },
         ]}
       />
       

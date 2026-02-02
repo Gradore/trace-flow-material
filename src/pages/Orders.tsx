@@ -141,11 +141,17 @@ export default function Orders() {
     <div className="space-y-6">
       <PageDescription
         title="Auftrags- & Produktionsplanung"
-        description="Verwalten Sie Kundenaufträge von der Erfassung bis zur Auslieferung. Verfolgen Sie Produktions- und Liefertermine in Echtzeit."
+        description="Verwalten Sie Kundenaufträge von der Erfassung bis zur Auslieferung. Jeder Auftrag (AUF-XXXX) enthält Kunde, Produkt, Menge und Termine. Verfolgen Sie den Status (Ausstehend → In Produktion → Versendet)."
         nextSteps={[
-          "Produktion starten → Charge zuweisen",
-          "Als produziert markieren → Versand vorbereiten",
-          "Lieferschein erstellen → Warenausgang"
+          "Neuen Auftrag anlegen → Kunde und Produkt wählen",
+          "Charge zuweisen → Aus verfügbarem Ausgangsmaterial",
+          "Als versendet markieren → Nach Warenausgang"
+        ]}
+        workflowLinks={[
+          { label: "Firmen", path: "/companies", direction: "previous" },
+          { label: "Ausgangsmaterial", path: "/output", direction: "previous" },
+          { label: "Lieferscheine", path: "/delivery-notes", direction: "next" },
+          { label: "Rückstellmuster", path: "/retention-samples", direction: "next" },
         ]}
       />
       
