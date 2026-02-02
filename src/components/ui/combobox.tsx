@@ -46,8 +46,26 @@ export function Combobox({
   className,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const selectedOption = options.find((option) => option.value === value);
+
+  if (!mounted) {
+    return (
+      <Button
+        variant="outline"
+        className={cn("w-full justify-between font-normal", !value && "text-muted-foreground", className)}
+        disabled={true}
+      >
+        {placeholder}
+        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+      </Button>
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={true}>
