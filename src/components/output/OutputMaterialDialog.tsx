@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Select,
   SelectContent,
@@ -345,40 +346,33 @@ export function OutputMaterialDialog({ open, onOpenChange }: OutputMaterialDialo
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="containerId">Container</Label>
-                <Select
+                <Combobox
+                  options={containers.map((container) => ({
+                    value: container.id,
+                    label: container.container_id,
+                    description: container.type,
+                  }))}
                   value={formData.containerId}
                   onValueChange={(value) => setFormData({ ...formData, containerId: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Optional" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {containers.map((container) => (
-                      <SelectItem key={container.id} value={container.id}>
-                        {container.container_id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Optional..."
+                  searchPlaceholder="Container suchen..."
+                  emptyText="Keine Container verfügbar"
+                />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="sampleId">Verknüpfte Probe</Label>
-                <Select
+                <Combobox
+                  options={samples.map((sample) => ({
+                    value: sample.id,
+                    label: sample.sample_id,
+                  }))}
                   value={formData.sampleId}
                   onValueChange={(value) => setFormData({ ...formData, sampleId: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Optional" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {samples.map((sample) => (
-                      <SelectItem key={sample.id} value={sample.id}>
-                        {sample.sample_id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Optional..."
+                  searchPlaceholder="Probe suchen..."
+                  emptyText="Keine genehmigten Proben"
+                />
               </div>
             </div>
 
