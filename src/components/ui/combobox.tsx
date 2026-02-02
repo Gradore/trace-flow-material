@@ -100,7 +100,7 @@ export function Combobox({
         sideOffset={4}
         style={{ zIndex: 9999 }}
       >
-        <Command>
+        <Command shouldFilter={true}>
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
@@ -108,22 +108,23 @@ export function Combobox({
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.label}
+                  value={`${option.label} ${option.description || ""}`}
                   onSelect={() => {
                     onValueChange(option.value === value ? "" : option.value);
                     setOpen(false);
                   }}
+                  className="cursor-pointer"
                 >
                   <Check
                     className={cn(
-                      "mr-2 h-4 w-4",
+                      "mr-2 h-4 w-4 flex-shrink-0",
                       value === option.value ? "opacity-100" : "opacity-0"
                     )}
                   />
-                  <div className="flex flex-col">
-                    <span>{option.label}</span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="truncate">{option.label}</span>
                     {option.description && (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground truncate">
                         {option.description}
                       </span>
                     )}
