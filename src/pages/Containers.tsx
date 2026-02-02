@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Filter, Package, QrCode, MoreVertical, MapPin, Scale, Loader2, Edit } from "lucide-react";
+import { Plus, Search, Filter, Package, QrCode, MoreVertical, MapPin, Scale, Loader2, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageDescription } from "@/components/layout/PageDescription";
@@ -17,6 +17,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { ContainerDialog } from "@/components/containers/ContainerDialog";
 import { ContainerDetailsDialog } from "@/components/containers/ContainerDetailsDialog";
@@ -46,6 +56,9 @@ export default function Containers() {
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState<typeof containers[0] | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [containerToDelete, setContainerToDelete] = useState<typeof containers[0] | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: containers = [], isLoading, refetch } = useQuery({
     queryKey: ["containers"],
@@ -85,13 +98,83 @@ export default function Containers() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("containers").delete().eq("id", id);
-    if (error) {
-      toast({ title: "Fehler", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Container gelöscht" });
-      refetch();
+  const handleDeleteClick = (container: typeof containers[0], e: React.MouseEvent) => {
+    e.stopPropagation();
+    setContainerToDelete(container);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!containerToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      // Check if container is used in active processing
+      const { data: processingSteps, error: checkError } = await supabase
+        .from("processing_steps")
+        .select("id, processing_id")
+        .in("status", ["pending", "in_progress"])
+        .limit(1);
+      
+      if (checkError) throw checkError;
+
+      // Check if container is assigned to materials
+      const { data: materialInputs, error: materialError } = await supabase
+        .from("material_inputs")
+        .select("id, input_id")
+        .eq("container_id", containerToDelete.id)
+        .in("status", ["received", "in_processing"])
+        .limit(1);
+      
+      if (materialError) throw materialError;
+
+      // Check if container is assigned to output materials
+      const { data: outputMaterials, error: outputError } = await supabase
+        .from("output_materials")
+        .select("id, output_id")
+        .eq("container_id", containerToDelete.id)
+        .in("status", ["pending", "in_production"])
+        .limit(1);
+      
+      if (outputError) throw outputError;
+
+      // Block deletion if in active use
+      if ((materialInputs && materialInputs.length > 0) || (outputMaterials && outputMaterials.length > 0)) {
+        toast({ 
+          title: "Fehler: Container in Verwendung", 
+          description: "Dieser Container ist in einem aktiven Prozess und kann nicht gelöscht werden. Bitte entfernen Sie zuerst die Verknüpfung zu Materialien.", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      // Safe to delete
+      const { error } = await supabase.from("containers").delete().eq("id", containerToDelete.id);
+      if (error) {
+        if (error.code === '23503') {
+          toast({ 
+            title: "Fehler: Container in Verwendung", 
+            description: "Dieser Container ist mit anderen Datensätzen verknüpft und kann nicht gelöscht werden.", 
+            variant: "destructive" 
+          });
+        } else {
+          throw error;
+        }
+      } else {
+        toast({ title: "Container gelöscht", description: `${containerToDelete.container_id} wurde erfolgreich entfernt.` });
+        refetch();
+      }
+    } catch (error: any) {
+      console.error("Delete error:", error);
+      toast({ 
+        title: "Fehler beim Löschen", 
+        description: error.message || "Der Container konnte nicht gelöscht werden.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+      setContainerToDelete(null);
     }
   };
 
@@ -215,11 +298,15 @@ export default function Containers() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="bg-popover">
-                            <DropdownMenuItem onClick={() => handlePrintQR(container)}>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handlePrintQR(container); }}>
                               <QrCode className="h-4 w-4 mr-2" />
                               QR-Code drucken
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(container.id)}>
+                            <DropdownMenuItem 
+                              className="text-destructive" 
+                              onClick={(e) => handleDeleteClick(container, e)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
                               Löschen
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -247,6 +334,39 @@ export default function Containers() {
         }}
         container={selectedContainer}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Container endgültig löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Möchten Sie den Container <strong>{containerToDelete?.container_id}</strong> wirklich endgültig löschen? 
+              Diese Aktion kann nicht rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Löscht...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Endgültig löschen
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
