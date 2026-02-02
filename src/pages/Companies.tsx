@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { CompanyDialog } from "@/components/companies/CompanyDialog";
 import { ContactsDialog } from "@/components/companies/ContactsDialog";
 import { useExport } from "@/hooks/useExport";
+import { PageDescription } from "@/components/layout/PageDescription";
 
 // ... keep existing code
 
@@ -123,7 +124,17 @@ export default function Companies() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
+      <PageDescription
+        title="Kunden- und Lieferantenverwaltung"
+        description="Verwalten Sie hier alle Kunden und Lieferanten. Die Firmendaten werden für Lieferscheine, Aufträge und Abrechnungen verwendet."
+        nextSteps={[
+          "Firma anlegen → Für Lieferscheine verfügbar",
+          "Ansprechpartner hinzufügen → Für Kommunikation",
+          "Vertrag hinterlegen → Für Preise und Konditionen"
+        ]}
+      />
+      
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Firmenverwaltung</h1>
