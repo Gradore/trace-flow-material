@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Filter, Package, QrCode, MoreVertical, MapPin, Scale, Loader2 } from "lucide-react";
+import { Plus, Search, Filter, Package, QrCode, MoreVertical, MapPin, Scale, Loader2, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageDescription } from "@/components/layout/PageDescription";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ContainerDialog } from "@/components/containers/ContainerDialog";
+import { ContainerDetailsDialog } from "@/components/containers/ContainerDetailsDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { generateLabelPDF, downloadPDF } from "@/lib/pdf";
@@ -42,6 +43,8 @@ const statusConfig: Record<string, { label: string; class: string }> = {
 
 export default function Containers() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
+  const [selectedContainer, setSelectedContainer] = useState<typeof containers[0] | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
   const { data: containers = [], isLoading, refetch } = useQuery({
@@ -171,11 +174,19 @@ export default function Containers() {
                   const type = containerTypes[container.type] || { label: container.type, icon: "📦" };
                   const status = statusConfig[container.status] || statusConfig.empty;
                   return (
-                    <TableRow key={container.id} className="cursor-pointer">
+                    <TableRow 
+                      key={container.id} 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => {
+                        setSelectedContainer(container);
+                        setIsDetailsDialogOpen(true);
+                      }}
+                    >
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Package className="h-4 w-4 text-primary" />
                           <span className="font-mono font-medium">{container.container_id}</span>
+                          <Edit className="h-3 w-3 text-muted-foreground" />
                         </div>
                       </TableCell>
                       <TableCell>
@@ -224,6 +235,18 @@ export default function Containers() {
       </div>
 
       <ContainerDialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) refetch(); }} />
+      
+      <ContainerDetailsDialog 
+        open={isDetailsDialogOpen} 
+        onOpenChange={(open) => {
+          setIsDetailsDialogOpen(open);
+          if (!open) {
+            setSelectedContainer(null);
+            refetch();
+          }
+        }}
+        container={selectedContainer}
+      />
     </div>
   );
 }

@@ -153,7 +153,7 @@ export default function OutputMaterials() {
                 <TableHead>Charge</TableHead>
                 <TableHead>Typ</TableHead>
                 <TableHead>Gewicht</TableHead>
-                <TableHead>Qualität</TableHead>
+                <TableHead>Korngröße</TableHead>
                 <TableHead>Container</TableHead>
                 <TableHead>Bestimmung</TableHead>
                 <TableHead>Status</TableHead>
@@ -181,14 +181,11 @@ export default function OutputMaterials() {
                     </TableCell>
                     <TableCell className="font-medium">{Number(output.weight_kg).toLocaleString("de-DE")} kg</TableCell>
                     <TableCell>
-                      {output.quality_grade && (
-                        <span className={cn(
-                          "px-2 py-0.5 rounded text-xs font-medium",
-                          output.quality_grade === "A" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
-                        )}>
-                          Qualität {output.quality_grade}
+                      {output.fiber_size ? (
+                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-secondary text-secondary-foreground">
+                          {output.fiber_size}
                         </span>
-                      )}
+                      ) : "-"}
                     </TableCell>
                     <TableCell>
                       {output.containers?.container_id ? (

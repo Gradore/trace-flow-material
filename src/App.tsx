@@ -42,6 +42,7 @@ import AGB from "./pages/AGB";
 import AdminSettings from "./pages/AdminSettings";
 import DatasheetUpload from "./pages/DatasheetUpload";
 import Archive from "./pages/Archive";
+import RetentionSamples from "./pages/RetentionSamples";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -89,6 +90,7 @@ const App = () => (
               <Route path="/sales-search" element={<ProtectedRoute><SalesSearch /></ProtectedRoute>} />
               <Route path="/datasheet-upload" element={<ProtectedRoute><AppLayout><DatasheetUpload /></AppLayout></ProtectedRoute>} />
               <Route path="/archive" element={<ProtectedRoute><AppLayout><Archive /></AppLayout></ProtectedRoute>} />
+              <Route path="/retention-samples" element={<ProtectedRoute><AppLayout><RetentionSamples /></AppLayout></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthProvider>
