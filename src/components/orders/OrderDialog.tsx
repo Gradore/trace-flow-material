@@ -105,15 +105,28 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      // Generate order ID using database function
-      const { data: orderId, error: idError } = await supabase.rpc("generate_unique_id", { prefix: "AUF" });
-      if (idError) {
-        console.error("ID generation error:", idError);
-        throw new Error("Fehler bei ID-Generierung. Bitte versuchen Sie es erneut.");
+      // Generate order ID using database function with retry logic
+      let orderId: string | null = null;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (!orderId && attempts < maxAttempts) {
+        attempts++;
+        const { data: idData, error: idError } = await supabase.rpc("generate_unique_id", { prefix: "AUF" });
+        
+        if (idError) {
+          console.error(`ID generation attempt ${attempts} failed:`, idError);
+          if (attempts >= maxAttempts) {
+            // Fallback: generate a unique ID client-side
+            orderId = `AUF-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
+          }
+        } else {
+          orderId = idData as string;
+        }
       }
       
       if (!orderId) {
-        throw new Error("Keine Auftrags-ID generiert. Bitte versuchen Sie es erneut.");
+        throw new Error("Auftrags-ID konnte nicht generiert werden. Bitte versuchen Sie es erneut.");
       }
 
       // Generate product name from configuration
@@ -138,10 +151,15 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
       });
 
       if (error) {
+        console.error("Order insert error:", error);
         if (error.code === '23505') {
-          throw new Error("Ein Auftrag mit dieser ID existiert bereits. Bitte versuchen Sie es erneut.");
+          // Duplicate key - retry with new ID
+          throw new Error("Auftrags-ID Konflikt. Bitte versuchen Sie es erneut.");
         }
-        throw error;
+        if (error.code === '42501') {
+          throw new Error("Keine Berechtigung zum Erstellen von Aufträgen.");
+        }
+        throw new Error(`Auftrag konnte nicht erstellt werden: ${error.message}`);
       }
     },
     onSuccess: () => {

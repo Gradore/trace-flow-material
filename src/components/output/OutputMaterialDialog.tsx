@@ -94,20 +94,46 @@ export function OutputMaterialDialog({ open, onOpenChange }: OutputMaterialDialo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.outputType || !formData.batchId || !formData.weightKg) return;
+    
+    // Detailed validation with specific error messages
+    const errors: string[] = [];
+    if (!formData.outputType) errors.push("Bitte wählen Sie einen Materialtyp");
+    if (!formData.batchId) errors.push("Bitte geben Sie eine Chargen-Nr. ein");
+    if (!formData.weightKg || parseFloat(formData.weightKg) <= 0) errors.push("Bitte geben Sie ein gültiges Gewicht ein");
+    
+    if (errors.length > 0) {
+      toast({
+        title: "Fehlende Pflichtangaben",
+        description: errors.join(". "),
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
-      // Generate unique ID
-      const { data: idData, error: idError } = await supabase.rpc("generate_unique_id", { prefix: "OUT" });
-      if (idError) throw idError;
+      // Generate unique ID with retry
+      let outputId: string | null = null;
+      let attempts = 0;
+      
+      while (!outputId && attempts < 3) {
+        attempts++;
+        const { data: idData, error: idError } = await supabase.rpc("generate_unique_id", { prefix: "OUT" });
+        if (idError) {
+          console.error(`ID generation attempt ${attempts}:`, idError);
+          if (attempts >= 3) {
+            outputId = `OUT-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
+          }
+        } else {
+          outputId = idData as string;
+        }
+      }
 
-      const outputId = idData as string;
-      const qrUrl = buildOutputMaterialQRUrl(outputId);
+      const qrUrl = buildOutputMaterialQRUrl(outputId!);
 
       const { data: inserted, error } = await supabase.from("output_materials").insert({
         output_id: outputId,
-        batch_id: formData.batchId,
+        batch_id: formData.batchId.trim(),
         output_type: formData.outputType,
         weight_kg: parseFloat(formData.weightKg),
         quality_grade: formData.qualityGrade || null,
@@ -120,7 +146,16 @@ export function OutputMaterialDialog({ open, onOpenChange }: OutputMaterialDialo
         attributes: formData.notes ? { notes: formData.notes } : {},
       }).select().single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Output material insert error:", error);
+        if (error.code === '42501') {
+          throw new Error("Keine Berechtigung zum Erstellen von Ausgangsmaterial.");
+        }
+        if (error.code === '23505') {
+          throw new Error("Material mit dieser ID existiert bereits. Bitte erneut versuchen.");
+        }
+        throw new Error(`Ausgangsmaterial konnte nicht erstellt werden: ${error.message}`);
+      }
 
       // Update container status if assigned
       if (formData.containerId) {
@@ -130,23 +165,27 @@ export function OutputMaterialDialog({ open, onOpenChange }: OutputMaterialDialo
           .eq("id", formData.containerId);
       }
 
-      // Log event
-      await logEvent({
-        eventType: "output_created",
-        eventDescription: `Ausgangsmaterial ${outputId} erstellt: ${outputTypes.find(t => t.value === formData.outputType)?.label}, ${formData.weightKg} kg`,
-        eventDetails: {
-          output_id: outputId,
-          batch_id: formData.batchId,
-          output_type: formData.outputType,
-          weight_kg: parseFloat(formData.weightKg),
-        },
-        outputMaterialId: inserted.id,
-        containerId: formData.containerId || undefined,
-        sampleId: formData.sampleId || undefined,
-      });
+      // Log event (non-critical)
+      try {
+        await logEvent({
+          eventType: "output_created",
+          eventDescription: `Ausgangsmaterial ${outputId} erstellt: ${outputTypes.find(t => t.value === formData.outputType)?.label}, ${formData.weightKg} kg`,
+          eventDetails: {
+            output_id: outputId,
+            batch_id: formData.batchId,
+            output_type: formData.outputType,
+            weight_kg: parseFloat(formData.weightKg),
+          },
+          outputMaterialId: inserted.id,
+          containerId: formData.containerId || undefined,
+          sampleId: formData.sampleId || undefined,
+        });
+      } catch (logError) {
+        console.warn("Could not log event:", logError);
+      }
 
       setCreatedOutput({
-        id: outputId,
+        id: outputId!,
         type: outputTypes.find(t => t.value === formData.outputType)?.label || formData.outputType,
         batchId: formData.batchId,
       });
@@ -159,9 +198,10 @@ export function OutputMaterialDialog({ open, onOpenChange }: OutputMaterialDialo
         description: `${outputId} wurde erfolgreich erstellt.`,
       });
     } catch (error: any) {
+      console.error("OutputMaterial creation failed:", error);
       toast({
-        title: "Fehler",
-        description: error.message || "Ausgangsmaterial konnte nicht erstellt werden.",
+        title: "Fehler beim Erstellen",
+        description: error.message || "Ausgangsmaterial konnte nicht erstellt werden. Bitte überprüfen Sie Ihre Berechtigungen.",
         variant: "destructive",
       });
     } finally {

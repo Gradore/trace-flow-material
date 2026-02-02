@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
+import { TwoFactorSetup } from "@/components/profile/TwoFactorSetup";
 
 export default function Profile() {
   const { user } = useAuth();
@@ -272,6 +273,9 @@ export default function Profile() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Two-Factor Authentication */}
+      <TwoFactorSetup />
 
       <Card>
         <CardHeader>
