@@ -1714,6 +1714,33 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limit_log: {
+        Row: {
+          created_at: string | null
+          endpoint: string
+          id: string
+          ip_address: string
+          request_count: number | null
+          window_start: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          ip_address: string
+          request_count?: number | null
+          window_start?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          ip_address?: string
+          request_count?: number | null
+          window_start?: string | null
+        }
+        Relationships: []
+      }
       recipes: {
         Row: {
           applications: string[] | null
@@ -2025,11 +2052,13 @@ export type Database = {
     }
     Functions: {
       check_order_deadlines: { Args: never; Returns: undefined }
+      cleanup_rate_limit_log: { Args: never; Returns: undefined }
       generate_unique_id: { Args: { prefix: string }; Returns: string }
       get_default_permissions_for_role: {
         Args: { role_name: string }
         Returns: Json
       }
+      get_user_company_id: { Args: { _user_id: string }; Returns: string }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -2041,6 +2070,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_internal_staff: { Args: { _user_id: string }; Returns: boolean }
       log_audit:
         | {
             Args: {
@@ -2064,6 +2094,10 @@ export type Database = {
             }
             Returns: string
           }
+      user_belongs_to_company: {
+        Args: { _company_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role:
