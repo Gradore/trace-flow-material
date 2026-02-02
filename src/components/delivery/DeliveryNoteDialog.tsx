@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Select,
   SelectContent,
@@ -341,30 +342,27 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
 
           <div className="space-y-2">
             <Label>{formData.type === 'incoming' ? 'Materialeingang verknüpfen' : 'Ausgangsmaterial verknüpfen'}</Label>
-            <Select
+            <Combobox
+              options={formData.type === 'incoming' 
+                ? materialInputs.map((item) => ({
+                    value: item.id,
+                    label: `${item.input_id} - ${item.material_type}`,
+                    description: `${item.weight_kg} kg von ${item.supplier}`,
+                  }))
+                : outputMaterials.map((item) => ({
+                    value: item.id,
+                    label: `${item.output_id} - ${item.output_type}`,
+                    description: `${item.weight_kg} kg`,
+                  }))
+              }
               value={formData.linkedId}
               onValueChange={handleLinkedItemChange}
+              placeholder="Optional: Verknüpfung wählen..."
+              searchPlaceholder="Suchen..."
+              emptyText={formData.type === 'incoming' ? "Keine Materialeingänge verfügbar" : "Kein Ausgangsmaterial verfügbar"}
+              isLoading={isLoading}
               disabled={isLoading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={isLoading ? "Lädt..." : "Optional: Verknüpfung wählen"} />
-              </SelectTrigger>
-              <SelectContent>
-                {formData.type === 'incoming' ? (
-                  materialInputs.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.input_id} - {item.material_type} ({item.weight_kg} kg)
-                    </SelectItem>
-                  ))
-                ) : (
-                  outputMaterials.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.output_id} - {item.output_type} ({item.weight_kg} kg)
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+            />
           </div>
 
           <div className="space-y-2">

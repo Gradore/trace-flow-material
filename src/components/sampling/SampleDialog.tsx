@@ -10,13 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { FlaskConical, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -193,52 +187,32 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Materialeingang (optional)</Label>
-            <Select
+            <Combobox
+              options={materialInputs.map((mi) => ({
+                value: mi.id,
+                label: `${mi.input_id} - ${mi.material_type}`,
+              }))}
               value={formData.materialInput}
               onValueChange={(value) => setFormData({ ...formData, materialInput: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Materialeingang wählen" />
-              </SelectTrigger>
-              <SelectContent className="bg-popover">
-                {materialInputs.length === 0 ? (
-                  <div className="p-2 text-sm text-muted-foreground text-center">
-                    Keine Materialeingänge verfügbar
-                  </div>
-                ) : (
-                  materialInputs.map((mi) => (
-                    <SelectItem key={mi.id} value={mi.id}>
-                      {mi.input_id} - {mi.material_type}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+              placeholder="Materialeingang wählen..."
+              searchPlaceholder="Suchen..."
+              emptyText="Keine Materialeingänge verfügbar"
+            />
           </div>
 
           <div className="space-y-2">
             <Label>Verarbeitungsschritt (optional)</Label>
-            <Select
+            <Combobox
+              options={processingSteps.map((ps) => ({
+                value: ps.id,
+                label: `${ps.processing_id} - ${stepTypeLabels[ps.step_type] || ps.step_type}`,
+              }))}
               value={formData.processingStep}
               onValueChange={(value) => setFormData({ ...formData, processingStep: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Prozessschritt wählen" />
-              </SelectTrigger>
-              <SelectContent className="bg-popover">
-                {processingSteps.length === 0 ? (
-                  <div className="p-2 text-sm text-muted-foreground text-center">
-                    Keine Verarbeitungsschritte verfügbar
-                  </div>
-                ) : (
-                  processingSteps.map((ps) => (
-                    <SelectItem key={ps.id} value={ps.id}>
-                      {ps.processing_id} - {stepTypeLabels[ps.step_type] || ps.step_type}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+              placeholder="Prozessschritt wählen..."
+              searchPlaceholder="Suchen..."
+              emptyText="Keine Verarbeitungsschritte verfügbar"
+            />
           </div>
 
           <div className="space-y-2">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,13 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { Settings, ArrowRight, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
@@ -263,28 +257,20 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
             <Label>Materialeingang auswählen</Label>
-            <Select
+            <Combobox
+              options={materialInputs.map((input) => ({
+                value: input.id,
+                label: `${input.input_id} - ${input.material_type}${input.material_subtype ? `-${input.material_subtype}` : ''}`,
+                description: `${input.weight_kg} kg von ${input.supplier}`,
+              }))}
               value={formData.intake}
               onValueChange={(value) => setFormData({ ...formData, intake: value })}
+              placeholder="Eingang wählen..."
+              searchPlaceholder="Materialeingang suchen..."
+              emptyText="Keine verfügbaren Materialeingänge"
+              isLoading={isLoading}
               disabled={isLoading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={isLoading ? "Lädt..." : "Eingang wählen"} />
-              </SelectTrigger>
-              <SelectContent>
-                {materialInputs.map((input) => (
-                  <SelectItem key={input.id} value={input.id}>
-                    {input.input_id} - {input.material_type}
-                    {input.material_subtype ? `-${input.material_subtype}` : ''} ({input.weight_kg} kg)
-                  </SelectItem>
-                ))}
-                {materialInputs.length === 0 && !isLoading && (
-                  <div className="p-2 text-sm text-muted-foreground text-center">
-                    Keine verfügbaren Materialeingänge
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
+            />
           </div>
 
           <div className="space-y-3">
