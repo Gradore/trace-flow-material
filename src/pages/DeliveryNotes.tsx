@@ -125,11 +125,17 @@ export default function DeliveryNotes() {
     <div className="space-y-6 animate-fade-in">
       <PageDescription
         title="Lieferscheine & Warenbewegungen"
-        description="Dokumentieren Sie alle Warenein- und -ausgänge mit rechtskonformen Lieferscheinen. Jeder Schein enthält Chargen-Referenz, Gewicht und Abfallschlüssel."
+        description="Dokumentieren Sie alle Warenein- und -ausgänge mit Lieferscheinen (LS-XXXX). Jeder Schein enthält Partner, Material, Gewicht, Chargen-Referenz und optional Abfallschlüssel. PDF-Export für Archivierung verfügbar."
         nextSteps={[
-          "PDF herunterladen → Archivieren",
-          "Per E-Mail senden → Partner informieren",
-          "Traceability → Materialnachverfolgung"
+          "Neuen Lieferschein anlegen → Für Ein- oder Ausgang",
+          "PDF herunterladen → Für Papierdokumentation",
+          "Mit Auftrag verknüpfen → Für Nachverfolgung"
+        ]}
+        workflowLinks={[
+          { label: "Materialeingang", path: "/intake", direction: "previous" },
+          { label: "Ausgangsmaterial", path: "/output", direction: "previous" },
+          { label: "Aufträge", path: "/orders", direction: "previous" },
+          { label: "Traceability", path: "/traceability", direction: "next" },
         ]}
       />
 

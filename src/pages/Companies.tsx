@@ -127,11 +127,17 @@ export default function Companies() {
     <div className="space-y-6 animate-fade-in">
       <PageDescription
         title="Kunden- und Lieferantenverwaltung"
-        description="Verwalten Sie hier alle Kunden und Lieferanten. Die Firmendaten werden für Lieferscheine, Aufträge und Abrechnungen verwendet."
+        description="Stammdaten aller Geschäftspartner (Kunden, Lieferanten oder beides). Firmendaten werden für Materialeingänge, Aufträge, Lieferscheine und Verträge verwendet. Hier hinterlegte Ansprechpartner erscheinen in den Auswahllisten."
         nextSteps={[
-          "Firma anlegen → Für Lieferscheine verfügbar",
-          "Ansprechpartner hinzufügen → Für Kommunikation",
-          "Vertrag hinterlegen → Für Preise und Konditionen"
+          "Neue Firma anlegen → Für Geschäftsbeziehung",
+          "Ansprechpartner hinzufügen → Für Kontaktdaten",
+          "Vertrag hochladen → Für Konditionen"
+        ]}
+        workflowLinks={[
+          { label: "Materialeingang", path: "/intake", direction: "next" },
+          { label: "Aufträge", path: "/orders", direction: "next" },
+          { label: "Lieferscheine", path: "/delivery-notes", direction: "next" },
+          { label: "Vertriebssuche", path: "/sales-search", direction: "next" },
         ]}
       />
       

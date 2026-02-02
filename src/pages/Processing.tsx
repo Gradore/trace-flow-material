@@ -131,11 +131,17 @@ export default function Processing() {
     <div className="space-y-6 animate-fade-in">
       <PageDescription
         title="Verarbeitung & Produktion"
-        description="Starten und überwachen Sie Verarbeitungsprozesse für eingehende Materialien. Jeder Prozess durchläuft definierte Schritte (Schreddern, Sortieren, Mahlen, Trennung)."
+        description="Starten und überwachen Sie Verarbeitungsprozesse. Wählen Sie einen Materialeingang und die gewünschten Schritte (Schreddern, Sortieren, Mahlen, Trennung). Nach Abschluss werden automatisch Proben und Rückstellmuster erstellt."
         nextSteps={[
-          "Nach Abschluss → Probe erstellen und Rückstellmuster anlegen",
-          "Freigabe durch QA → Material kann Kunden zugeordnet werden",
-          "Ausgangsmaterial → Lieferschein erstellen"
+          "Materialeingang wählen → Verarbeitung starten",
+          "Prozess stoppen → Proben und Rückstellmuster anlegen",
+          "QA-Freigabe abwarten → Material versandbereit"
+        ]}
+        workflowLinks={[
+          { label: "Materialeingang", path: "/intake", direction: "previous" },
+          { label: "Beprobung", path: "/sampling", direction: "next" },
+          { label: "Rückstellmuster", path: "/retention-samples", direction: "next" },
+          { label: "Ausgangsmaterial", path: "/output", direction: "next" },
         ]}
       />
 

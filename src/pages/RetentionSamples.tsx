@@ -233,11 +233,17 @@ export default function RetentionSamples() {
     <div className="space-y-6 animate-fade-in">
       <PageDescription
         title="Rückstellmuster-Verwaltung"
-        description="Verwalten Sie Rückstellmuster für Qualitätssicherung und Reklamationsbearbeitung. Pro Charge werden automatisch zwei Muster angelegt: eines für den Lagerverbleib und eines für Laborprüfungen bei Beanstandungen."
+        description="Verwalten Sie Rückstellmuster (RST-XXXX) für Qualitätssicherung und Reklamationsbearbeitung. Pro Lieferung werden automatisch zwei Muster angelegt: 1x für Lagerverbleib (Langzeitdokumentation), 1x für Laborprüfung bei Kundenreklamationen."
         nextSteps={[
-          "Charge auswählen → Lager- und Laborplatz angeben",
-          "Bei Reklamation → Labormuster für Prüfung verwenden",
-          "Lagermuster → Langzeitaufbewahrung zur Dokumentation"
+          "Muster anlegen → Bei Verarbeitungsabschluss automatisch",
+          "Manuell anlegen → Für nachträgliche Erfassung",
+          "Bei Reklamation → Labormuster für Prüfung verwenden"
+        ]}
+        workflowLinks={[
+          { label: "Verarbeitung", path: "/processing", direction: "previous" },
+          { label: "Beprobung", path: "/sampling", direction: "previous" },
+          { label: "Aufträge", path: "/orders", direction: "previous" },
+          { label: "Traceability", path: "/traceability", direction: "next" },
         ]}
       />
 
