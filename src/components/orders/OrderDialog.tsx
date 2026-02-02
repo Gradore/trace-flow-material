@@ -31,6 +31,7 @@ type Order = {
   product_category: string;
   product_grain_size: string;
   product_subcategory: string;
+  product_name?: string | null;
   quantity_kg: number;
   production_deadline: string;
   delivery_deadline: string;
