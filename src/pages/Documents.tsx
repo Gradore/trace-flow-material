@@ -15,6 +15,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { DocumentUploadDialog } from "@/components/documents/DocumentUploadDialog";
 import { BulkUploadDialog } from "@/components/documents/BulkUploadDialog";
+import { PageDescription } from "@/components/layout/PageDescription";
 
 const tagConfig: Record<string, { label: string; class: string }> = {
   reach: { label: "REACH", class: "bg-info/10 text-info border-info/20" },
@@ -122,6 +123,16 @@ export default function Documents() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageDescription
+        title="Dokumenten-Center"
+        description="Zentraler Speicherort für alle projektbezogenen Dokumente wie REACH-Bescheinigungen, Lieferscheine, Laborberichte und Fotos."
+        nextSteps={[
+          "Dokument hochladen → Mit Charge verknüpfen",
+          "Tag vergeben → Schnelle Filterung",
+          "Bei Prüfung → Dokumente als Nachweis verwenden"
+        ]}
+      />
+      
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dokumente</h1>

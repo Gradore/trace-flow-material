@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
+import { PageDescription } from "@/components/layout/PageDescription";
 
 interface TimelineEvent {
   id: string;
@@ -152,6 +153,16 @@ export default function Traceability() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageDescription
+        title="Material-Rückverfolgung"
+        description="Verfolgen Sie den kompletten Lebenszyklus eines Materials von der Anlieferung bis zur Auslieferung. Alle Ereignisse werden lückenlos dokumentiert."
+        nextSteps={[
+          "Material-ID eingeben → Historie anzeigen",
+          "PDF exportieren → Für Audits und Nachweise",
+          "Container-Verlauf → Standort verfolgen"
+        ]}
+      />
+      
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageDescription } from "@/components/layout/PageDescription";
 import { 
   Plus, Wrench, Settings2, AlertTriangle, CheckCircle2, 
   Clock, Calendar, Loader2, MoreHorizontal 
@@ -199,6 +200,16 @@ export default function Maintenance() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageDescription
+        title="Wartung & Anlagenverwaltung"
+        description="Verwalten Sie Ihre Produktionsanlagen und planen Sie regelmäßige Wartungen. Bei wiederkehrenden Wartungen wird automatisch ein neuer Termin erstellt."
+        nextSteps={[
+          "Anlage hinzufügen → Wartungsplan erstellen",
+          "Wartung durchführen → Als erledigt markieren",
+          "Intervall festlegen → Automatische Folgetermine"
+        ]}
+      />
+      
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

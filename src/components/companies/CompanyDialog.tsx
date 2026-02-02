@@ -114,20 +114,35 @@ export function CompanyDialog({ open, onOpenChange, company }: CompanyDialogProp
             status: data.status,
           })
           .eq("id", company.id);
-        if (error) throw error;
+        if (error) {
+          console.error("Update error:", error);
+          throw new Error(`Firma konnte nicht aktualisiert werden: ${error.message}`);
+        }
       } else {
         // Check if company with same name already exists
-        const { data: existing } = await supabase
+        const { data: existing, error: checkError } = await supabase
           .from("companies")
           .select("id")
           .ilike("name", data.name.trim())
           .maybeSingle();
         
+        if (checkError) {
+          console.error("Check error:", checkError);
+        }
+        
         if (existing) {
           throw new Error("Eine Firma mit diesem Namen existiert bereits.");
         }
         
-        const companyId = await generateCompanyId();
+        // Generate ID with fallback
+        let companyId: string;
+        try {
+          companyId = await generateCompanyId();
+        } catch (idError) {
+          console.error("ID generation error:", idError);
+          companyId = `FRM-${Date.now().toString(36).toUpperCase()}`;
+        }
+        
         const { error } = await supabase.from("companies").insert({
           company_id: companyId,
           name: data.name.trim(),
@@ -143,10 +158,14 @@ export function CompanyDialog({ open, onOpenChange, company }: CompanyDialogProp
           status: data.status,
         });
         if (error) {
+          console.error("Insert error:", error);
           if (error.code === '23505') {
             throw new Error("Eine Firma mit dieser ID existiert bereits. Bitte versuchen Sie es erneut.");
           }
-          throw error;
+          if (error.code === '42501') {
+            throw new Error("Keine Berechtigung zum Erstellen von Firmen. Bitte wenden Sie sich an Ihren Administrator.");
+          }
+          throw new Error(`Firma konnte nicht erstellt werden: ${error.message}`);
         }
       }
     },
@@ -157,7 +176,8 @@ export function CompanyDialog({ open, onOpenChange, company }: CompanyDialogProp
     },
     onError: (error: Error) => {
       console.error("Company save error:", error);
-      toast.error(error.message || "Fehler beim Speichern. Bitte überprüfen Sie Ihre Eingaben und Berechtigungen.");
+      const errorMessage = error.message || "Fehler beim Speichern";
+      toast.error(errorMessage);
     },
   });
 

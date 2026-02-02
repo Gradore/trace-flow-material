@@ -125,19 +125,65 @@ export function DocumentUploadDialog({
   const handleUpload = async () => {
     if (!selectedFile) return;
 
+    // Validate file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (selectedFile.size > maxSize) {
+      toast({
+        title: "Datei zu groß",
+        description: "Die maximale Dateigröße beträgt 50 MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = ['pdf', 'jpg', 'jpeg', 'png', 'csv', 'doc', 'docx', 'xls', 'xlsx'];
+    const fileExt = selectedFile.name.split(".").pop()?.toLowerCase() || "";
+    if (!allowedTypes.includes(fileExt)) {
+      toast({
+        title: "Dateityp nicht unterstützt",
+        description: `Erlaubte Formate: ${allowedTypes.join(', ').toUpperCase()}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsUploading(true);
     try {
-      // Create unique file path
+      // Create unique file path - sanitize filename
       const timestamp = Date.now();
-      const fileExt = selectedFile.name.split(".").pop();
-      const filePath = `${timestamp}_${selectedFile.name}`;
+      const sanitizedName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filePath = `${timestamp}_${sanitizedName}`;
 
-      // Upload to storage
-      const { error: uploadError } = await supabase.storage
-        .from("documents")
-        .upload(filePath, selectedFile);
+      // Upload to storage with retry
+      let uploadAttempts = 0;
+      let uploadError: Error | null = null;
+      
+      while (uploadAttempts < 2) {
+        const result = await supabase.storage
+          .from("documents")
+          .upload(filePath, selectedFile, {
+            cacheControl: '3600',
+            upsert: false
+          });
+        
+        if (!result.error) {
+          uploadError = null;
+          break;
+        }
+        
+        uploadError = result.error;
+        uploadAttempts++;
+        
+        if (uploadAttempts < 2) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("Upload storage error:", uploadError);
+        throw new Error(`Upload fehlgeschlagen: ${uploadError.message}`);
+      }
 
       // Prepare document record
       let materialInputId: string | null = null;
@@ -208,9 +254,21 @@ export function DocumentUploadDialog({
       handleClose();
     } catch (error: any) {
       console.error("Upload error:", error);
+      let errorMessage = "Das Dokument konnte nicht hochgeladen werden.";
+      
+      if (error.message) {
+        if (error.message.includes("storage")) {
+          errorMessage = "Speicherfehler: Bitte versuchen Sie es erneut.";
+        } else if (error.message.includes("permission") || error.message.includes("policy")) {
+          errorMessage = "Keine Berechtigung zum Hochladen. Bitte kontaktieren Sie den Administrator.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       toast({
         title: "Fehler beim Hochladen",
-        description: error.message || "Das Dokument konnte nicht hochgeladen werden.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
