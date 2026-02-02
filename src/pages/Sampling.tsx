@@ -374,9 +374,12 @@ export default function Sampling() {
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
+                                  onSelect={(e) => {
+                                    // Radix DropdownMenu nutzt primär `onSelect`.
+                                    // Wenn wir nur `onClick` verwenden, kann der TableRow-onClick (openResults)
+                                    // trotzdem feuern und den Revert-Flow "verschlucken".
                                     e.preventDefault();
+                                    e.stopPropagation();
                                     setSampleToRevert(sample);
                                     setRevertDialogOpen(true);
                                   }}
