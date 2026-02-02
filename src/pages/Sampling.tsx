@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Filter, FlaskConical, MoreVertical, CheckCircle, XCircle, Clock, FileText, Upload, Loader2, Edit, Archive } from "lucide-react";
+import { Plus, Search, Filter, FlaskConical, MoreVertical, CheckCircle, XCircle, Clock, FileText, Edit, Archive, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,15 +15,28 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { SampleDialog } from "@/components/sampling/SampleDialog";
 import { SampleResultsDialog } from "@/components/sampling/SampleResultsDialog";
 import { SampleResultsInputDialog } from "@/components/sampling/SampleResultsInputDialog";
+import { PageDescription } from "@/components/layout/PageDescription";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; class: string; icon: typeof Clock }> = {
   pending: { label: "Ausstehend", class: "status-badge-warning", icon: Clock },
@@ -39,13 +52,17 @@ export default function Sampling() {
   const [selectedSample, setSelectedSample] = useState<any>(null);
   const [selectedSampleForInput, setSelectedSampleForInput] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [sampleToRevert, setSampleToRevert] = useState<any>(null);
+  const [isReverting, setIsReverting] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: samples = [], isLoading, refetch } = useQuery({
     queryKey: ["samples"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("samples")
-        .select("*, material_inputs(input_id, material_type), processing_steps(processing_id, step_type)")
+        .select("*, material_inputs(id, input_id, material_type, status), processing_steps(processing_id, step_type)")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -73,26 +90,113 @@ export default function Sampling() {
     setIsResultsDialogOpen(true);
   };
 
-  const handleStatusChange = async (sampleId: string, newStatus: string) => {
-    const { error } = await supabase
-      .from("samples")
-      .update({ 
-        status: newStatus,
-        ...(newStatus === "approved" ? { approved_at: new Date().toISOString() } : {}),
-        ...(newStatus === "in_analysis" ? { analyzed_at: new Date().toISOString() } : {})
-      })
-      .eq("id", sampleId);
+  const handleStatusChange = async (sampleId: string, newStatus: string, materialInputId?: string) => {
+    try {
+      // Update sample status
+      const { error } = await supabase
+        .from("samples")
+        .update({ 
+          status: newStatus,
+          ...(newStatus === "approved" ? { approved_at: new Date().toISOString() } : {}),
+          ...(newStatus === "in_analysis" ? { analyzed_at: new Date().toISOString() } : {})
+        })
+        .eq("id", sampleId);
 
-    if (error) {
-      toast({ title: "Fehler", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Status aktualisiert" });
-      refetch();
+      if (error) throw error;
+
+      // CRITICAL: If sample is rejected, also reject the associated material input (batch)
+      if (newStatus === "rejected" && materialInputId) {
+        const { error: materialError } = await supabase
+          .from("material_inputs")
+          .update({ status: "rejected" })
+          .eq("id", materialInputId);
+
+        if (materialError) {
+          console.warn("Could not update material input status:", materialError);
+        } else {
+          // Also cancel any running processing steps for this material
+          const { error: processingError } = await supabase
+            .from("processing_steps")
+            .update({ status: "completed", notes: "Automatisch beendet wegen Proben-Ablehnung" })
+            .eq("material_input_id", materialInputId)
+            .in("status", ["running", "paused", "pending", "sample_required"]);
+
+          if (processingError) {
+            console.warn("Could not cancel processing steps:", processingError);
+          }
+        }
+
+        toast({ 
+          title: "Probe und Charge abgelehnt",
+          description: "Die zugehörige Charge wurde ebenfalls als abgelehnt markiert. Keine weiteren Verarbeitungsschritte möglich.",
+          variant: "destructive"
+        });
+      } else {
+        toast({ title: "Status aktualisiert" });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["samples"] });
+      queryClient.invalidateQueries({ queryKey: ["material-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleRevertRejection = async () => {
+    if (!sampleToRevert) return;
+    setIsReverting(true);
+
+    try {
+      // Revert sample status to in_analysis
+      const { error } = await supabase
+        .from("samples")
+        .update({ status: "in_analysis" })
+        .eq("id", sampleToRevert.id);
+
+      if (error) throw error;
+
+      // Also revert the material input status back to in_processing
+      if (sampleToRevert.material_input_id) {
+        const { error: materialError } = await supabase
+          .from("material_inputs")
+          .update({ status: "in_processing" })
+          .eq("id", sampleToRevert.material_input_id);
+
+        if (materialError) {
+          console.warn("Could not revert material input status:", materialError);
+        }
+      }
+
+      toast({ 
+        title: "Ablehnung zurückgenommen",
+        description: "Die Probe wurde auf 'In Analyse' zurückgesetzt."
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["samples"] });
+      queryClient.invalidateQueries({ queryKey: ["material-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err.message, variant: "destructive" });
+    } finally {
+      setIsReverting(false);
+      setRevertDialogOpen(false);
+      setSampleToRevert(null);
     }
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageDescription
+        title="Beprobung & Qualitätskontrolle"
+        description="Erstellen und verwalten Sie Proben für Laboranalysen. Jede Probe wird mit Material und Verarbeitungsschritt verknüpft. Nach der Analyse können Proben freigegeben oder abgelehnt werden."
+        nextSteps={[
+          "Freigabe → Material kann verarbeitet/ausgeliefert werden",
+          "Ablehnung → Charge wird blockiert, keine weitere Verarbeitung möglich",
+          "Rückstellmuster werden automatisch bei Verarbeitungsabschluss erstellt"
+        ]}
+      />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Beprobung</h1>
@@ -171,15 +275,21 @@ export default function Sampling() {
                   const StatusIcon = status.icon;
                   const materialType = sample.material_inputs?.material_type || "-";
                   const processStep = sample.processing_steps?.step_type || "-";
+                  const isRejected = sample.status === "rejected";
+                  
                   return (
-                    <TableRow key={sample.id} className="cursor-pointer" onClick={() => openResults(sample)}>
+                    <TableRow 
+                      key={sample.id} 
+                      className={cn("cursor-pointer", isRejected && "bg-destructive/5")}
+                      onClick={() => openResults(sample)}
+                    >
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
                             {sample.is_retention_sample ? (
                               <Archive className="h-4 w-4 text-warning" />
                             ) : (
-                              <FlaskConical className="h-4 w-4 text-primary" />
+                              <FlaskConical className={cn("h-4 w-4", isRejected ? "text-destructive" : "text-primary")} />
                             )}
                             <span className="font-mono font-medium">{sample.sample_id}</span>
                             {sample.is_retention_sample && (
@@ -239,13 +349,32 @@ export default function Sampling() {
                             )}
                             {sample.status === "in_analysis" && (
                               <>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem className="text-success" onClick={() => handleStatusChange(sample.id, "approved")}>
                                   <CheckCircle className="h-4 w-4 mr-2" />
                                   Freigeben
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="text-destructive" onClick={() => handleStatusChange(sample.id, "rejected")}>
+                                <DropdownMenuItem 
+                                  className="text-destructive" 
+                                  onClick={() => handleStatusChange(sample.id, "rejected", sample.material_input_id)}
+                                >
                                   <XCircle className="h-4 w-4 mr-2" />
                                   Ablehnen
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            {/* Revert rejection option for rejected samples */}
+                            {sample.status === "rejected" && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSampleToRevert(sample);
+                                    setRevertDialogOpen(true);
+                                  }}
+                                >
+                                  <RotateCcw className="h-4 w-4 mr-2" />
+                                  Ablehnung zurücknehmen
                                 </DropdownMenuItem>
                               </>
                             )}
@@ -272,6 +401,26 @@ export default function Sampling() {
         onOpenChange={(open) => { setIsResultsInputDialogOpen(open); if (!open) refetch(); }}
         sample={selectedSampleForInput}
       />
+
+      {/* Revert Rejection Confirmation Dialog */}
+      <AlertDialog open={revertDialogOpen} onOpenChange={setRevertDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ablehnung zurücknehmen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Möchten Sie die Ablehnung für Probe {sampleToRevert?.sample_id} wirklich zurücknehmen? 
+              Der Status wird auf 'In Analyse' zurückgesetzt und die zugehörige Charge wird wieder freigegeben.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isReverting}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRevertRejection} disabled={isReverting}>
+              {isReverting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Ablehnung zurücknehmen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

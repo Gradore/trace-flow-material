@@ -67,10 +67,13 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
   const fetchMaterialInputs = async () => {
     setIsLoading(true);
     try {
+      // Fetch materials that are either received OR in_processing (for re-processing)
+      // Exclude rejected materials
       const { data, error } = await supabase
         .from('material_inputs')
         .select('id, input_id, material_type, material_subtype, weight_kg, supplier, status')
-        .in('status', ['received'])
+        .in('status', ['received', 'in_processing', 'processed'])
+        .neq('status', 'rejected')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -151,7 +154,7 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
 
       const processingId = processingIdData;
 
-      // Prevent duplicate starts for the same intake
+      // Check for ACTIVE processing steps (not completed ones - allow re-processing)
       const { data: existingSteps, error: existingError } = await supabase
         .from('processing_steps')
         .select('id, status')
@@ -162,8 +165,9 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
         console.warn('Could not check existing processing steps:', existingError);
       }
 
+      // Only block if there are ACTIVE processing steps
       if (existingSteps && existingSteps.length > 0) {
-        throw new Error('Dieser Materialeingang ist bereits in Verarbeitung.');
+        throw new Error('Dieser Materialeingang hat bereits aktive Verarbeitungsschritte. Bitte schließen Sie diese zuerst ab.');
       }
 
       // Create processing steps

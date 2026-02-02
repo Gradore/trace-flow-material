@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { PageDescription } from "@/components/layout/PageDescription";
 import {
   Table,
   TableBody,
@@ -138,6 +139,16 @@ export default function Orders() {
 
   return (
     <div className="space-y-6">
+      <PageDescription
+        title="Auftrags- & Produktionsplanung"
+        description="Verwalten Sie Kundenaufträge von der Erfassung bis zur Auslieferung. Verfolgen Sie Produktions- und Liefertermine in Echtzeit."
+        nextSteps={[
+          "Produktion starten → Charge zuweisen",
+          "Als produziert markieren → Versand vorbereiten",
+          "Lieferschein erstellen → Warenausgang"
+        ]}
+      />
+      
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">Aufträge</h1>

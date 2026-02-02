@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Filter, Inbox, MoreVertical, FileText, Upload, Calendar, Building2, Loader2, Trash2, Eye } from "lucide-react";
+import { Plus, Search, Filter, Inbox, MoreVertical, FileText, Upload, Calendar, Building2, Loader2, Trash2, Eye, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { IntakeDialog } from "@/components/intake/IntakeDialog";
+import { PageDescription } from "@/components/layout/PageDescription";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
@@ -37,15 +38,18 @@ const statusConfig: Record<string, { label: string; class: string }> = {
   received: { label: "Eingegangen", class: "status-badge-info" },
   in_processing: { label: "In Verarbeitung", class: "status-badge-warning" },
   processed: { label: "Verarbeitet", class: "status-badge-success" },
+  rejected: { label: "Abgelehnt", class: "status-badge-destructive" },
 };
 
 const materialTypes: Record<string, string> = {
+  gfk: "GFK",
   "gfk-up": "GFK-UP",
   "gfk-ep": "GFK-EP",
   "gfk-ve": "GFK-VE",
   "gfk-pu": "GFK-PU",
   "gfk-pet": "GFK-PET",
   pp: "Polypropylen (PP)",
+  pa: "Polyamid (PA)",
   pa6: "Polyamid (PA6)",
   pa66: "Polyamid (PA66)",
 };
@@ -81,6 +85,7 @@ export default function MaterialIntake() {
   );
   const todayWeight = todayIntakes.reduce((sum, i) => sum + (i.weight_kg || 0), 0);
   const inProcessingCount = intakes.filter((i) => i.status === "in_processing").length;
+  const rejectedCount = intakes.filter((i) => i.status === "rejected").length;
 
   const handleDelete = async () => {
     if (!intakeToDelete) return;
@@ -122,6 +127,16 @@ export default function MaterialIntake() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageDescription
+        title="Materialeingang & Wareneingang"
+        description="Erfassen Sie eingehende Materialien von Lieferanten. Jeder Eingang wird eindeutig identifiziert und einem Container zugewiesen."
+        nextSteps={[
+          "Container zuweisen → Material lagern",
+          "Verarbeitung starten → Produktion beginnen",
+          "Probe entnehmen → Qualitätskontrolle"
+        ]}
+      />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Materialeingang</h1>
@@ -133,7 +148,7 @@ export default function MaterialIntake() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="glass-card rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Heute eingegangen</p>
           <p className="text-2xl font-bold text-foreground mt-1">{todayIntakes.length}</p>
@@ -149,6 +164,10 @@ export default function MaterialIntake() {
         <div className="glass-card rounded-lg p-4">
           <p className="text-sm text-muted-foreground">In Verarbeitung</p>
           <p className="text-2xl font-bold text-info mt-1">{inProcessingCount}</p>
+        </div>
+        <div className="glass-card rounded-lg p-4">
+          <p className="text-sm text-muted-foreground">Abgelehnt</p>
+          <p className="text-2xl font-bold text-destructive mt-1">{rejectedCount}</p>
         </div>
       </div>
 
@@ -197,14 +216,33 @@ export default function MaterialIntake() {
               ) : (
                 filteredIntakes.map((intake) => {
                   const status = statusConfig[intake.status] || statusConfig.received;
-                  const materialLabel = materialTypes[intake.material_type] || intake.material_type;
+                  const isRejected = intake.status === "rejected";
+                  
+                  // Build material label from type + subtype
+                  let materialLabel = materialTypes[intake.material_type] || intake.material_type;
+                  if (intake.material_subtype) {
+                    materialLabel = `${materialTypes[intake.material_type] || intake.material_type}-${intake.material_subtype.toUpperCase()}`;
+                  }
+                  
                   const containerLabel = intake.containers?.container_id || "-";
                   return (
-                    <TableRow key={intake.id} className="cursor-pointer">
+                    <TableRow 
+                      key={intake.id} 
+                      className={cn("cursor-pointer", isRejected && "bg-destructive/5")}
+                    >
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Inbox className="h-4 w-4 text-primary" />
+                          {isRejected ? (
+                            <XCircle className="h-4 w-4 text-destructive" />
+                          ) : (
+                            <Inbox className="h-4 w-4 text-primary" />
+                          )}
                           <span className="font-mono font-medium">{intake.input_id}</span>
+                          {isRejected && (
+                            <span className="text-xs text-destructive flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                            </span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -243,7 +281,15 @@ export default function MaterialIntake() {
                               <Upload className="h-4 w-4 mr-2" />
                               Dokumente hochladen
                             </DropdownMenuItem>
-                            <DropdownMenuItem>Verarbeitung starten</DropdownMenuItem>
+                            {!isRejected && intake.status === "received" && (
+                              <DropdownMenuItem>Verarbeitung starten</DropdownMenuItem>
+                            )}
+                            {isRejected && (
+                              <DropdownMenuItem disabled className="text-destructive">
+                                <XCircle className="h-4 w-4 mr-2" />
+                                Keine Aktionen möglich
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
                               className="text-destructive"

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Search, Filter, FileText, MoreVertical, Download, Mail, Eye, ArrowDownLeft, ArrowUpRight, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageDescription } from "@/components/layout/PageDescription";
 import {
   Table,
   TableBody,
@@ -122,6 +123,16 @@ export default function DeliveryNotes() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageDescription
+        title="Lieferscheine & Warenbewegungen"
+        description="Dokumentieren Sie alle Warenein- und -ausgänge mit rechtskonformen Lieferscheinen. Jeder Schein enthält Chargen-Referenz, Gewicht und Abfallschlüssel."
+        nextSteps={[
+          "PDF herunterladen → Archivieren",
+          "Per E-Mail senden → Partner informieren",
+          "Traceability → Materialnachverfolgung"
+        ]}
+      />
+
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
