@@ -344,13 +344,13 @@ export function OutputMaterialDialog({ open, onOpenChange }: OutputMaterialDialo
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="fiberSize">Fasergröße</Label>
+                <Label htmlFor="fiberSize">Korngröße</Label>
                 <Select
                   value={formData.fiberSize}
                   onValueChange={(value) => setFormData({ ...formData, fiberSize: value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Optional" />
+                    <SelectValue placeholder="Korngröße wählen" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover">
                     <SelectItem value="0.125mm">0.125mm</SelectItem>
