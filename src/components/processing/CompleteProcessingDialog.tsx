@@ -53,8 +53,8 @@ export function CompleteProcessingDialog({
   const [createRetentionSamples, setCreateRetentionSamples] = useState(true);
   
   // Retention sample fields
-  const [selectedOrderId, setSelectedOrderId] = useState<string>("");
-  const [selectedOutputId, setSelectedOutputId] = useState<string>("");
+  const [selectedOrderId, setSelectedOrderId] = useState<string | undefined>(undefined);
+  const [selectedOutputId, setSelectedOutputId] = useState<string | undefined>(undefined);
   const [warehouseLocation, setWarehouseLocation] = useState("");
   const [labLocation, setLabLocation] = useState("");
   
@@ -96,8 +96,8 @@ export function CompleteProcessingDialog({
     if (open) {
       setSamplerName("");
       setCreateRetentionSamples(true);
-      setSelectedOrderId("");
-      setSelectedOutputId("");
+      setSelectedOrderId(undefined);
+      setSelectedOutputId(undefined);
       setWarehouseLocation("");
       setLabLocation("");
     }
@@ -371,12 +371,12 @@ export function CompleteProcessingDialog({
                 {/* Customer/Order Selection */}
                 <div className="space-y-2">
                   <Label>Lieferung zu Kunde (optional)</Label>
-                  <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
+                  <Select value={selectedOrderId} onValueChange={(v) => setSelectedOrderId(v === "__none__" ? undefined : v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Kundenauftrag wählen..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Kein Auftrag</SelectItem>
+                      <SelectItem value="__none__">Kein Auftrag</SelectItem>
                       {orders.map((order) => (
                         <SelectItem key={order.id} value={order.id}>
                           {order.order_id} - {order.customer_name}
@@ -390,12 +390,12 @@ export function CompleteProcessingDialog({
                 {/* Batch/Output Selection */}
                 <div className="space-y-2">
                   <Label>Chargennummer (optional)</Label>
-                  <Select value={selectedOutputId} onValueChange={setSelectedOutputId}>
+                  <Select value={selectedOutputId} onValueChange={(v) => setSelectedOutputId(v === "__none__" ? undefined : v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Charge wählen..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Keine Charge</SelectItem>
+                      <SelectItem value="__none__">Keine Charge</SelectItem>
                       {outputMaterials.map((output) => (
                         <SelectItem key={output.id} value={output.id}>
                           {output.batch_id} - {output.output_type} ({output.weight_kg} kg)

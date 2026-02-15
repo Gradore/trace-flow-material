@@ -369,15 +369,25 @@ export default function Sampling() {
                                 </DropdownMenuItem>
                               </>
                             )}
+                            {/* Post-approval rejection for corrections */}
+                            {sample.status === "approved" && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  className="text-destructive" 
+                                  onClick={() => handleStatusChange(sample.id, "rejected", sample.material_input_id)}
+                                >
+                                  <XCircle className="h-4 w-4 mr-2" />
+                                  Nachträglich ablehnen
+                                </DropdownMenuItem>
+                              </>
+                            )}
                             {/* Revert rejection option for rejected samples */}
                             {sample.status === "rejected" && (
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem 
                                   onSelect={(e) => {
-                                    // Radix DropdownMenu nutzt primär `onSelect`.
-                                    // Wenn wir nur `onClick` verwenden, kann der TableRow-onClick (openResults)
-                                    // trotzdem feuern und den Revert-Flow "verschlucken".
                                     e.preventDefault();
                                     e.stopPropagation();
                                     setSampleToRevert(sample);
