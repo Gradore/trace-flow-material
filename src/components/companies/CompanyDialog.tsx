@@ -169,8 +169,8 @@ export function CompanyDialog({ open, onOpenChange, company }: CompanyDialogProp
         }
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["companies"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["companies"] });
       toast.success(company ? "Firma erfolgreich aktualisiert" : "Firma erfolgreich erstellt");
       onOpenChange(false);
     },

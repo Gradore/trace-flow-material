@@ -73,9 +73,9 @@ export default function RetentionSamples() {
   const queryClient = useQueryClient();
 
   const [formData, setFormData] = useState({
-    customerId: "",
+    customerId: undefined as string | undefined,
     customerName: "",
-    batchId: "",
+    batchId: undefined as string | undefined,
     materialType: "",
     storageLocationWarehouse: "",
     storageLocationLab: "",
@@ -184,9 +184,9 @@ export default function RetentionSamples() {
       toast.success(`Rückstellmuster erstellt: ${data.warehouseId} (Lager) und ${data.labId} (Labor)`);
       setDialogOpen(false);
       setFormData({
-        customerId: "",
+        customerId: undefined,
         customerName: "",
-        batchId: "",
+        batchId: undefined,
         materialType: "",
         storageLocationWarehouse: "",
         storageLocationLab: "",

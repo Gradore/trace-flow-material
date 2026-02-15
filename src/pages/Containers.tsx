@@ -327,7 +327,7 @@ export default function Containers() {
         )}
       </div>
 
-      <ContainerDialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) refetch(); }} />
+      <ContainerDialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) queryClient.invalidateQueries({ queryKey: ["containers"] }); }} />
       
       <ContainerDetailsDialog 
         open={isDetailsDialogOpen} 
@@ -335,7 +335,7 @@ export default function Containers() {
           setIsDetailsDialogOpen(open);
           if (!open) {
             setSelectedContainer(null);
-            refetch();
+            queryClient.invalidateQueries({ queryKey: ["containers"] });
           }
         }}
         container={selectedContainer}
