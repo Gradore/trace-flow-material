@@ -293,7 +293,12 @@ export default function Companies() {
 
       <CompanyDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            queryClient.invalidateQueries({ queryKey: ["companies"] });
+          }
+        }}
         company={selectedCompany}
       />
 
