@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Filter, FileOutput, MoreVertical, QrCode, Truck, FileText, Package, Loader2, Users } from "lucide-react";
+import { Plus, Search, Filter, FileOutput, MoreVertical, QrCode, Truck, FileText, Package, Loader2, Users, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageDescription } from "@/components/layout/PageDescription";
@@ -15,13 +15,42 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { OutputMaterialDialog } from "@/components/output/OutputMaterialDialog";
 import { BatchAllocationDialog } from "@/components/processing/BatchAllocationDialog";
+import { toast } from "@/hooks/use-toast";
 
 const outputTypes: Record<string, { label: string; color: string }> = {
   glass_fiber: { label: "Recycelte Glasfasern", color: "bg-primary" },
@@ -32,15 +61,32 @@ const outputTypes: Record<string, { label: string; color: string }> = {
 
 const statusConfig: Record<string, { label: string; class: string }> = {
   in_stock: { label: "Auf Lager", class: "status-badge-success" },
-  reserved: { label: "Reserviert", class: "status-badge-warning" },
-  shipped: { label: "Versandt", class: "status-badge-info" },
+  in_production: { label: "In Produktion", class: "status-badge-warning" },
+  reserved: { label: "Reserviert", class: "status-badge-info" },
+  shipped: { label: "Ausgeliefert", class: "status-badge" },
 };
+
+const statusOptions = [
+  { value: "in_stock", label: "Auf Lager" },
+  { value: "in_production", label: "In Produktion" },
+  { value: "reserved", label: "Reserviert" },
+  { value: "shipped", label: "Ausgeliefert" },
+];
+
+const qualityGrades = ["A", "B", "C"];
 
 export default function OutputMaterials() {
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [allocationDialogOpen, setAllocationDialogOpen] = useState(false);
   const [selectedOutput, setSelectedOutput] = useState<any>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [outputToDelete, setOutputToDelete] = useState<any>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingOutput, setEditingOutput] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ weight_kg: "", destination: "", quality_grade: "", fiber_size: "", notes: "" });
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: outputs = [], isLoading } = useQuery({
     queryKey: ["output-materials"],
@@ -67,13 +113,84 @@ export default function OutputMaterials() {
       (outputTypes[o.output_type]?.label.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  // Calculate stats per type
   const typeStats = Object.entries(outputTypes).map(([key, config]) => {
     const total = outputs
       .filter((o) => o.output_type === key)
       .reduce((sum, o) => sum + Number(o.weight_kg || 0), 0);
     return { key, ...config, total };
   });
+
+  const handleStatusChange = async (outputId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from("output_materials")
+        .update({ status: newStatus })
+        .eq("id", outputId);
+      
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["output-materials"] });
+      toast({ title: "Status aktualisiert", description: `Status wurde auf "${statusConfig[newStatus]?.label || newStatus}" geändert.` });
+    } catch (error: any) {
+      toast({ title: "Fehler beim Statuswechsel", description: error.message || "Status konnte nicht geändert werden.", variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!outputToDelete) return;
+    try {
+      // Delete related batch allocations first
+      await supabase.from("batch_allocations").delete().eq("output_material_id", outputToDelete.id);
+      await supabase.from("documents").delete().eq("output_material_id", outputToDelete.id);
+      await supabase.from("delivery_notes").delete().eq("output_material_id", outputToDelete.id);
+      
+      const { error } = await supabase.from("output_materials").delete().eq("id", outputToDelete.id);
+      if (error) throw error;
+      
+      queryClient.invalidateQueries({ queryKey: ["output-materials"] });
+      toast({ title: "Ausgangsmaterial gelöscht", description: `${outputToDelete.output_id} wurde gelöscht.` });
+    } catch (error: any) {
+      toast({ title: "Fehler beim Löschen", description: error.message || "Material konnte nicht gelöscht werden.", variant: "destructive" });
+    } finally {
+      setDeleteDialogOpen(false);
+      setOutputToDelete(null);
+    }
+  };
+
+  const openEditDialog = (output: any) => {
+    setEditingOutput(output);
+    const attrs = output.attributes && typeof output.attributes === 'object' ? output.attributes : {};
+    setEditForm({
+      weight_kg: String(output.weight_kg || ""),
+      destination: output.destination || "",
+      quality_grade: output.quality_grade || "",
+      fiber_size: output.fiber_size || "",
+      notes: (attrs as any).notes || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editingOutput) return;
+    setIsEditSubmitting(true);
+    try {
+      const { error } = await supabase.from("output_materials").update({
+        weight_kg: parseFloat(editForm.weight_kg),
+        destination: editForm.destination || null,
+        quality_grade: editForm.quality_grade || null,
+        fiber_size: editForm.fiber_size || null,
+        attributes: editForm.notes ? { notes: editForm.notes } : {},
+      }).eq("id", editingOutput.id);
+
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["output-materials"] });
+      toast({ title: "Ausgangsmaterial aktualisiert" });
+      setEditDialogOpen(false);
+    } catch (error: any) {
+      toast({ title: "Fehler beim Speichern", description: error.message || "Änderungen konnten nicht gespeichert werden.", variant: "destructive" });
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -93,7 +210,6 @@ export default function OutputMaterials() {
         ]}
       />
 
-      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Ausgangsmaterial</h1>
@@ -107,7 +223,6 @@ export default function OutputMaterials() {
 
       <OutputMaterialDialog open={dialogOpen} onOpenChange={setDialogOpen} />
 
-      {/* Material Type Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {typeStats.map((stat) => (
           <div key={stat.key} className="glass-card rounded-lg p-4">
@@ -122,7 +237,6 @@ export default function OutputMaterials() {
         ))}
       </div>
 
-      {/* Filters */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -139,7 +253,6 @@ export default function OutputMaterials() {
         </Button>
       </div>
 
-      {/* Table */}
       <div className="glass-card rounded-xl overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -202,8 +315,22 @@ export default function OutputMaterials() {
                       ) : "-"}
                     </TableCell>
                     <TableCell>{output.destination || "-"}</TableCell>
-                    <TableCell>
-                      <span className={cn(status.class)}>{status.label}</span>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        value={output.status}
+                        onValueChange={(val) => handleStatusChange(output.id, val)}
+                      >
+                        <SelectTrigger className="h-7 w-[140px] text-xs border-none bg-transparent p-0">
+                          <span className={cn(status.class)}>{status.label}</span>
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover">
+                          {statusOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -213,6 +340,10 @@ export default function OutputMaterials() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="bg-popover">
+                          <DropdownMenuItem onClick={() => openEditDialog(output)}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Bearbeiten
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => {
                             setSelectedOutput(output);
                             setAllocationDialogOpen(true);
@@ -232,7 +363,17 @@ export default function OutputMaterials() {
                             <Truck className="h-4 w-4 mr-2" />
                             Lieferschein erstellen
                           </DropdownMenuItem>
-                          <DropdownMenuItem>Details anzeigen</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => {
+                              setOutputToDelete(output);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Löschen
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -249,6 +390,98 @@ export default function OutputMaterials() {
         onOpenChange={setAllocationDialogOpen} 
         outputMaterial={selectedOutput}
       />
+
+      {/* Delete Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ausgangsmaterial löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Diese Aktion kann nicht rückgängig gemacht werden. {outputToDelete?.output_id} und alle verknüpften Daten werden dauerhaft gelöscht.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-primary" />
+              Ausgangsmaterial bearbeiten
+            </DialogTitle>
+            <DialogDescription>
+              {editingOutput?.output_id} – {outputTypes[editingOutput?.output_type]?.label || editingOutput?.output_type}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Gewicht (kg)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={editForm.weight_kg}
+                  onChange={(e) => setEditForm({ ...editForm, weight_kg: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Qualitätsstufe</Label>
+                <Select value={editForm.quality_grade} onValueChange={(v) => setEditForm({ ...editForm, quality_grade: v })}>
+                  <SelectTrigger><SelectValue placeholder="Wählen" /></SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    {qualityGrades.map((g) => <SelectItem key={g} value={g}>Qualität {g}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Korngröße</Label>
+                <Select value={editForm.fiber_size} onValueChange={(v) => setEditForm({ ...editForm, fiber_size: v })}>
+                  <SelectTrigger><SelectValue placeholder="Wählen" /></SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    <SelectItem value="0.125mm">0.125mm</SelectItem>
+                    <SelectItem value="1mm">1mm</SelectItem>
+                    <SelectItem value="3mm">3mm</SelectItem>
+                    <SelectItem value="5mm">5mm</SelectItem>
+                    <SelectItem value="Überkorn">Überkorn</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Bestimmung / Kunde</Label>
+                <Input
+                  value={editForm.destination}
+                  onChange={(e) => setEditForm({ ...editForm, destination: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Bemerkungen</Label>
+              <Textarea
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Abbrechen</Button>
+            <Button onClick={handleEditSubmit} disabled={isEditSubmitting}>
+              {isEditSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

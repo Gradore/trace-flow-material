@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Plus, Search, Filter, Inbox, MoreVertical, FileText, Upload, Calendar, Building2, Loader2, Trash2, Eye, XCircle, AlertTriangle } from "lucide-react";
+import { Plus, Search, Filter, Inbox, MoreVertical, FileText, Upload, Calendar, Building2, Loader2, Trash2, Eye, XCircle, AlertTriangle, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -17,6 +19,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { IntakeDialog } from "@/components/intake/IntakeDialog";
 import { PageDescription } from "@/components/layout/PageDescription";
@@ -35,11 +52,23 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const statusConfig: Record<string, { label: string; class: string }> = {
-  received: { label: "Eingegangen", class: "status-badge-info" },
+  created: { label: "Angelegt", class: "status-badge" },
+  ordered: { label: "Bestellt", class: "status-badge-info" },
+  received: { label: "Eingetroffen", class: "status-badge-warning" },
+  quality_check: { label: "Qualitätsprüfung", class: "status-badge-info" },
+  stored: { label: "Eingelagert", class: "status-badge-success" },
   in_processing: { label: "In Verarbeitung", class: "status-badge-warning" },
   processed: { label: "Verarbeitet", class: "status-badge-success" },
   rejected: { label: "Abgelehnt", class: "status-badge-destructive" },
 };
+
+const statusOptions = [
+  { value: "created", label: "Angelegt" },
+  { value: "ordered", label: "Bestellt" },
+  { value: "received", label: "Eingetroffen" },
+  { value: "quality_check", label: "Qualitätsprüfung" },
+  { value: "stored", label: "Eingelagert" },
+];
 
 const materialTypes: Record<string, string> = {
   gfk: "GFK",
@@ -59,6 +88,12 @@ export default function MaterialIntake() {
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [intakeToDelete, setIntakeToDelete] = useState<any>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [detailIntake, setDetailIntake] = useState<any>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingIntake, setEditingIntake] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ supplier: "", weight_kg: "", waste_code: "", notes: "" });
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: intakes = [], isLoading, refetch } = useQuery({
@@ -87,28 +122,29 @@ export default function MaterialIntake() {
   const inProcessingCount = intakes.filter((i) => i.status === "in_processing").length;
   const rejectedCount = intakes.filter((i) => i.status === "rejected").length;
 
+  const handleStatusChange = async (intakeId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from("material_inputs")
+        .update({ status: newStatus })
+        .eq("id", intakeId);
+      
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["material_inputs"] });
+      toast({ title: "Status aktualisiert", description: `Status wurde auf "${statusConfig[newStatus]?.label || newStatus}" geändert.` });
+    } catch (error: any) {
+      toast({ title: "Fehler beim Statuswechsel", description: error.message || "Status konnte nicht geändert werden.", variant: "destructive" });
+    }
+  };
+
   const handleDelete = async () => {
     if (!intakeToDelete) return;
     
     try {
-      // Delete related documents first
-      await supabase
-        .from("documents")
-        .delete()
-        .eq("material_input_id", intakeToDelete.id);
+      await supabase.from("documents").delete().eq("material_input_id", intakeToDelete.id);
+      await supabase.from("samples").delete().eq("material_input_id", intakeToDelete.id);
       
-      // Delete related samples
-      await supabase
-        .from("samples")
-        .delete()
-        .eq("material_input_id", intakeToDelete.id);
-      
-      // Delete the material input
-      const { error } = await supabase
-        .from("material_inputs")
-        .delete()
-        .eq("id", intakeToDelete.id);
-      
+      const { error } = await supabase.from("material_inputs").delete().eq("id", intakeToDelete.id);
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ["material_inputs"] });
@@ -123,6 +159,47 @@ export default function MaterialIntake() {
       setDeleteDialogOpen(false);
       setIntakeToDelete(null);
     }
+  };
+
+  const openEditDialog = (intake: any) => {
+    setEditingIntake(intake);
+    setEditForm({
+      supplier: intake.supplier || "",
+      weight_kg: String(intake.weight_kg || ""),
+      waste_code: intake.waste_code || "",
+      notes: intake.notes || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editingIntake) return;
+    setIsEditSubmitting(true);
+    try {
+      const { error } = await supabase.from("material_inputs").update({
+        supplier: editForm.supplier,
+        weight_kg: parseFloat(editForm.weight_kg),
+        waste_code: editForm.waste_code || null,
+        notes: editForm.notes || null,
+      }).eq("id", editingIntake.id);
+
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["material_inputs"] });
+      toast({ title: "Materialeingang aktualisiert" });
+      setEditDialogOpen(false);
+    } catch (error: any) {
+      toast({ title: "Fehler beim Speichern", description: error.message || "Änderungen konnten nicht gespeichert werden.", variant: "destructive" });
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
+
+  const getMaterialLabel = (intake: any) => {
+    let label = materialTypes[intake.material_type] || intake.material_type;
+    if (intake.material_subtype) {
+      label = `${materialTypes[intake.material_type] || intake.material_type}-${intake.material_subtype.toUpperCase()}`;
+    }
+    return label;
   };
 
   return (
@@ -223,14 +300,9 @@ export default function MaterialIntake() {
                 filteredIntakes.map((intake) => {
                   const status = statusConfig[intake.status] || statusConfig.received;
                   const isRejected = intake.status === "rejected";
-                  
-                  // Build material label from type + subtype
-                  let materialLabel = materialTypes[intake.material_type] || intake.material_type;
-                  if (intake.material_subtype) {
-                    materialLabel = `${materialTypes[intake.material_type] || intake.material_type}-${intake.material_subtype.toUpperCase()}`;
-                  }
-                  
+                  const materialLabel = getMaterialLabel(intake);
                   const containerLabel = intake.containers?.container_id || "-";
+
                   return (
                     <TableRow 
                       key={intake.id} 
@@ -268,8 +340,22 @@ export default function MaterialIntake() {
                       <TableCell>
                         <span className="font-mono text-sm">{containerLabel}</span>
                       </TableCell>
-                      <TableCell>
-                        <span className={cn(status.class)}>{status.label}</span>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Select
+                          value={intake.status}
+                          onValueChange={(val) => handleStatusChange(intake.id, val)}
+                        >
+                          <SelectTrigger className="h-7 w-[150px] text-xs border-none bg-transparent p-0">
+                            <span className={cn(status.class)}>{status.label}</span>
+                          </SelectTrigger>
+                          <SelectContent className="bg-popover">
+                            {statusOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -279,9 +365,16 @@ export default function MaterialIntake() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="bg-popover">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              setDetailIntake(intake);
+                              setDetailDialogOpen(true);
+                            }}>
                               <Eye className="h-4 w-4 mr-2" />
                               Details anzeigen
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditDialog(intake)}>
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Bearbeiten
                             </DropdownMenuItem>
                             <DropdownMenuItem>
                               <Upload className="h-4 w-4 mr-2" />
@@ -289,12 +382,6 @@ export default function MaterialIntake() {
                             </DropdownMenuItem>
                             {!isRejected && intake.status === "received" && (
                               <DropdownMenuItem>Verarbeitung starten</DropdownMenuItem>
-                            )}
-                            {isRejected && (
-                              <DropdownMenuItem disabled className="text-destructive">
-                                <XCircle className="h-4 w-4 mr-2" />
-                                Keine Aktionen möglich
-                              </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
@@ -321,6 +408,7 @@ export default function MaterialIntake() {
 
       <IntakeDialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) refetch(); }} />
 
+      {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -337,6 +425,85 @@ export default function MaterialIntake() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Detail Dialog */}
+      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Inbox className="h-5 w-5 text-primary" />
+              Materialeingang Details
+            </DialogTitle>
+            <DialogDescription>{detailIntake?.input_id}</DialogDescription>
+          </DialogHeader>
+          {detailIntake && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div><p className="text-xs text-muted-foreground">Lieferant</p><p className="font-medium">{detailIntake.supplier}</p></div>
+                <div><p className="text-xs text-muted-foreground">Material</p><p className="font-medium">{getMaterialLabel(detailIntake)}</p></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><p className="text-xs text-muted-foreground">Gewicht</p><p className="font-medium">{detailIntake.weight_kg?.toLocaleString("de-DE")} kg</p></div>
+                <div><p className="text-xs text-muted-foreground">Eingangsdatum</p><p className="font-medium">{new Date(detailIntake.received_at).toLocaleDateString("de-DE")}</p></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><p className="text-xs text-muted-foreground">Container</p><p className="font-medium">{detailIntake.containers?.container_id || "-"}</p></div>
+                <div><p className="text-xs text-muted-foreground">Abfallschlüssel</p><p className="font-medium">{detailIntake.waste_code || "-"}</p></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><p className="text-xs text-muted-foreground">Status</p><p className="font-medium"><span className={cn(statusConfig[detailIntake.status]?.class)}>{statusConfig[detailIntake.status]?.label || detailIntake.status}</span></p></div>
+                <div><p className="text-xs text-muted-foreground">Erstellt am</p><p className="font-medium">{new Date(detailIntake.created_at).toLocaleString("de-DE")}</p></div>
+              </div>
+              {detailIntake.notes && (
+                <div><p className="text-xs text-muted-foreground">Notizen</p><p className="text-sm">{detailIntake.notes}</p></div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>Schließen</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-primary" />
+              Materialeingang bearbeiten
+            </DialogTitle>
+            <DialogDescription>{editingIntake?.input_id}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Lieferant</Label>
+              <Input value={editForm.supplier} onChange={(e) => setEditForm({ ...editForm, supplier: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Gewicht (kg)</Label>
+                <Input type="number" step="0.1" value={editForm.weight_kg} onChange={(e) => setEditForm({ ...editForm, weight_kg: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Abfallschlüssel</Label>
+                <Input value={editForm.waste_code} onChange={(e) => setEditForm({ ...editForm, waste_code: e.target.value })} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Notizen</Label>
+              <Textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Abbrechen</Button>
+            <Button onClick={handleEditSubmit} disabled={isEditSubmitting}>
+              {isEditSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
