@@ -53,8 +53,8 @@ export function CompleteProcessingDialog({
   const [createRetentionSamples, setCreateRetentionSamples] = useState(true);
   
   // Retention sample fields
-  const [selectedOrderId, setSelectedOrderId] = useState<string | undefined>(undefined);
-  const [selectedOutputId, setSelectedOutputId] = useState<string | undefined>(undefined);
+  const [selectedOrderId, setSelectedOrderId] = useState("__none__");
+  const [selectedOutputId, setSelectedOutputId] = useState("__none__");
   const [warehouseLocation, setWarehouseLocation] = useState("");
   const [labLocation, setLabLocation] = useState("");
   
@@ -96,8 +96,8 @@ export function CompleteProcessingDialog({
     if (open) {
       setSamplerName("");
       setCreateRetentionSamples(true);
-      setSelectedOrderId(undefined);
-      setSelectedOutputId(undefined);
+      setSelectedOrderId("__none__");
+      setSelectedOutputId("__none__");
       setWarehouseLocation("");
       setLabLocation("");
     }
@@ -185,8 +185,10 @@ export function CompleteProcessingDialog({
       }
 
       // Get customer and batch info for notes
-      const selectedOrder = orders.find(o => o.id === selectedOrderId);
-      const selectedOutput = outputMaterials.find(o => o.id === selectedOutputId);
+      const actualOrderId = selectedOrderId === "__none__" ? null : selectedOrderId;
+      const actualOutputId = selectedOutputId === "__none__" ? null : selectedOutputId;
+      const selectedOrder = orders.find(o => o.id === actualOrderId);
+      const selectedOutput = outputMaterials.find(o => o.id === actualOutputId);
       const dateStr = format(new Date(), "dd.MM.yyyy", { locale: de });
 
       // 4. Create TWO retention samples if requested
@@ -212,8 +214,8 @@ export function CompleteProcessingDialog({
           is_retention_sample: true,
           retention_purpose: "warehouse",
           storage_location: warehouseLocation.trim(),
-          customer_order_id: selectedOrderId || null,
-          output_material_id: selectedOutputId || null,
+          customer_order_id: actualOrderId,
+          output_material_id: actualOutputId,
           notes: warehouseNotes,
         });
 
@@ -238,8 +240,8 @@ export function CompleteProcessingDialog({
           is_retention_sample: true,
           retention_purpose: "lab_complaint",
           storage_location: labLocation.trim(),
-          customer_order_id: selectedOrderId || null,
-          output_material_id: selectedOutputId || null,
+          customer_order_id: actualOrderId,
+          output_material_id: actualOutputId,
           notes: labNotes,
         });
       }
@@ -371,7 +373,7 @@ export function CompleteProcessingDialog({
                 {/* Customer/Order Selection */}
                 <div className="space-y-2">
                   <Label>Lieferung zu Kunde (optional)</Label>
-                  <Select value={selectedOrderId} onValueChange={(v) => setSelectedOrderId(v === "__none__" ? undefined : v)}>
+                  <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Kundenauftrag wählen..." />
                     </SelectTrigger>
@@ -390,7 +392,7 @@ export function CompleteProcessingDialog({
                 {/* Batch/Output Selection */}
                 <div className="space-y-2">
                   <Label>Chargennummer (optional)</Label>
-                  <Select value={selectedOutputId} onValueChange={(v) => setSelectedOutputId(v === "__none__" ? undefined : v)}>
+                  <Select value={selectedOutputId} onValueChange={setSelectedOutputId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Charge wählen..." />
                     </SelectTrigger>
