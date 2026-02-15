@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 import { ContainerDialog } from "@/components/containers/ContainerDialog";
 import { ContainerDetailsDialog } from "@/components/containers/ContainerDetailsDialog";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { generateLabelPDF, downloadPDF } from "@/lib/pdf";
 import { buildContainerQRUrl } from "@/lib/qrcode";
 import { toast } from "@/hooks/use-toast";
@@ -59,6 +59,7 @@ export default function Containers() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [containerToDelete, setContainerToDelete] = useState<typeof containers[0] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: containers = [], isLoading, refetch } = useQuery({
     queryKey: ["containers"],
@@ -161,8 +162,8 @@ export default function Containers() {
           throw error;
         }
       } else {
+        await queryClient.invalidateQueries({ queryKey: ["containers"] });
         toast({ title: "Container gelöscht", description: `${containerToDelete.container_id} wurde erfolgreich entfernt.` });
-        refetch();
       }
     } catch (error: any) {
       console.error("Delete error:", error);
@@ -353,7 +354,10 @@ export default function Containers() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Abbrechen</AlertDialogCancel>
             <AlertDialogAction 
-              onClick={handleDeleteConfirm}
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteConfirm();
+              }}
               disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
