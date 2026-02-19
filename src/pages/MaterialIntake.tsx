@@ -141,9 +141,11 @@ export default function MaterialIntake() {
     if (!intakeToDelete) return;
     
     try {
-      await supabase.from("documents").delete().eq("material_input_id", intakeToDelete.id);
-      await supabase.from("samples").delete().eq("material_input_id", intakeToDelete.id);
-      
+      const { error: docError } = await supabase.from("documents").delete().eq("material_input_id", intakeToDelete.id);
+      if (docError) throw docError;
+      const { error: sampleError } = await supabase.from("samples").delete().eq("material_input_id", intakeToDelete.id);
+      if (sampleError) throw sampleError;
+
       const { error } = await supabase.from("material_inputs").delete().eq("id", intakeToDelete.id);
       if (error) throw error;
 
@@ -376,12 +378,12 @@ export default function MaterialIntake() {
                               <Pencil className="h-4 w-4 mr-2" />
                               Bearbeiten
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem disabled>
                               <Upload className="h-4 w-4 mr-2" />
                               Dokumente hochladen
                             </DropdownMenuItem>
                             {!isRejected && intake.status === "received" && (
-                              <DropdownMenuItem>Verarbeitung starten</DropdownMenuItem>
+                              <DropdownMenuItem disabled>Verarbeitung starten</DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 

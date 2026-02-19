@@ -70,6 +70,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
     if (open) {
       fetchData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, formData.type]);
 
   const fetchData = async () => {

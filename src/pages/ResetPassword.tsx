@@ -59,6 +59,7 @@ export default function ResetPassword() {
     };
 
     checkSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleResetPassword = async (e: React.FormEvent) => {

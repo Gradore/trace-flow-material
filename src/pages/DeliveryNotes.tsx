@@ -92,12 +92,29 @@ export default function DeliveryNotes() {
     setDetailsOpen(true);
   };
 
+  const handleDownloadPDF = (note: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!note.pdf_url) {
+      toast({ title: "Kein PDF verfügbar", description: "Für diesen Lieferschein wurde kein PDF generiert.", variant: "destructive" });
+      return;
+    }
+    const { data } = supabase.storage.from("documents").getPublicUrl(note.pdf_url);
+    if (data?.publicUrl) {
+      window.open(data.publicUrl, "_blank");
+    } else {
+      toast({ title: "Fehler", description: "PDF konnte nicht geöffnet werden.", variant: "destructive" });
+    }
+  };
+
   const handleDelete = async () => {
     if (!noteToDelete) return;
-    
+
     try {
       if (noteToDelete.pdf_url) {
-        await supabase.storage.from("documents").remove([noteToDelete.pdf_url]);
+        const { error: storageError } = await supabase.storage.from("documents").remove([noteToDelete.pdf_url]);
+        if (storageError) {
+          console.error("PDF konnte nicht aus Storage gelöscht werden:", storageError);
+        }
       }
       
       const { error } = await supabase
@@ -255,11 +272,11 @@ export default function DeliveryNotes() {
                             <Eye className="h-4 w-4 mr-2" />
                             Anzeigen
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => handleDownloadPDF(note, e)}>
                             <Download className="h-4 w-4 mr-2" />
                             PDF herunterladen
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem disabled>
                             <Mail className="h-4 w-4 mr-2" />
                             Per E-Mail senden
                           </DropdownMenuItem>

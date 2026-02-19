@@ -110,15 +110,6 @@ export default function Containers() {
     
     setIsDeleting(true);
     try {
-      // Check if container is used in active processing
-      const { data: processingSteps, error: checkError } = await supabase
-        .from("processing_steps")
-        .select("id, processing_id")
-        .in("status", ["pending", "in_progress"])
-        .limit(1);
-      
-      if (checkError) throw checkError;
-
       // Check if container is assigned to materials
       const { data: materialInputs, error: materialError } = await supabase
         .from("material_inputs")
