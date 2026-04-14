@@ -14,7 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const loginSchema = z.object({
-  email: z.string().email("Ungültige E-Mail-Adresse"),
+  username: z.string().min(1, "Benutzername ist erforderlich"),
   password: z.string().min(6, "Passwort muss mindestens 6 Zeichen haben"),
 });
 
