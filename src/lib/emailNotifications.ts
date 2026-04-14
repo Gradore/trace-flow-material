@@ -79,16 +79,16 @@ export const emailTemplates = {
 
   registrationApproved: (userName: string, role: string, recipientEmail: string, baseUrl: string) => ({
     to: recipientEmail,
-    subject: 'Registrierung genehmigt - RecyTrack',
-    title: 'Willkommen bei RecyTrack!',
-    message: `Hallo ${userName}, Ihre Registrierung als "${role}" wurde genehmigt. Sie können sich jetzt mit Ihren Zugangsdaten anmelden und RecyTrack nutzen.`,
+    subject: 'Registrierung genehmigt - RekuFLOW',
+    title: 'Willkommen bei RekuFLOW!',
+    message: `Hallo ${userName}, Ihre Registrierung als "${role}" wurde genehmigt. Sie können sich jetzt mit Ihren Zugangsdaten anmelden und RekuFLOW nutzen.`,
     link: `${baseUrl}/auth`,
     type: 'registration_approved' as NotificationType,
   }),
 
   registrationRejected: (userName: string, reason: string, recipientEmail: string) => ({
     to: recipientEmail,
-    subject: 'Registrierung abgelehnt - RecyTrack',
+    subject: 'Registrierung abgelehnt - RekuFLOW',
     title: 'Registrierung nicht genehmigt',
     message: `Hallo ${userName}, Ihre Registrierung wurde leider nicht genehmigt. Grund: ${reason}. Bei Fragen wenden Sie sich bitte an den Administrator.`,
     type: 'registration_rejected' as NotificationType,

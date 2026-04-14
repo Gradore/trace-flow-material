@@ -174,7 +174,7 @@ export async function generateDeliveryNotePDF(data: DeliveryNoteData, qrUrl: str
   // Footer
   pdf.setFontSize(8);
   pdf.setTextColor(150);
-  pdf.text('Erstellt mit RecyTrack - Materialverfolgung für die Recyclingbranche', 15, 280);
+  pdf.text('Erstellt mit RekuFLOW - Materialverfolgung für die Recyclingbranche', 15, 280);
   pdf.text(`Erstellt am: ${new Date().toLocaleString('de-DE')}`, 15, 285);
 
   return pdf.output('blob');

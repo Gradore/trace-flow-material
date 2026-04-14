@@ -176,7 +176,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Footer */}
         <footer className="border-t border-border bg-muted/30 py-4 px-3 md:px-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
-            <span>© {new Date().getFullYear()} RecyTrack</span>
+            <span>© {new Date().getFullYear()} RekuFLOW</span>
             <nav className="flex items-center gap-4">
               <a href="/impressum" className="hover:text-foreground transition-colors">Impressum</a>
               <a href="/datenschutz" className="hover:text-foreground transition-colors">Datenschutz</a>
