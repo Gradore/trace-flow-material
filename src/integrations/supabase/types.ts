@@ -1685,32 +1685,35 @@ export type Database = {
         Row: {
           avatar_url: string | null
           created_at: string
-          email: string
+          email: string | null
           id: string
           name: string
           role: string
           updated_at: string
           user_id: string
+          username: string
         }
         Insert: {
           avatar_url?: string | null
           created_at?: string
-          email: string
+          email?: string | null
           id?: string
           name: string
           role?: string
           updated_at?: string
           user_id: string
+          username: string
         }
         Update: {
           avatar_url?: string | null
           created_at?: string
-          email?: string
+          email?: string | null
           id?: string
           name?: string
           role?: string
           updated_at?: string
           user_id?: string
+          username?: string
         }
         Relationships: []
       }
@@ -2058,6 +2061,7 @@ export type Database = {
         Args: { role_name: string }
         Returns: Json
       }
+      get_email_by_username: { Args: { _username: string }; Returns: string }
       get_user_company_id: { Args: { _user_id: string }; Returns: string }
       get_user_role: {
         Args: { _user_id: string }
