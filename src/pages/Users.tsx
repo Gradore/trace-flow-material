@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Search, Shield, Mail, UserCheck, Loader2, HardHat } from "lucide-react";
+import { Plus, Search, Shield, Mail, UserCheck, Loader2, HardHat, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,6 +10,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,6 +27,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { InviteUserDialog } from "@/components/users/InviteUserDialog";
 import { UserPermissionsDialog } from "@/components/users/UserPermissionsDialog";
+import { toast } from "@/hooks/use-toast";
 
 const roleConfig: Record<string, { label: string; class: string; icon: typeof Shield }> = {
   admin: { label: "Administrator", class: "bg-destructive/10 text-destructive border-destructive/20", icon: Shield },
@@ -34,6 +45,9 @@ export default function Users() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<{ user_id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [selectedUser, setSelectedUser] = useState<{
     id: string;
     user_id: string;
@@ -81,6 +95,36 @@ export default function Users() {
     if (!isAdmin) return;
     setSelectedUser(user);
     setPermissionsDialogOpen(true);
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, user: { user_id: string; name: string }) => {
+    e.stopPropagation();
+    setDeletingUser(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingUser) return;
+    setIsDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await supabase.functions.invoke("admin-delete-user", {
+        body: { user_id: deletingUser.user_id },
+      });
+
+      if (res.error || res.data?.error) {
+        throw new Error(res.data?.error || res.error?.message || "Unbekannter Fehler");
+      }
+
+      toast({ title: "Benutzer gelöscht", description: `${deletingUser.name} wurde erfolgreich gelöscht.` });
+      refetch();
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err.message, variant: "destructive" });
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+      setDeletingUser(null);
+    }
   };
 
   const roleCounts = users.reduce((acc, u) => {
@@ -143,16 +187,18 @@ export default function Users() {
                 <TableHead>E-Mail</TableHead>
                 <TableHead>Rolle</TableHead>
                 <TableHead>Erstellt am</TableHead>
+                {isAdmin && <TableHead className="w-[60px]"></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">Keine Benutzer vorhanden</TableCell>
+                  <TableCell colSpan={isAdmin ? 5 : 4} className="text-center text-muted-foreground py-8">Keine Benutzer vorhanden</TableCell>
                 </TableRow>
               ) : (
                 filteredUsers.map((user) => {
                   const role = roleConfig[user.role] || roleConfig.customer;
+                  const isSelf = user.user_id === currentUser?.id;
                   return (
                     <TableRow 
                       key={user.id} 
@@ -177,6 +223,20 @@ export default function Users() {
                         <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border", role.class)}>{role.label}</span>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{new Date(user.created_at).toLocaleDateString("de-DE")}</TableCell>
+                      {isAdmin && (
+                        <TableCell>
+                          {!isSelf && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={(e) => handleDeleteClick(e, { user_id: user.user_id, name: user.name })}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })
@@ -188,6 +248,28 @@ export default function Users() {
 
       <InviteUserDialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen} onSuccess={() => refetch()} />
       <UserPermissionsDialog open={permissionsDialogOpen} onOpenChange={setPermissionsDialogOpen} user={selectedUser} onSuccess={() => refetch()} />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Benutzer löschen</AlertDialogTitle>
+            <AlertDialogDescription>
+              Möchten Sie <strong>{deletingUser?.name}</strong> wirklich unwiderruflich löschen? Alle zugehörigen Daten (Profil, Rollen, Berechtigungen) werden entfernt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Endgültig löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
