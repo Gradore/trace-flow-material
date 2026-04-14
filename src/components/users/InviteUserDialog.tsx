@@ -51,6 +51,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
+    username: "",
     email: "",
     name: "",
     password: "",
@@ -70,10 +71,19 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.email || !formData.name || !formData.password) {
+    if (!formData.username || !formData.name || !formData.password) {
       toast({
         title: "Fehler",
-        description: "Bitte alle Felder ausfüllen.",
+        description: "Bitte Benutzername, Name und Passwort ausfüllen.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!/^[a-z0-9._-]+$/i.test(formData.username)) {
+      toast({
+        title: "Fehler",
+        description: "Benutzername darf nur Buchstaben, Zahlen, Punkte, Unterstriche und Bindestriche enthalten.",
         variant: "destructive",
       });
       return;
@@ -88,12 +98,24 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
       return;
     }
 
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast({
+        title: "Fehler",
+        description: "Ungültige E-Mail-Adresse.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
+      // Use real email if provided, otherwise generate internal email from username
+      const authEmail = formData.email || `${formData.username.toLowerCase()}@rekuflow.internal`;
+
       // Create user via Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
+        email: authEmail,
         password: formData.password,
         options: {
           data: {
@@ -110,12 +132,18 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           .from("profiles")
           .insert({
             user_id: authData.user.id,
-            email: formData.email,
+            email: formData.email || null,
             name: formData.name,
+            username: formData.username.toLowerCase(),
             role: formData.role,
           });
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          if (profileError.message.includes("idx_profiles_username")) {
+            throw new Error("Benutzername ist bereits vergeben.");
+          }
+          throw profileError;
+        }
 
         // Create user role
         const { error: roleError } = await supabase
@@ -129,10 +157,10 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
 
         toast({
           title: "Benutzer angelegt",
-          description: `${formData.name} (${formData.email}) wurde erfolgreich angelegt.`,
+          description: `${formData.name} (@${formData.username}) wurde erfolgreich angelegt.`,
         });
 
-        setFormData({ email: "", name: "", password: "", role: "customer" });
+        setFormData({ username: "", email: "", name: "", password: "", role: "customer" });
         setShowPassword(false);
         onSuccess();
         onOpenChange(false);
@@ -155,7 +183,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         <DialogHeader>
           <DialogTitle>Neuen Benutzer anlegen</DialogTitle>
           <DialogDescription>
-            Erstellen Sie einen neuen Benutzer mit E-Mail, Passwort und Rolle.
+            Erstellen Sie einen neuen Benutzer mit Benutzername, Passwort und Rolle. E-Mail ist optional.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -170,7 +198,17 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="email">E-Mail *</Label>
+              <Label htmlFor="username">Benutzername *</Label>
+              <Input
+                id="username"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value.replace(/\s/g, '') })}
+                placeholder="max.mustermann"
+              />
+              <p className="text-xs text-muted-foreground">Wird für die Anmeldung verwendet</p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="email">E-Mail (optional)</Label>
               <Input
                 id="email"
                 type="email"

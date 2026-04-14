@@ -14,7 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const loginSchema = z.object({
-  email: z.string().email("Ungültige E-Mail-Adresse"),
+  username: z.string().min(1, "Benutzername ist erforderlich"),
   password: z.string().min(6, "Passwort muss mindestens 6 Zeichen haben"),
 });
 
@@ -40,7 +40,7 @@ const roleLabels: Record<RequestedRole, string> = {
 
 export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
-  const [loginEmail, setLoginEmail] = useState("");
+  const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
@@ -115,7 +115,7 @@ export default function Auth() {
     e.preventDefault();
     setErrors({});
     
-    const validation = loginSchema.safeParse({ email: loginEmail, password: loginPassword });
+    const validation = loginSchema.safeParse({ username: loginUsername, password: loginPassword });
     if (!validation.success) {
       const fieldErrors: Record<string, string> = {};
       validation.error.errors.forEach((err) => {
@@ -128,21 +128,42 @@ export default function Auth() {
     }
 
     setIsLoading(true);
-    const { error } = await signIn(loginEmail, loginPassword);
-    setIsLoading(false);
 
-    if (error) {
+    try {
+      // Look up email by username
+      const { data: email, error: lookupError } = await supabase.rpc('get_email_by_username', { _username: loginUsername.toLowerCase() });
+      
+      if (lookupError || !email) {
+        toast({
+          variant: "destructive",
+          title: "Anmeldung fehlgeschlagen",
+          description: "Benutzername oder Passwort ungültig",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const { error } = await signIn(email, loginPassword);
+      setIsLoading(false);
+
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Anmeldung fehlgeschlagen",
+          description: "Benutzername oder Passwort ungültig",
+        });
+        return;
+      }
+
+      navigate("/");
+    } catch {
+      setIsLoading(false);
       toast({
         variant: "destructive",
         title: "Anmeldung fehlgeschlagen",
-        description: error.message === "Invalid login credentials" 
-          ? "Ungültige E-Mail oder Passwort" 
-          : error.message,
+        description: "Ein unerwarteter Fehler ist aufgetreten",
       });
-      return;
     }
-
-    navigate("/");
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -368,17 +389,17 @@ export default function Auth() {
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="login-email">E-Mail</Label>
+                  <Label htmlFor="login-username">Benutzername</Label>
                   <Input
-                    id="login-email"
-                    type="email"
-                    placeholder="name@firma.de"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
+                    id="login-username"
+                    type="text"
+                    placeholder="benutzername"
+                    value={loginUsername}
+                    onChange={(e) => setLoginUsername(e.target.value)}
                     disabled={isLoading}
                   />
-                  {errors.login_email && (
-                    <p className="text-sm text-destructive">{errors.login_email}</p>
+                  {errors.login_username && (
+                    <p className="text-sm text-destructive">{errors.login_username}</p>
                   )}
                 </div>
                 <div className="space-y-2">

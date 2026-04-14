@@ -72,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           user_id: data.user.id,
           email,
           name,
+          username: email.split('@')[0].toLowerCase().replace(/[^a-z0-9.]/g, ''),
         });
       
       if (profileError) {
