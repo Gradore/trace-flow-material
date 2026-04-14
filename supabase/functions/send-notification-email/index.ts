@@ -43,7 +43,7 @@ const getEmailTemplate = (title: string, message: string, link?: string, type?: 
             <div style="display: inline-block; background-color: #16a34a; padding: 12px; border-radius: 8px;">
               <span style="color: white; font-size: 24px;">♻️</span>
             </div>
-            <h1 style="margin: 16px 0 0 0; color: #18181b; font-size: 24px;">RecyTrack</h1>
+            <h1 style="margin: 16px 0 0 0; color: #18181b; font-size: 24px;">RekuFLOW</h1>
           </div>
           
           <h2 style="color: #18181b; font-size: 20px; margin-bottom: 16px;">${title}</h2>
@@ -53,7 +53,7 @@ const getEmailTemplate = (title: string, message: string, link?: string, type?: 
           
           <hr style="border: none; border-top: 1px solid #e4e4e7; margin: 32px 0 16px 0;">
           <p style="color: #a1a1aa; font-size: 12px; text-align: center;">
-            Diese E-Mail wurde automatisch von RecyTrack gesendet.
+            Diese E-Mail wurde automatisch von RekuFLOW gesendet.
           </p>
         </div>
       </div>
@@ -116,7 +116,7 @@ serve(async (req: Request): Promise<Response> => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "RecyTrack <onboarding@resend.dev>",
+        from: "RekuFLOW <onboarding@resend.dev>",
         to: [to],
         subject: subject,
         html: html,

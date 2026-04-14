@@ -20,7 +20,7 @@ export default function AGB() {
           <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
             <Recycle className="h-6 w-6 text-primary" />
           </div>
-          <span className="text-2xl font-bold">RecyTrack</span>
+          <span className="text-2xl font-bold">RekuFLOW</span>
         </div>
 
         <Card>
@@ -32,7 +32,7 @@ export default function AGB() {
               <h2 className="text-lg font-semibold">§ 1 Geltungsbereich</h2>
               <p className="text-muted-foreground">
                 (1) Diese Allgemeinen Geschäftsbedingungen gelten für die Nutzung der Software-as-a-Service 
-                (SaaS) Lösung "RecyTrack" (nachfolgend "Dienst") der [Firmenname] (nachfolgend "Anbieter").
+                (SaaS) Lösung "RekuFLOW" (nachfolgend "Dienst") der [Firmenname] (nachfolgend "Anbieter").
               </p>
               <p className="text-muted-foreground">
                 (2) Abweichende Bedingungen des Kunden werden nicht anerkannt, es sei denn, der Anbieter 
@@ -43,7 +43,7 @@ export default function AGB() {
             <section>
               <h2 className="text-lg font-semibold">§ 2 Vertragsgegenstand</h2>
               <p className="text-muted-foreground">
-                (1) Der Anbieter stellt dem Kunden die cloudbasierte Anwendung RecyTrack zur Verfügung. 
+                (1) Der Anbieter stellt dem Kunden die cloudbasierte Anwendung RekuFLOW zur Verfügung. 
                 Die Anwendung dient der Verwaltung und Nachverfolgung von Materialflüssen in der 
                 Recycling-Industrie.
               </p>
