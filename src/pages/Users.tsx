@@ -210,7 +210,10 @@ export default function Users() {
                           <Avatar className="h-9 w-9">
                             <AvatarFallback className="bg-primary/10 text-primary text-sm">{getInitials(user.name)}</AvatarFallback>
                           </Avatar>
-                          <span className="font-medium">{user.name}</span>
+                          <div>
+                            <span className="font-medium">{user.name}</span>
+                            <p className="text-xs text-muted-foreground">@{user.username}</p>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
