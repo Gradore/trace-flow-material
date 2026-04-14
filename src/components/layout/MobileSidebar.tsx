@@ -33,7 +33,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import laurekuLogo from "@/assets/laureku-logo.png";
+import rekuflowLogo from "@/assets/rekuflow-logo.png";
 
 interface NavItem {
   icon: typeof LayoutDashboard;
@@ -98,13 +98,12 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
         <SheetHeader className="p-4 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
             <img 
-              src={laurekuLogo} 
-              alt="LAUREKU Logo" 
+              src={rekuflowLogo} 
+              alt="RekuFLOW Logo" 
               className="h-10 w-10 object-contain"
             />
             <div className="flex flex-col">
-              <SheetTitle className="text-sidebar-foreground text-lg font-bold">LAUREKU</SheetTitle>
-              <span className="text-xs text-sidebar-foreground/60">RecyTrack</span>
+              <SheetTitle className="text-sidebar-foreground text-lg font-bold">RekuFLOW</SheetTitle>
             </div>
           </div>
         </SheetHeader>

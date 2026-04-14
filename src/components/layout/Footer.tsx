@@ -10,7 +10,7 @@ export function Footer() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Recycle className="h-4 w-4 text-primary" />
-            <span>© {currentYear} RecyTrack. Alle Rechte vorbehalten.</span>
+            <span>© {currentYear} RekuFLOW. Alle Rechte vorbehalten.</span>
           </div>
           
           <nav className="flex flex-wrap items-center justify-center gap-4 md:gap-6 text-sm">

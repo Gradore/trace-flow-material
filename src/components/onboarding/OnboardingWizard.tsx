@@ -78,7 +78,7 @@ export function OnboardingWizard({ open, onClose }: OnboardingWizardProps) {
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-xl">Willkommen bei RecyTrack!</DialogTitle>
+            <DialogTitle className="text-xl">Willkommen bei RekuFLOW!</DialogTitle>
             <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
               <X className="h-4 w-4" />
             </Button>
