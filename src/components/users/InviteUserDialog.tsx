@@ -145,15 +145,8 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           throw profileError;
         }
 
-        // Create user role
-        const { error: roleError } = await supabase
-          .from("user_roles")
-          .insert({
-            user_id: authData.user.id,
-            role: formData.role as "admin" | "betriebsleiter" | "intake" | "production" | "qa" | "customer" | "supplier" | "logistics",
-          });
-
-        if (roleError) throw roleError;
+        // Role is automatically created by the database trigger on profile insert
+        // using the role value from the profile record
 
         toast({
           title: "Benutzer angelegt",
