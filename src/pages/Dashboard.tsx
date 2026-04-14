@@ -19,7 +19,7 @@ export default function Dashboard() {
   const monthStart = startOfMonth(today);
   const monthEnd = endOfMonth(today);
 
-  // Check if admin and first login
+  // Check if admin and first login - skip for users of existing companies
   useEffect(() => {
     const checkOnboarding = async () => {
       if (!user) return;
@@ -33,9 +33,20 @@ export default function Dashboard() {
         _role: "admin",
       });
 
-      if (isAdmin) {
-        setShowOnboarding(true);
+      if (!isAdmin) return;
+
+      // Check if companies already exist - if so, skip onboarding
+      const { count } = await supabase
+        .from("companies")
+        .select("id", { count: "exact", head: true });
+
+      if (count && count > 0) {
+        // Company already exists, mark onboarding as done
+        localStorage.setItem("onboarding_completed", "true");
+        return;
       }
+
+      setShowOnboarding(true);
     };
 
     checkOnboarding();
