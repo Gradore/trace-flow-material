@@ -115,7 +115,7 @@ export default function Auth() {
     e.preventDefault();
     setErrors({});
     
-    const validation = loginSchema.safeParse({ email: loginEmail, password: loginPassword });
+    const validation = loginSchema.safeParse({ username: loginUsername, password: loginPassword });
     if (!validation.success) {
       const fieldErrors: Record<string, string> = {};
       validation.error.errors.forEach((err) => {
@@ -128,21 +128,42 @@ export default function Auth() {
     }
 
     setIsLoading(true);
-    const { error } = await signIn(loginEmail, loginPassword);
-    setIsLoading(false);
 
-    if (error) {
+    try {
+      // Look up email by username
+      const { data: email, error: lookupError } = await supabase.rpc('get_email_by_username', { _username: loginUsername.toLowerCase() });
+      
+      if (lookupError || !email) {
+        toast({
+          variant: "destructive",
+          title: "Anmeldung fehlgeschlagen",
+          description: "Benutzername oder Passwort ungültig",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const { error } = await signIn(email, loginPassword);
+      setIsLoading(false);
+
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Anmeldung fehlgeschlagen",
+          description: "Benutzername oder Passwort ungültig",
+        });
+        return;
+      }
+
+      navigate("/");
+    } catch {
+      setIsLoading(false);
       toast({
         variant: "destructive",
         title: "Anmeldung fehlgeschlagen",
-        description: error.message === "Invalid login credentials" 
-          ? "Ungültige E-Mail oder Passwort" 
-          : error.message,
+        description: "Ein unerwarteter Fehler ist aufgetreten",
       });
-      return;
     }
-
-    navigate("/");
   };
 
   const handleSignup = async (e: React.FormEvent) => {
