@@ -88,9 +88,9 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
 }
 
 /**
- * Parse a RecyTrack QR code URL to extract the type and ID
+ * Parse a RekuFLOW QR code URL to extract the type and ID
  */
-export function parseRecyTrackQRCode(url: string): { type: string; id: string } | null {
+export function parseRekuFLOWQRCode(url: string): { type: string; id: string } | null {
   try {
     const urlObj = new URL(url);
     const pathParts = urlObj.pathname.split('/').filter(Boolean);

@@ -255,7 +255,7 @@ export default function Auth() {
               <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
                 <Recycle className="h-6 w-6 text-primary" />
               </div>
-              <span className="text-2xl font-bold">RecyTrack</span>
+              <span className="text-2xl font-bold">RekuFLOW</span>
             </div>
             <CardTitle>Registrierung erfolgreich</CardTitle>
             <CardDescription>
@@ -300,7 +300,7 @@ export default function Auth() {
               <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
                 <Recycle className="h-6 w-6 text-primary" />
               </div>
-              <span className="text-2xl font-bold">RecyTrack</span>
+              <span className="text-2xl font-bold">RekuFLOW</span>
             </div>
             <CardTitle>Passwort zurücksetzen</CardTitle>
             <CardDescription>
@@ -372,7 +372,7 @@ export default function Auth() {
             <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
               <Recycle className="h-6 w-6 text-primary" />
             </div>
-            <span className="text-2xl font-bold">RecyTrack</span>
+            <span className="text-2xl font-bold">RekuFLOW</span>
           </div>
           <CardTitle>Willkommen</CardTitle>
           <CardDescription>

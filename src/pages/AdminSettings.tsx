@@ -49,8 +49,8 @@ interface AdminSettingsConfig {
 }
 
 const defaultSettings: AdminSettingsConfig = {
-  companyName: "LAUREKU RecyTrack",
-  companyEmail: "info@laureku.de",
+  companyName: "RekuFLOW RekuFLOW",
+  companyEmail: "info@rekuflow.de",
   defaultLanguage: "de",
   
   allowSelfRegistration: true,

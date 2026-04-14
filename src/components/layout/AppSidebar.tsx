@@ -38,7 +38,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import laurekuLogo from "@/assets/laureku-logo.png";
+import rekuflowLogo from "@/assets/rekuflow-logo.png";
 
 interface NavItem {
   icon: typeof LayoutDashboard;
@@ -105,14 +105,13 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
       {/* Logo */}
       <div className="flex items-center gap-3 p-4 border-b border-sidebar-border h-16">
         <img 
-          src={laurekuLogo} 
-          alt="LAUREKU Logo" 
+          src={rekuflowLogo} 
+          alt="RekuFLOW Logo" 
           className="h-10 w-10 object-contain shrink-0"
         />
         {!collapsed && (
           <div className="flex flex-col animate-fade-in overflow-hidden">
-            <span className="font-bold text-sidebar-foreground text-lg truncate">LAUREKU</span>
-            <span className="text-xs text-sidebar-foreground/60 truncate">RecyTrack</span>
+            <span className="font-bold text-sidebar-foreground text-lg truncate">RekuFLOW</span>
           </div>
         )}
       </div>

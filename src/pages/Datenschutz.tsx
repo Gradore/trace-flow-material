@@ -20,7 +20,7 @@ export default function Datenschutz() {
           <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
             <Recycle className="h-6 w-6 text-primary" />
           </div>
-          <span className="text-2xl font-bold">RecyTrack</span>
+          <span className="text-2xl font-bold">RekuFLOW</span>
         </div>
 
         <Card>
@@ -54,7 +54,7 @@ export default function Datenschutz() {
               <h2 className="text-lg font-semibold">3. Erhebung und Speicherung personenbezogener Daten</h2>
               <h3 className="text-base font-medium mt-4">Bei Registrierung und Nutzung</h3>
               <p className="text-muted-foreground">
-                Bei der Registrierung für RecyTrack erheben wir folgende Daten:
+                Bei der Registrierung für RekuFLOW erheben wir folgende Daten:
               </p>
               <ul className="list-disc list-inside text-muted-foreground mt-2 space-y-1">
                 <li>Name</li>
@@ -99,7 +99,7 @@ export default function Datenschutz() {
             <section>
               <h2 className="text-lg font-semibold">6. Cookies und Tracking</h2>
               <p className="text-muted-foreground">
-                RecyTrack verwendet technisch notwendige Cookies für die Authentifizierung und 
+                RekuFLOW verwendet technisch notwendige Cookies für die Authentifizierung und 
                 Session-Verwaltung. Es werden keine Tracking-Cookies oder Analyse-Tools von Drittanbietern 
                 eingesetzt.
               </p>
