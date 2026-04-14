@@ -389,17 +389,17 @@ export default function Auth() {
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="login-email">E-Mail</Label>
+                  <Label htmlFor="login-username">Benutzername</Label>
                   <Input
-                    id="login-email"
-                    type="email"
-                    placeholder="name@firma.de"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
+                    id="login-username"
+                    type="text"
+                    placeholder="benutzername"
+                    value={loginUsername}
+                    onChange={(e) => setLoginUsername(e.target.value)}
                     disabled={isLoading}
                   />
-                  {errors.login_email && (
-                    <p className="text-sm text-destructive">{errors.login_email}</p>
+                  {errors.login_username && (
+                    <p className="text-sm text-destructive">{errors.login_username}</p>
                   )}
                 </div>
                 <div className="space-y-2">
