@@ -47,7 +47,6 @@ export function PickupRequestDialog({
 }: PickupRequestDialogProps) {
   const [formData, setFormData] = useState({
     material_description: "",
-    container_code: "",
     weight_kg: "",
     pickup_address: "",
     preferred_date: undefined as Date | undefined,
@@ -63,33 +62,17 @@ export function PickupRequestDialog({
 
   const mutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      // Resolve the printed container code to the container row; the free-text
-      // value is only ever compared against the container_id text column.
-      let containerId: string | null = null;
-      const containerCode = data.container_code.trim();
-      if (containerCode) {
-        const { data: container, error: containerError } = await supabase
-          .from("containers")
-          .select("id")
-          .eq("container_id", containerCode)
-          .maybeSingle();
-        if (containerError) throw containerError;
-        if (!container) {
-          throw new Error(`Container „${containerCode}“ wurde nicht gefunden.`);
-        }
-        containerId = container.id;
-      }
-
       const requestId = await generateRequestId();
       const { error } = await supabase.from("pickup_requests").insert({
         request_id: requestId,
         company_id: companyId,
         contact_id: contactId,
-        container_id: containerId,
         material_description: data.material_description,
         weight_kg: data.weight_kg ? parseFloat(data.weight_kg) : null,
         pickup_address: data.pickup_address || null,
-        preferred_date: data.preferred_date?.toISOString().split("T")[0] || null,
+        // format() and not toISOString(): the calendar hands us local midnight,
+        // which toISOString() shifts to the previous day in any positive offset.
+        preferred_date: data.preferred_date ? format(data.preferred_date, "yyyy-MM-dd") : null,
         preferred_time_slot: data.preferred_time_slot || null,
         notes: data.notes || null,
       });
@@ -109,7 +92,6 @@ export function PickupRequestDialog({
   const resetForm = () => {
     setFormData({
       material_description: "",
-      container_code: "",
       weight_kg: "",
       pickup_address: "",
       preferred_date: undefined,
@@ -144,18 +126,6 @@ export function PickupRequestDialog({
               placeholder="z.B. GFK-Abfälle, EP-Harz"
               required
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Container-ID</Label>
-            <Input
-              value={formData.container_code}
-              onChange={(e) => setFormData({ ...formData, container_code: e.target.value })}
-              placeholder="z.B. BB-0001"
-            />
-            <p className="text-xs text-muted-foreground">
-              Optional - ID des bereitgestellten Behälters (siehe Etikett)
-            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -236,6 +206,7 @@ export function PickupRequestDialog({
             <Textarea
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="z.B. Container-ID laut Etikett, Zufahrtshinweise"
               rows={3}
             />
           </div>

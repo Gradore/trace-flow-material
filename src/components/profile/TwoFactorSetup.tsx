@@ -31,12 +31,18 @@ export function TwoFactorSetup() {
   const [factorId, setFactorId] = useState<string | null>(null);
 
   // Without reading the current factors the card always claims "Nicht aktiviert"
-  // after a reload, even for accounts that have 2FA enabled.
+  // after a reload, even for accounts that have 2FA enabled. Keyed on the id so a
+  // token refresh (which hands out a new user object) does not re-query.
+  const userId = user?.id;
   useEffect(() => {
     let isActive = true;
 
     const loadStatus = async () => {
-      if (!user) {
+      // Re-runs (the user arriving after the auth context resolved) must show the
+      // pending state again instead of a stale "Nicht aktiviert".
+      setIsCheckingStatus(true);
+
+      if (!userId) {
         if (isActive) {
           setIsEnabled(false);
           setIsCheckingStatus(false);
@@ -61,7 +67,7 @@ export function TwoFactorSetup() {
     return () => {
       isActive = false;
     };
-  }, [user]);
+  }, [userId]);
 
   const handleEnableClick = async () => {
     if (!user) return;
@@ -203,13 +209,24 @@ export function TwoFactorSetup() {
     
     setIsLoading(true);
     try {
-      const { data: factors } = await supabase.auth.mfa.listFactors();
+      // Swallowing the list error would report "2FA deaktiviert" although no
+      // factor was ever unenrolled.
+      const { data: factors, error: listError } = await supabase.auth.mfa.listFactors();
+      if (listError) throw listError;
+
       const totpFactor = factors?.totp.find(f => f.status === 'verified');
-      
-      if (totpFactor) {
-        const { error } = await supabase.auth.mfa.unenroll({ factorId: totpFactor.id });
-        if (error) throw error;
+
+      if (!totpFactor) {
+        setIsEnabled(false);
+        toast({
+          title: "Keine aktive 2FA",
+          description: "Für dieses Konto ist derzeit keine Zwei-Faktor-Authentifizierung aktiv.",
+        });
+        return;
       }
+
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: totpFactor.id });
+      if (error) throw error;
 
       setIsEnabled(false);
       toast({

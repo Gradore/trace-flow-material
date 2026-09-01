@@ -183,17 +183,24 @@ export function levelsToInput(levels: LevelValue[]): string {
   return levels.map((level) => (typeof level === "number" ? String(level) : level)).join(", ");
 }
 
-/** Normalised comparison key so a planned level matches a stored parameter. */
+/**
+ * Normalised comparison key so a planned level matches a stored parameter.
+ * doe_series.factors is jsonb, so a level can be anything - never assume a
+ * string method is available on it.
+ */
 export function levelKey(value: LevelValue | null | undefined): string {
   if (value === null || value === undefined) return "";
-  return typeof value === "number" ? String(value) : value.trim();
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value === "string") return value.trim();
+  return String(value);
 }
 
 /** German display of a factor level. */
 export function formatLevel(value: LevelValue | null | undefined): string {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "number") return formatNumber(value, 3);
-  return value.trim().length ? value : "—";
+  if (typeof value === "number") return Number.isFinite(value) ? formatNumber(value, 3) : "—";
+  if (typeof value === "string") return value.trim().length ? value : "—";
+  return String(value);
 }
 
 export function factorTitle(factor: DoeFactor): string {
@@ -308,7 +315,8 @@ export function csvNumber(value: number | null | undefined, digits = 4): string 
 
 export function csvLevel(value: LevelValue | null | undefined): string {
   if (value === null || value === undefined) return "";
-  return typeof value === "number" ? csvNumber(value) : value;
+  if (typeof value === "number") return csvNumber(value);
+  return typeof value === "string" ? value : String(value);
 }
 
 function csvCell(value: string): string {

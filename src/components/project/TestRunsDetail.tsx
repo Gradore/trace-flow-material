@@ -1105,6 +1105,12 @@ export default function TestRunsDetail({
                           {fractionErrors.targetFractionId}
                         </p>
                       )}
+                      {specs.length === 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Es sind keine Zielfraktionen hinterlegt — ohne Spezifikation lässt sich
+                          keine Fraktion anlegen.
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">

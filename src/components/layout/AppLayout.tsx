@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useLayoutEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { MobileSidebar } from "./MobileSidebar";
@@ -76,9 +76,13 @@ export function AppLayout({ children }: AppLayoutProps) {
     navigate("/auth");
   };
 
-  // Apply and remember the theme - the layout remounts on every route switch
-  useEffect(() => {
+  // Apply the theme before the browser paints, otherwise every load of the
+  // shell flashes the light palette first. The layout remounts on route switch.
+  useLayoutEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
+  }, [darkMode]);
+
+  useEffect(() => {
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, darkMode ? "dark" : "light");
     } catch {

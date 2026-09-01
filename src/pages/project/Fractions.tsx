@@ -81,6 +81,7 @@ import {
   useTestRuns,
 } from "@/hooks/project/useProjectData";
 import { useUserRole } from "@/hooks/useUserRole";
+import { supabase } from "@/integrations/supabase/client";
 import { linkFractionToOutputMaterial } from "@/lib/project/bridges";
 import {
   FRACTION_STATUSES,
@@ -236,9 +237,36 @@ export default function Fractions() {
     [stock],
   );
 
-  const bookToStock = useProjectMutation(
-    async (fraction: OutputFraction) => {
-      await linkFractionToOutputMaterial(fraction);
+  const bookToStock = useProjectMutation<OutputFraction>(
+    async (fraction) => {
+      // Die gecachte Zeile kann veraltet sein. Vor dem Anlegen eines
+      // Lagerpostens den aktuellen Stand lesen, sonst bucht ein zweiter Klick
+      // dieselbe Fraktion doppelt ein.
+      const { data: current, error: readError } = await supabase
+        .from("output_fractions")
+        .select("output_material_id")
+        .eq("id", fraction.id)
+        .maybeSingle();
+      if (readError) throw new Error(readError.message);
+      if (!current) throw new Error("Keine Berechtigung oder Fraktion nicht gefunden");
+      if (current.output_material_id) return;
+
+      const outputMaterialId = await linkFractionToOutputMaterial(fraction);
+
+      // Die Verknüpfung wird per UPDATE gesetzt und kann von RLS still
+      // gefiltert werden - ohne Prüfung meldeten wir einen Erfolg, der die
+      // Fraktion unverknüpft zurücklässt.
+      const { data: linked, error: verifyError } = await supabase
+        .from("output_fractions")
+        .select("output_material_id")
+        .eq("id", fraction.id)
+        .maybeSingle();
+      if (verifyError) throw new Error(verifyError.message);
+      if (!linked || linked.output_material_id !== outputMaterialId) {
+        throw new Error(
+          "Der Lagerposten wurde angelegt, konnte der Fraktion aber nicht zugeordnet werden (fehlende Berechtigung).",
+        );
+      }
     },
     {
       successMessage: "Fraktion in den Lagerbestand gebucht",
@@ -262,15 +290,30 @@ export default function Fractions() {
     }
   };
 
+  const asError = (value: unknown): Error | null => (value instanceof Error ? value : null);
+
   const listError =
-    (fractionsQuery.error as Error | null) ??
-    (analysesQuery.error as Error | null) ??
-    (resultsQuery.error as Error | null) ??
-    (runsQuery.error as Error | null) ??
-    null;
+    asError(fractionsQuery.error) ??
+    asError(analysesQuery.error) ??
+    asError(resultsQuery.error) ??
+    asError(runsQuery.error);
 
   const listLoading =
     fractionsQuery.isLoading || analysesQuery.isLoading || resultsQuery.isLoading || runsQuery.isLoading;
+
+  /**
+   * Produkttests speisen nur den Detail-Tab und das Datenblatt. Ein Fehler darf
+   * die Fraktionstabelle nicht ersetzen - er muss aber sichtbar sein, sonst
+   * liest sich ein Ladefehler wie „keine Produkttests vorhanden“.
+   */
+  const productDataError = asError(productTestsQuery.error) ?? asError(productTestResultsQuery.error);
+
+  const retryList = () => {
+    void fractionsQuery.refetch();
+    void analysesQuery.refetch();
+    void resultsQuery.refetch();
+    void runsQuery.refetch();
+  };
 
   return (
     <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
@@ -292,12 +335,12 @@ export default function Fractions() {
 
       {/* ------------------------------------------------------------ KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Fraktionen" value={views.length} icon={Package} accent="violet"
+        <StatCard label="Fraktionen" value={listLoading ? "…" : views.length} icon={Package} accent="violet"
           hint={`${totals.bookedCount} im Lagerbestand gebucht`} />
-        <StatCard label="Bestand" value={formatKg(totals.totalKg)} icon={Boxes} accent="sky" />
-        <StatCard label="Freigegeben" value={formatKg(totals.releasedKg)} icon={CheckCircle2} accent="emerald"
+        <StatCard label="Bestand" value={listLoading ? "…" : formatKg(totals.totalKg)} icon={Boxes} accent="sky" />
+        <StatCard label="Freigegeben" value={listLoading ? "…" : formatKg(totals.releasedKg)} icon={CheckCircle2} accent="emerald"
           hint="für Produkttests" />
-        <StatCard label="Bestandswert" value={formatEur(totals.value)} icon={Euro} accent="amber"
+        <StatCard label="Bestandswert" value={listLoading ? "…" : formatEur(totals.value)} icon={Euro} accent="amber"
           hint="nach Zielpreis der Spec" />
       </div>
 
@@ -401,6 +444,8 @@ export default function Fractions() {
         <CardContent>
           {listLoading ? (
             <LoadingRows rows={4} />
+          ) : listError ? (
+            <ErrorState error={listError} onRetry={retryList} />
           ) : views.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4">Noch keine Fraktionen erfasst.</p>
           ) : (
@@ -570,10 +615,17 @@ export default function Fractions() {
           )}
 
           {/* -------------------------------------------------------- table */}
+          {productDataError && (
+            <p className="text-xs text-destructive">
+              Produkttestdaten konnten nicht geladen werden ({productDataError.message}). Der Reiter
+              „Produkttests“ und das Datenblatt bleiben so lange unvollständig.
+            </p>
+          )}
+
           {listLoading ? (
             <LoadingRows rows={6} />
           ) : listError ? (
-            <ErrorState error={listError} onRetry={() => fractionsQuery.refetch()} />
+            <ErrorState error={listError} onRetry={retryList} />
           ) : views.length === 0 ? (
             <EmptyState
               title="Noch keine Fraktionen"

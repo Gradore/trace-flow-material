@@ -50,6 +50,15 @@ import { cn } from "@/lib/utils";
 const ALL_FRACTIONS = "__all__";
 const MAX_INTERACTION_PAIRS = 12;
 
+/**
+ * Level labels may contain blanks ("leicht stumpf"), so a blank must not join
+ * the two halves of an interaction cell key - "a b"+"c" and "a"+"b c" would
+ * collapse onto the same cell.
+ */
+const CELL_SEPARATOR = "\u0000";
+const cellKeyOf = (rowKey: string, columnKey: string) =>
+  `${rowKey}${CELL_SEPARATOR}${columnKey}`;
+
 interface DoeSeriesPageEvaluationProps {
   series: DoeSeries;
   factors: DoeFactor[];
@@ -148,6 +157,31 @@ export default function DoeSeriesPageEvaluation({
 
   const completedRuns = useMemo(() => runs.filter((run) => run.status === "completed"), [runs]);
 
+  const fractionOptions = useMemo(() => {
+    const runIds = new Set(runs.map((run) => run.id));
+    const ids = new Set<string>();
+    fractions.forEach((fraction) => {
+      if (!fraction.test_run_id || !runIds.has(fraction.test_run_id)) return;
+      if (fraction.target_fraction_id) ids.add(fraction.target_fraction_id);
+    });
+    return Array.from(ids)
+      .sort((a, b) => a.localeCompare(b, "de"))
+      .map((id) => ({ id, name: fractionSpecs.find((spec) => spec.id === id)?.name ?? id }));
+  }, [fractions, runs, fractionSpecs]);
+
+  /**
+   * Keeps the fraction filter valid: a fraction that disappears from the data
+   * must fall back to "all", otherwise the join silently returns nothing.
+   */
+  const activeFraction =
+    fractionFilter !== ALL_FRACTIONS &&
+    fractionOptions.some((option) => option.id === fractionFilter)
+      ? fractionFilter
+      : ALL_FRACTIONS;
+
+  const activeFractionName =
+    fractionOptions.find((option) => option.id === activeFraction)?.name ?? null;
+
   const allRunData = useMemo(
     () =>
       buildRunData({
@@ -163,7 +197,7 @@ export default function DoeSeriesPageEvaluation({
 
   const runData = useMemo(
     () =>
-      fractionFilter === ALL_FRACTIONS
+      activeFraction === ALL_FRACTIONS
         ? allRunData
         : buildRunData({
             runs: completedRuns,
@@ -171,9 +205,9 @@ export default function DoeSeriesPageEvaluation({
             fractions,
             analyses,
             results,
-            targetFractionId: fractionFilter,
+            targetFractionId: activeFraction,
           }),
-    [fractionFilter, allRunData, completedRuns, parameters, fractions, analyses, results],
+    [activeFraction, allRunData, completedRuns, parameters, fractions, analyses, results],
   );
 
   const responseKeys = useMemo(
@@ -184,18 +218,6 @@ export default function DoeSeriesPageEvaluation({
   /** Keeps the selection valid while the series or its responses change. */
   const activeResponse =
     responseKey && responseKeys.includes(responseKey) ? responseKey : (responseKeys[0] ?? "");
-
-  const fractionOptions = useMemo(() => {
-    const runIds = new Set(runs.map((run) => run.id));
-    const ids = new Set<string>();
-    fractions.forEach((fraction) => {
-      if (!fraction.test_run_id || !runIds.has(fraction.test_run_id)) return;
-      if (fraction.target_fraction_id) ids.add(fraction.target_fraction_id);
-    });
-    return Array.from(ids)
-      .sort((a, b) => a.localeCompare(b, "de"))
-      .map((id) => ({ id, name: fractionSpecs.find((spec) => spec.id === id)?.name ?? id }));
-  }, [fractions, runs, fractionSpecs]);
 
   const runsWithResponse = useMemo(() => {
     if (!activeResponse) return 0;
@@ -276,7 +298,7 @@ export default function DoeSeriesPageEvaluation({
           const keyB = levelKey(levelB);
           rowLabels.set(keyA, formatLevel(levelA));
           columnLabels.set(keyB, formatLevel(levelB));
-          const cellKey = `${keyA} ${keyB}`;
+          const cellKey = cellKeyOf(keyA, keyB);
           const current = sums.get(cellKey) ?? { sum: 0, count: 0 };
           sums.set(cellKey, { sum: current.sum + response.mean, count: current.count + 1 });
         });
@@ -341,7 +363,7 @@ export default function DoeSeriesPageEvaluation({
         </div>
         <div className="space-y-1.5 sm:w-[16rem]">
           <Label htmlFor="doe-fraction">Fraktion</Label>
-          <Select value={fractionFilter} onValueChange={setFractionFilter}>
+          <Select value={activeFraction} onValueChange={setFractionFilter}>
             <SelectTrigger id="doe-fraction">
               <SelectValue />
             </SelectTrigger>
@@ -364,7 +386,10 @@ export default function DoeSeriesPageEvaluation({
           {completedRuns.length} abgeschlossene {completedRuns.length === 1 ? "Lauf" : "Läufe"} in
           dieser Serie, davon {runsWithResponse} mit Messwerten
           {activeResponse ? ` für ${responseTitle(activeResponse)}` : ""}
-          {fractionFilter !== ALL_FRACTIONS ? ` (nur Fraktion ${fractionFilter})` : ""}. Liegen je
+          {activeFraction !== ALL_FRACTIONS
+            ? ` (nur Fraktion ${activeFraction}${activeFractionName ? ` — ${activeFractionName}` : ""})`
+            : ""}
+          . Liegen je
           Lauf mehrere analysierte Fraktionen vor, wird deren Mittelwert verwendet.
         </AlertDescription>
       </Alert>
@@ -386,104 +411,113 @@ export default function DoeSeriesPageEvaluation({
               <LineChartIcon className="h-4 w-4" />
               Haupteffekte — {responseTitle(activeResponse)}
             </h3>
-            <div className="grid gap-4 lg:grid-cols-2">
-              {effects.map((effect) => {
-                const sufficient = effect.charted.length >= 2;
-                return (
-                  <Card key={effect.factor.key}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">{factorTitle(effect.factor)}</CardTitle>
-                      <CardDescription className="text-xs">
-                        Mittelwert je Stufe über die abgeschlossenen Läufe
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {sufficient ? (
-                        <>
-                          <div className="h-[200px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart
-                                data={effect.charted}
-                                margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
-                              >
-                                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                                <XAxis
-                                  dataKey="label"
-                                  tick={{ fontSize: 11 }}
-                                  stroke="hsl(var(--muted-foreground))"
-                                />
-                                <YAxis
-                                  width={46}
-                                  tick={{ fontSize: 11 }}
-                                  stroke="hsl(var(--muted-foreground))"
-                                />
-                                <Tooltip content={<EffectTooltip unit={unit} />} />
-                                {limit && (
-                                  <ReferenceLine
-                                    y={limit.value}
-                                    stroke="hsl(var(--destructive))"
-                                    strokeDasharray="4 4"
-                                    label={{
-                                      value: limit.label,
-                                      position: "insideTopRight",
-                                      fontSize: 10,
-                                      fill: "hsl(var(--destructive))",
-                                    }}
+            {effects.length === 0 ? (
+              <Card>
+                <CardContent className="py-6 text-sm text-muted-foreground">
+                  In dieser Serie ist kein Faktor mit Stufen hinterlegt. Haupteffekte lassen sich
+                  erst berechnen, wenn die Serie Faktoren mit mindestens einer Stufe führt.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {effects.map((effect) => {
+                  const sufficient = effect.charted.length >= 2;
+                  return (
+                    <Card key={effect.factor.key}>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">{factorTitle(effect.factor)}</CardTitle>
+                        <CardDescription className="text-xs">
+                          Mittelwert je Stufe über die abgeschlossenen Läufe
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {sufficient ? (
+                          <>
+                            <div className="h-[200px] w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <LineChart
+                                  data={effect.charted}
+                                  margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                                >
+                                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                                  <XAxis
+                                    dataKey="label"
+                                    tick={{ fontSize: 11 }}
+                                    stroke="hsl(var(--muted-foreground))"
                                   />
-                                )}
-                                <Line
-                                  type="monotone"
-                                  dataKey="mean"
-                                  name="Mittelwert"
-                                  stroke="hsl(var(--primary))"
-                                  strokeWidth={2}
-                                  dot={{ r: 4, fill: "hsl(var(--primary))" }}
-                                  activeDot={{ r: 6 }}
-                                />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            {effect.charted
-                              .map((point) => `${point.label}: n=${point.count}`)
-                              .join(" | ")}
-                          </p>
-                          {effect.thin.length > 0 && (
-                            <p className="text-xs text-warning mt-1">
-                              Nicht dargestellt, zu wenig Läufe:{" "}
-                              {effect.thin
-                                .map((point) => `${point.label} (n=${point.count})`)
-                                .join(", ")}
+                                  <YAxis
+                                    width={46}
+                                    tick={{ fontSize: 11 }}
+                                    stroke="hsl(var(--muted-foreground))"
+                                  />
+                                  <Tooltip content={<EffectTooltip unit={unit} />} />
+                                  {limit && (
+                                    <ReferenceLine
+                                      y={limit.value}
+                                      stroke="hsl(var(--destructive))"
+                                      strokeDasharray="4 4"
+                                      label={{
+                                        value: limit.label,
+                                        position: "insideTopRight",
+                                        fontSize: 10,
+                                        fill: "hsl(var(--destructive))",
+                                      }}
+                                    />
+                                  )}
+                                  <Line
+                                    type="monotone"
+                                    dataKey="mean"
+                                    name="Mittelwert"
+                                    stroke="hsl(var(--primary))"
+                                    strokeWidth={2}
+                                    dot={{ r: 4, fill: "hsl(var(--primary))" }}
+                                    activeDot={{ r: 6 }}
+                                  />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              {effect.charted
+                                .map((point) => `${point.label}: n=${point.count}`)
+                                .join(" | ")}
                             </p>
-                          )}
-                        </>
-                      ) : (
-                        <div className="rounded-lg border border-dashed border-border p-4 text-sm space-y-1">
-                          <p className="font-medium">Noch nicht auswertbar</p>
-                          <p className="text-muted-foreground text-xs">
-                            Mindestens 2 abgeschlossene Läufe je Stufe erforderlich, und das für
-                            mindestens zwei Stufen. Aktuell:{" "}
-                            {effect.charted.length + effect.thin.length === 0
-                              ? "keine Stufe mit Messwerten"
-                              : [...effect.charted, ...effect.thin]
+                            {effect.thin.length > 0 && (
+                              <p className="text-xs text-warning mt-1">
+                                Nicht dargestellt, zu wenig Läufe:{" "}
+                                {effect.thin
                                   .map((point) => `${point.label} (n=${point.count})`)
                                   .join(", ")}
-                            .
-                          </p>
-                          {effect.runsWithoutLevel > 0 && (
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-border p-4 text-sm space-y-1">
+                            <p className="font-medium">Noch nicht auswertbar</p>
                             <p className="text-muted-foreground text-xs">
-                              {effect.runsWithoutLevel}{" "}
-                              {effect.runsWithoutLevel === 1 ? "Lauf hat" : "Läufe haben"} keinen
-                              Wert für diesen Faktor hinterlegt.
+                              Mindestens 2 abgeschlossene Läufe je Stufe erforderlich, und das für
+                              mindestens zwei Stufen. Aktuell:{" "}
+                              {effect.charted.length + effect.thin.length === 0
+                                ? "keine Stufe mit Messwerten"
+                                : [...effect.charted, ...effect.thin]
+                                    .map((point) => `${point.label} (n=${point.count})`)
+                                    .join(", ")}
+                              .
                             </p>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+                            {effect.runsWithoutLevel > 0 && (
+                              <p className="text-muted-foreground text-xs">
+                                {effect.runsWithoutLevel}{" "}
+                                {effect.runsWithoutLevel === 1 ? "Lauf hat" : "Läufe haben"} keinen
+                                Wert für diesen Faktor hinterlegt.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div>
@@ -537,7 +571,7 @@ export default function DoeSeriesPageEvaluation({
                                   {pair.rowLabels.get(rowKey) ?? rowKey}
                                 </td>
                                 {pair.columnKeys.map((columnKey) => {
-                                  const cell = pair.cells.get(`${rowKey} ${columnKey}`);
+                                  const cell = pair.cells.get(cellKeyOf(rowKey, columnKey));
                                   return (
                                     <td
                                       key={columnKey}

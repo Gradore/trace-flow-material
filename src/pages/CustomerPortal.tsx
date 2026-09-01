@@ -336,13 +336,15 @@ export default function CustomerPortal() {
                 <div className="text-center py-8 text-destructive">
                   Dokumente konnten nicht geladen werden.
                 </div>
-              ) : documents?.length === 0 ? (
+              ) : !documents?.length ? (
                 <div className="text-center py-8 text-muted-foreground space-y-1">
                   <p>Keine Dokumente vorhanden</p>
-                  <p className="text-sm">
-                    Lieferscheine werden über den Firmennamen „{companyName}“ zugeordnet. Fehlt ein
-                    Dokument, wenden Sie sich bitte an Ihren Ansprechpartner.
-                  </p>
+                  {companyName && (
+                    <p className="text-sm">
+                      Lieferscheine werden über den Firmennamen „{companyName}“ zugeordnet. Fehlt ein
+                      Dokument, wenden Sie sich bitte an Ihren Ansprechpartner.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-md border overflow-x-auto">

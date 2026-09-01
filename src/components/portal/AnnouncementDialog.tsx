@@ -103,7 +103,9 @@ export function AnnouncementDialog({
         container_type: data.container_type,
         container_count: parseInt(data.container_count),
         waste_code: data.waste_code || null,
-        preferred_date: data.preferred_date?.toISOString().split("T")[0] || null,
+        // format() and not toISOString(): the calendar hands us local midnight,
+        // which toISOString() shifts to the previous day in any positive offset.
+        preferred_date: data.preferred_date ? format(data.preferred_date, "yyyy-MM-dd") : null,
         preferred_time_slot: data.preferred_time_slot || null,
         notes: data.notes || null,
       });

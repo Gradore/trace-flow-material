@@ -31,7 +31,11 @@ import {
   formatNumber,
 } from "@/components/project/ProjectUI";
 import { TEST_RUN_STATUSES, labelOf, toneOf } from "@/lib/project/constants";
-import { nextProjectCode, useProjectMutation } from "@/hooks/project/useProjectData";
+import {
+  nextProjectCode,
+  useInvalidateProject,
+  useProjectMutation,
+} from "@/hooks/project/useProjectData";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import type { DoeSeries, TestRun } from "@/lib/project/types";
@@ -111,11 +115,13 @@ export default function DoeSeriesPagePlan({
 
   /* -------------------------------------------------------- create runs */
 
+  const invalidateProject = useInvalidateProject();
+
   const createRunsMutation = useProjectMutation<PlanRow[]>(
     async (rows) => {
       let created = 0;
-      for (const row of rows) {
-        try {
+      try {
+        for (const row of rows) {
           const runCode = await nextProjectCode("test_run");
           const { data, error } = await supabase
             .from("test_runs")
@@ -158,12 +164,15 @@ export default function DoeSeriesPagePlan({
             }
           }
           created += 1;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          throw new Error(
-            `${created} von ${rows.length} Läufen angelegt, dann abgebrochen: ${message}`,
-          );
         }
+      } catch (error) {
+        // A run created before the abort must still show up in the plan -
+        // useProjectMutation only refreshes the cache on success.
+        if (created > 0) invalidateProject();
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `${created} von ${rows.length} Läufen angelegt, dann abgebrochen: ${message}`,
+        );
       }
       // Reached only when every insert above was verified.
       toast({

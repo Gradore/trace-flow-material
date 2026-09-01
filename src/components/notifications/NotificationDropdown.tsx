@@ -122,15 +122,33 @@ export function NotificationDropdown() {
 
   const markAllAsReadMutation = useMutation({
     mutationFn: async () => {
-      if (!user?.id) return;
+      if (!user?.id) throw new Error("Nicht angemeldet.");
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("notifications")
         .update({ read: true })
         .eq("user_id", user.id)
-        .eq("read", false);
+        .eq("read", false)
+        .select("id");
 
       if (error) throw error;
+
+      // An update filtered out by RLS returns zero rows and no error. Zero rows
+      // is also the legitimate answer when everything was already read (another
+      // tab, the 30 s refetch window), so only report a failure when unread
+      // rows are demonstrably still there afterwards.
+      if (!data || data.length === 0) {
+        const { count, error: countError } = await supabase
+          .from("notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("read", false);
+
+        if (countError) throw countError;
+        if ((count ?? 0) > 0) {
+          throw new Error("Keine Berechtigung: Die Benachrichtigungen wurden nicht geändert.");
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications", user?.id] });

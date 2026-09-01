@@ -165,7 +165,10 @@ export default function Profile() {
       });
 
       if (error) throw error;
-      if (!data.success) throw new Error(data.error);
+      // An empty/failed body must not blow up with "cannot read success of null".
+      if (!data?.success) {
+        throw new Error(data?.error || "Der Export konnte nicht erstellt werden.");
+      }
 
       // Download the JSON file
       const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
@@ -217,7 +220,9 @@ export default function Profile() {
               </AvatarFallback>
             </Avatar>
             <div>
-              <p className="font-medium text-foreground">{profile?.name || "Laden..."}</p>
+              <p className="font-medium text-foreground">
+                {profile?.name || (isError ? "Nicht verfügbar" : "Laden...")}
+              </p>
               <p className="text-sm text-muted-foreground">{profile?.email}</p>
             </div>
           </div>

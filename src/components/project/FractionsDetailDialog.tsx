@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectMutation } from "@/hooks/project/useProjectData";
+import { toast } from "@/hooks/use-toast";
 import {
   ConformityBadge,
   ToneBadge,
@@ -103,7 +104,7 @@ export function FractionsDetailDialog({
   }, [open, fractionId, fractionUpdatedAt]);
 
   const save = useProjectMutation(
-    async (vars: { id: string; weightChanged: boolean; form: FormState }) => {
+    async (vars: { id: string; form: FormState }) => {
       const { data, error } = await supabase
         .from("output_fractions")
         .update({
@@ -113,8 +114,8 @@ export function FractionsDetailDialog({
           storage_location: vars.form.storageLocation.trim() || null,
           retained_sample_kg: parseDecimal(vars.form.retainedSampleKg),
           notes: vars.form.notes.trim() || null,
-          // The database trigger recomputes the yield only when it is null.
-          ...(vars.weightChanged ? { yield_pct: null } : {}),
+          // yield_pct wird vom Trigger compute_fraction_yield gefüllt und
+          // nie vom Client geschrieben.
         })
         .eq("id", vars.id)
         .select("id");
@@ -148,6 +149,20 @@ export function FractionsDetailDialog({
 
   const { fraction, spec, run } = view;
   const field = (key: keyof FormState, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  // jsPDF wirft synchron - ohne Abfangen bliebe der Klick wirkungslos.
+  const handleDatasheet = () => {
+    try {
+      downloadFractionDatasheet(view, productTestResults);
+      toast({ title: `Datenblatt ${fraction.fraction_code} erstellt` });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Datenblatt konnte nicht erstellt werden",
+        description: error instanceof Error ? error.message : "Unbekannter Fehler",
+      });
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -223,8 +238,8 @@ export function FractionsDetailDialog({
                 <p className="text-[11px] text-muted-foreground">
                   Ausbeute {fraction.yield_pct !== null ? `${formatNumber(fraction.yield_pct)} %` : "—"}
                   {run?.input_weight_kg
-                    ? ` (Einsatz ${formatKg(run.input_weight_kg)}) · wird nach dem Speichern neu berechnet`
-                    : " · Ausbeute braucht ein Einsatzgewicht am Versuchslauf"}
+                    ? ` (Einsatz ${formatKg(run.input_weight_kg)}) · von der Datenbank berechnet, hier nicht überschrieben`
+                    : " · braucht ein Einsatzgewicht am Versuchslauf, wird von der Datenbank berechnet"}
                 </p>
               </div>
 
@@ -457,21 +472,12 @@ export function FractionsDetailDialog({
         {validationMessage && <p className="text-xs text-destructive">{validationMessage}</p>}
 
         <DialogFooter className="gap-2">
-          <Button
-            variant="outline"
-            onClick={() => downloadFractionDatasheet(view, productTestResults)}
-          >
+          <Button variant="outline" onClick={handleDatasheet}>
             <FileDown className="h-4 w-4 mr-2" />
             Datenblatt (PDF)
           </Button>
           <Button
-            onClick={() =>
-              save.mutate({
-                id: fraction.id,
-                weightChanged: (parseDecimal(form.weightKg) ?? 0) !== fraction.weight_kg,
-                form,
-              })
-            }
+            onClick={() => save.mutate({ id: fraction.id, form })}
             disabled={save.isPending || validationMessage !== null}
           >
             {save.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}

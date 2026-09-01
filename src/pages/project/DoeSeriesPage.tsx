@@ -185,20 +185,22 @@ export default function DoeSeriesPage() {
     });
   }, [allSeries, lineFilter, statusFilter, search]);
 
-  /** Keep a valid selection while data loads, filters change or rows vanish. */
+  /**
+   * Keep a valid selection while data loads, filters change or rows vanish.
+   * The selection follows the filtered list: the detail card below the table
+   * must never show a series that the filter hides.
+   */
   useEffect(() => {
-    if (!allSeries.length) {
-      setSelectedId((current) => (current === null ? current : null));
-      return;
-    }
     setSelectedId((current) =>
-      current && allSeries.some((series) => series.id === current) ? current : allSeries[0].id,
+      current && filteredSeries.some((series) => series.id === current)
+        ? current
+        : (filteredSeries[0]?.id ?? null),
     );
-  }, [allSeries]);
+  }, [filteredSeries]);
 
   const selected = useMemo(
-    () => allSeries.find((series) => series.id === selectedId) ?? null,
-    [allSeries, selectedId],
+    () => filteredSeries.find((series) => series.id === selectedId) ?? null,
+    [filteredSeries, selectedId],
   );
 
   const selectedFactors = useMemo(

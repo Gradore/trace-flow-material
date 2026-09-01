@@ -71,12 +71,12 @@ export function FractionsReleaseDialog({
   const handleRelease = () =>
     mutate.mutate({ id: fraction.id, released: true, status: releasedStatus });
 
+  // Nur ein reiner Freigabestatus fällt zurück - 'shipped' oder 'rejected'
+  // beschreiben einen Zustand, den ein Widerruf nicht rückgängig macht.
+  const withdrawnStatus = fraction.status === "released" ? "in_analysis" : fraction.status;
+
   const handleWithdraw = () =>
-    mutate.mutate({
-      id: fraction.id,
-      released: false,
-      status: fraction.status === "released" ? "in_analysis" : fraction.status,
-    });
+    mutate.mutate({ id: fraction.id, released: false, status: withdrawnStatus });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -186,8 +186,11 @@ export function FractionsReleaseDialog({
               <CheckCircle2 className="h-4 w-4 text-info" />
               <AlertTitle className="text-info text-sm">Bereits freigegeben</AlertTitle>
               <AlertDescription className="text-xs">
-                Die Fraktion ist für Produkttests freigegeben. Ein Zurückziehen setzt den Status auf
-                „{labelOf(FRACTION_STATUSES, "in_analysis")}“ zurück; bereits laufende Produkttests bleiben bestehen.
+                Die Fraktion ist für Produkttests freigegeben. Ein Zurückziehen{" "}
+                {withdrawnStatus === fraction.status
+                  ? `belässt den Status bei „${labelOf(FRACTION_STATUSES, fraction.status)}“`
+                  : `setzt den Status auf „${labelOf(FRACTION_STATUSES, withdrawnStatus)}“ zurück`}
+                ; bereits laufende Produkttests bleiben bestehen.
               </AlertDescription>
             </Alert>
           )}

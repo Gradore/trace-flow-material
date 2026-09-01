@@ -352,18 +352,27 @@ export default function DoeSeriesPageDialog({
                   className="font-mono"
                   aria-invalid={Boolean(errors.code)}
                 />
-                {mode === "create" && codeError && (
+                {mode === "create" && (
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
-                    aria-label="Seriencode erneut erzeugen"
+                    className="shrink-0"
+                    disabled={codeLoading || isSaving}
+                    aria-label="Seriencode neu erzeugen"
+                    title="Seriencode neu erzeugen"
                     onClick={() => setCodeAttempt((value) => value + 1)}
                   >
                     <RotateCcw className="h-4 w-4" />
                   </Button>
                 )}
               </div>
+              {mode === "create" && !codeError && (
+                <p className="text-xs text-muted-foreground">
+                  Wird automatisch vergeben. Ist der Code beim Speichern bereits belegt, hier neu
+                  erzeugen.
+                </p>
+              )}
               {codeError && <p className="text-xs text-destructive">{codeError}</p>}
               {errors.code && <p className="text-xs text-destructive">{errors.code}</p>}
             </div>
@@ -485,6 +494,12 @@ export default function DoeSeriesPageDialog({
             {errors.factors && <p className="text-xs text-destructive">{errors.factors}</p>}
 
             <div ref={factorListRef} className="space-y-3 max-h-[22rem] overflow-y-auto pr-1">
+              {form.factors.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+                  Kein Faktor angelegt. Über „Faktor“ mindestens einen Faktor mit Stufen ergänzen —
+                  ohne Faktor lässt sich kein Versuchsplan erzeugen.
+                </div>
+              )}
               {form.factors.map((factor, index) => (
                 <div key={factor.id} className="rounded-lg border border-border p-3 space-y-3">
                   <div className="flex items-start justify-between gap-2">
