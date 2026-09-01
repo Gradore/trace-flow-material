@@ -279,15 +279,18 @@ export default function MaterialBatchesDialog({
                   aria-readonly="true"
                   className="font-mono bg-muted/50"
                 />
-                {mode === "create" && codeError && (
+                {mode === "create" && (
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
+                    className="shrink-0"
+                    disabled={codeLoading || isSaving}
                     onClick={() => setCodeAttempt((n) => n + 1)}
                     aria-label="Chargencode erneut erzeugen"
+                    title="Chargencode erneut erzeugen"
                   >
-                    <RotateCcw className="h-4 w-4" />
+                    <RotateCcw className={`h-4 w-4 ${codeLoading ? "animate-spin" : ""}`} />
                   </Button>
                 )}
               </div>
@@ -325,6 +328,12 @@ export default function MaterialBatchesDialog({
                   )}
                 </SelectContent>
               </Select>
+              {partners.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Kein Partner zur Auswahl verfügbar. Die Charge lässt sich ohne Lieferant speichern
+                  und später ergänzen.
+                </p>
+              )}
             </div>
           </div>
 

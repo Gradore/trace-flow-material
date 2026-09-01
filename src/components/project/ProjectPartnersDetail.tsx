@@ -253,7 +253,21 @@ function PartnerDetailBody({
 
   const linkMutation = useProjectMutation<Partner>(
     async (entry) => {
-      await linkPartnerToCompany(entry);
+      const companyId = await linkPartnerToCompany(entry);
+      /**
+       * linkPartnerToCompany writes project_partners.company_id without a
+       * returning clause - an update filtered away by RLS reports no error at
+       * all. Read the row back before reporting success.
+       */
+      const { data, error } = await supabase
+        .from("project_partners")
+        .select("company_id")
+        .eq("id", entry.id)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data || data.company_id !== companyId) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden");
+      }
     },
     {
       successMessage: "Firma verknüpft",

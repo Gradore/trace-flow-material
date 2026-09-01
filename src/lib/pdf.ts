@@ -370,14 +370,23 @@ export function downloadPDF(blob: Blob, filename: string): void {
 }
 
 /**
- * Open PDF in new tab for printing
+ * Open a PDF in a new tab for printing.
+ *
+ * Returns false when the browser blocked the popup - the caller must not report
+ * success in that case, because nothing was opened and nothing was printed.
  */
-export function printPDF(blob: Blob): void {
+export function printPDF(blob: Blob): boolean {
   const url = URL.createObjectURL(blob);
   const printWindow = window.open(url, '_blank');
-  if (printWindow) {
-    printWindow.onload = () => {
-      printWindow.print();
-    };
+
+  if (!printWindow) {
+    URL.revokeObjectURL(url);
+    return false;
   }
+
+  printWindow.onload = () => {
+    printWindow.print();
+  };
+
+  return true;
 }

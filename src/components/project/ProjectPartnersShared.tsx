@@ -303,9 +303,17 @@ export function startOfToday(): number {
   return now.getTime();
 }
 
+/**
+ * True when a date column value (yyyy-mm-dd) is today or already past.
+ * The value has to be read as a *local* date: `new Date("2026-09-01")` parses
+ * as UTC midnight, which in MEZ/MESZ is 01:00/02:00 local and therefore later
+ * than the local start of today - every follow-up due today would be missed.
+ */
 export function isDueOrOverdue(date: string | null | undefined): boolean {
   if (!date) return false;
-  const time = new Date(date).getTime();
-  if (Number.isNaN(time)) return false;
-  return time <= startOfToday();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  if (!match) return false;
+  const due = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (Number.isNaN(due.getTime())) return false;
+  return due.getTime() <= startOfToday();
 }

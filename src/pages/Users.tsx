@@ -117,7 +117,6 @@ export default function Users() {
     if (!deletingUser) return;
     setIsDeleting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
       const res = await supabase.functions.invoke("admin-delete-user", {
         body: { user_id: deletingUser.user_id },
       });

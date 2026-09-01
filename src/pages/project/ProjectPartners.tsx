@@ -165,6 +165,17 @@ export default function ProjectPartners() {
     return map;
   }, [contacts]);
 
+  /**
+   * The contact counts come from a second query - while it loads or after it
+   * failed there is no "0 Kontakte", only an unknown value.
+   */
+  const contactCountLabel = (partnerId: string): string => {
+    if (contactsQuery.isLoading) return "…";
+    if (contactsQuery.isError) return "—";
+    const count = contactCounts.get(partnerId) ?? 0;
+    return count === 1 ? "1 Kontakt" : `${count} Kontakte`;
+  };
+
   const dueActions = useMemo(
     () => contacts.filter((contact) => contact.next_action && isDueOrOverdue(contact.next_action_date)),
     [contacts],
@@ -350,12 +361,33 @@ export default function ProjectPartners() {
         />
         <StatCard
           label="Offene Nachfassaktionen"
-          value={dueActions.length}
-          hint="Kontakte mit fälligem Termin"
+          value={
+            contactsQuery.isLoading ? "…" : contactsQuery.isError ? "—" : dueActions.length
+          }
+          hint={
+            contactsQuery.isError
+              ? "Kontakte nicht geladen"
+              : "Kontakte mit fälligem Termin"
+          }
           icon={CalendarClock}
           accent="sky"
         />
       </div>
+
+      {contactsQuery.isError && (
+        <div className="mb-4">
+          <ErrorState
+            error={
+              new Error(
+                `Kontakte konnten nicht geladen werden: ${
+                  (contactsQuery.error as Error | null)?.message ?? "Unbekannter Fehler"
+                }`,
+              )
+            }
+            onRetry={() => void contactsQuery.refetch()}
+          />
+        </div>
+      )}
 
       {/* ------------------------------------------------------------ filters */}
       <Card className="mb-4">
@@ -616,7 +648,7 @@ export default function ProjectPartners() {
                         </div>
 
                         <p className="text-xs text-muted-foreground pt-1 border-t">
-                          {contactCounts.get(partner.id) ?? 0} Kontakte · Details öffnen
+                          {contactCountLabel(partner.id)} · Details öffnen
                         </p>
                       </CardContent>
                     </Card>
@@ -686,7 +718,11 @@ export default function ProjectPartners() {
                               <ChipList values={partner.fraction_ids} />
                             </TableCell>
                             <TableCell className="text-right text-sm">
-                              {contactCounts.get(partner.id) ?? 0}
+                              {contactsQuery.isLoading
+                                ? "…"
+                                : contactsQuery.isError
+                                  ? "—"
+                                  : (contactCounts.get(partner.id) ?? 0)}
                             </TableCell>
                             <TableCell>
                               {partner.company_id ? (

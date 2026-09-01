@@ -31,6 +31,27 @@ const processingStatusLabels: Record<string, string> = {
   sample_required: "Probe erforderlich",
 };
 
+const containerTypeLabels: Record<string, string> = {
+  bigbag: "BigBag",
+  box: "Box",
+  cage: "Gitterbox",
+  container: "Container",
+};
+
+const outputTypeLabels: Record<string, string> = {
+  glass_fiber: "Recycelte Glasfasern",
+  resin_powder: "Harzpulver",
+  pp_regrind: "PP Regranulat",
+  pa_regrind: "PA Regranulat",
+};
+
+const stepTypeLabels: Record<string, string> = {
+  shredding: "Schreddern",
+  sorting: "Sortieren",
+  milling: "Mahlen",
+  separation: "Faser/Harz-Trennung",
+};
+
 const sampleStatusLabels: Record<string, string> = {
   pending: "Ausstehend",
   in_analysis: "In Analyse",
@@ -39,13 +60,16 @@ const sampleStatusLabels: Record<string, string> = {
 };
 
 // Only list routes exist - there are no detail routes such as /containers/:id.
-const routeMap: Record<string, string> = {
-  containers: "/containers",
-  intake: "/intake",
-  processing: "/processing",
-  sampling: "/sampling",
-  output: "/output",
-  delivery: "/delivery-notes",
+// /containers, /intake and /delivery-notes accept ?id=<uuid|Kennung> and open
+// the matching record in its details dialog; the other lists ignore the param,
+// so it is not appended there.
+const routeMap: Record<string, { path: string; deepLink?: boolean }> = {
+  containers: { path: "/containers", deepLink: true },
+  intake: { path: "/intake", deepLink: true },
+  processing: { path: "/processing" },
+  sampling: { path: "/sampling" },
+  output: { path: "/output" },
+  delivery: { path: "/delivery-notes", deepLink: true },
 };
 
 export default function QRScanner() {
@@ -55,9 +79,16 @@ export default function QRScanner() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialCodeHandled = useRef(false);
+  const lastScannedCode = useRef<string | null>(null);
 
   const { isScanning, error, startScanning, stopScanning } = useQRScanner({
     onScanSuccess: (result) => {
+      // html5-qrcode reports every decoded frame (~10/s) - resolve a code once
+      // and switch the camera off instead of hammering the database.
+      if (lastScannedCode.current === result) return;
+      lastScannedCode.current = result;
+
+      void stopScanning();
       handleScanResult(result);
     },
   });
@@ -93,7 +124,7 @@ export default function QRScanner() {
           if (container) {
             dbId = container.id;
             data = {
-              Typ: container.type,
+              Typ: containerTypeLabels[container.type] || container.type,
               Status: container.status === 'empty' ? 'Leer' : container.status === 'in_use' ? 'In Verwendung' : 'Voll',
               Standort: container.location || '-',
               Gewicht: container.weight_kg ? `${container.weight_kg} kg` : '-',
@@ -135,7 +166,7 @@ export default function QRScanner() {
           if (step) {
             dbId = step.id;
             data = {
-              Schritt: step.step_type,
+              Schritt: stepTypeLabels[step.step_type] || step.step_type,
               Status: processingStatusLabels[step.status] || step.status,
               Fortschritt: `${step.progress ?? 0} %`,
               Gestartet: step.started_at
@@ -181,7 +212,7 @@ export default function QRScanner() {
           if (output) {
             dbId = output.id;
             data = {
-              Typ: output.output_type,
+              Typ: outputTypeLabels[output.output_type] || output.output_type,
               Charge: output.batch_id,
               Gewicht: `${output.weight_kg} kg`,
               Qualität: output.quality_grade || '-',
@@ -252,6 +283,8 @@ export default function QRScanner() {
     if (isScanning) {
       await stopScanning();
     } else {
+      // Allow re-scanning the same label in a new session
+      lastScannedCode.current = null;
       await startScanning("qr-reader");
     }
   };
@@ -259,7 +292,22 @@ export default function QRScanner() {
   const handleNavigateToDetails = () => {
     if (!scannedResult) return;
 
-    navigate(routeMap[scannedResult.type] || '/');
+    const target = routeMap[scannedResult.type];
+    if (!target) {
+      navigate('/');
+      return;
+    }
+
+    const recordId = scannedResult.dbId ?? scannedResult.id;
+    navigate(
+      target.deepLink ? `${target.path}?id=${encodeURIComponent(recordId)}` : target.path
+    );
+  };
+
+  const handleNavigateToList = () => {
+    if (!scannedResult) return;
+
+    navigate(routeMap[scannedResult.type]?.path || '/');
   };
 
   const handleNavigateToTraceability = () => {
@@ -402,7 +450,7 @@ export default function QRScanner() {
                 </Button>
               </div>
 
-              <Button className="w-full mt-2" onClick={handleNavigateToDetails}>
+              <Button className="w-full mt-2" onClick={handleNavigateToList}>
                 Zur Übersicht
               </Button>
             </div>

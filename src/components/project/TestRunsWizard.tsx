@@ -294,30 +294,31 @@ export default function TestRunsWizard({
     const levels = doeLevelsForRun(templateFactors, runNumber);
     const applied: string[] = [];
     const skipped: string[] = [];
+    const appliedValues: Record<string, string> = {};
 
-    setForm((current) => {
-      const parameters = { ...current.parameters };
-      templateFactors.forEach((factor) => {
-        const level = levels.get(factor.key);
-        if (level === undefined) return;
-        const known = TEST_RUN_PARAMETER_KEYS.some((entry) => entry.key === factor.key);
-        if (!known) {
-          skipped.push(factor.label);
-          return;
-        }
-        parameters[factor.key] = String(level).replace(".", ",");
-        applied.push(factor.label);
-      });
-      return {
-        ...current,
-        parameters,
-        doeSeriesId: templateSeries.id,
-        doeRunNumber: String(runNumber),
-        processLine: PROCESS_LINES.some((line) => line.id === templateSeries.process_line)
-          ? templateSeries.process_line
-          : current.processLine,
-      };
+    // Vor setForm auswerten: der State-Updater muss frei von Seiteneffekten sein,
+    // sonst wäre die Meldung unten leer, weil React ihn erst beim Rendern ausführt.
+    templateFactors.forEach((factor) => {
+      const level = levels.get(factor.key);
+      if (level === undefined) return;
+      const known = TEST_RUN_PARAMETER_KEYS.some((entry) => entry.key === factor.key);
+      if (!known) {
+        skipped.push(factor.label);
+        return;
+      }
+      appliedValues[factor.key] = String(level).replace(".", ",");
+      applied.push(factor.label);
     });
+
+    setForm((current) => ({
+      ...current,
+      parameters: { ...current.parameters, ...appliedValues },
+      doeSeriesId: templateSeries.id,
+      doeRunNumber: String(runNumber),
+      processLine: PROCESS_LINES.some((line) => line.id === templateSeries.process_line)
+        ? templateSeries.process_line
+        : current.processLine,
+    }));
 
     setTemplateNote(
       [

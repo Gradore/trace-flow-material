@@ -183,6 +183,125 @@ const fetchTimelineEvents = async (materialInputId: string): Promise<TimelineEve
   );
 };
 
+const notNull = (value: string | null): value is string => value !== null;
+
+const unique = (values: string[]): string[] => Array.from(new Set(values));
+
+/** Output materials and processing steps followed back to their material input. */
+const inputIdsFromOutputs = async (outputIds: string[], stepIds: string[]): Promise<string[]> => {
+  const steps = new Set(stepIds);
+
+  if (outputIds.length > 0) {
+    const { data, error } = await supabase
+      .from('output_materials')
+      .select('processing_step_id')
+      .in('id', outputIds);
+    if (error) throw error;
+    (data || []).forEach((output) => {
+      if (output.processing_step_id) steps.add(output.processing_step_id);
+    });
+  }
+
+  if (steps.size === 0) return [];
+
+  const { data, error } = await supabase
+    .from('processing_steps')
+    .select('material_input_id')
+    .in('id', Array.from(steps));
+  if (error) throw error;
+
+  return unique((data || []).map((step) => step.material_input_id).filter(notNull));
+};
+
+/**
+ * The timeline is anchored on a material input, but a scanned code can just as
+ * well be a container, processing, sample, output or delivery note ID. Those
+ * are followed back to the material input(s) they belong to, so every code the
+ * scanner resolves also has a working "Historie" button.
+ */
+const resolveInputIdsForCode = async (term: string): Promise<string[]> => {
+  const like = `%${term}%`;
+
+  // Container (BB-/BX-/GX-/CT-...) -> material inputs stored in it
+  const { data: containers, error: containersError } = await supabase
+    .from('containers')
+    .select('id')
+    .ilike('container_id', like)
+    .limit(10);
+  if (containersError) throw containersError;
+
+  if (containers && containers.length > 0) {
+    const { data: byContainer, error: byContainerError } = await supabase
+      .from('material_inputs')
+      .select('id')
+      .in('container_id', containers.map((container) => container.id))
+      .limit(10);
+    if (byContainerError) throw byContainerError;
+    if (byContainer && byContainer.length > 0) return byContainer.map((input) => input.id);
+  }
+
+  // Processing step (VRB-...)
+  const { data: steps, error: stepsError } = await supabase
+    .from('processing_steps')
+    .select('material_input_id')
+    .ilike('processing_id', like)
+    .limit(10);
+  if (stepsError) throw stepsError;
+  if (steps && steps.length > 0) {
+    return unique(steps.map((step) => step.material_input_id).filter(notNull));
+  }
+
+  // Sample / retention sample (PRB-/RST-...)
+  const { data: samples, error: samplesError } = await supabase
+    .from('samples')
+    .select('material_input_id, processing_step_id, output_material_id')
+    .ilike('sample_id', like)
+    .limit(10);
+  if (samplesError) throw samplesError;
+  if (samples && samples.length > 0) {
+    const direct = unique(samples.map((sample) => sample.material_input_id).filter(notNull));
+    if (direct.length > 0) return direct;
+
+    const resolved = await inputIdsFromOutputs(
+      samples.map((sample) => sample.output_material_id).filter(notNull),
+      samples.map((sample) => sample.processing_step_id).filter(notNull)
+    );
+    if (resolved.length > 0) return resolved;
+  }
+
+  // Output material (OUT-/AUS-...)
+  const { data: outputs, error: outputsError } = await supabase
+    .from('output_materials')
+    .select('id')
+    .ilike('output_id', like)
+    .limit(10);
+  if (outputsError) throw outputsError;
+  if (outputs && outputs.length > 0) {
+    const resolved = await inputIdsFromOutputs(outputs.map((output) => output.id), []);
+    if (resolved.length > 0) return resolved;
+  }
+
+  // Delivery note (LS-...)
+  const { data: notes, error: notesError } = await supabase
+    .from('delivery_notes')
+    .select('material_input_id, output_material_id')
+    .ilike('note_id', like)
+    .limit(10);
+  if (notesError) throw notesError;
+  if (notes && notes.length > 0) {
+    const direct = unique(notes.map((note) => note.material_input_id).filter(notNull));
+    if (direct.length > 0) return direct;
+
+    const resolved = await inputIdsFromOutputs(
+      notes.map((note) => note.output_material_id).filter(notNull),
+      []
+    );
+    if (resolved.length > 0) return resolved;
+  }
+
+  return [];
+};
+
 export default function Traceability() {
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(() => searchParams.get('search') ?? "");
@@ -219,33 +338,27 @@ export default function Traceability() {
 
       let results: MaterialInput[] = data || [];
 
-      // Container IDs (BB-/BX-/GX-/CT-...) resolve via the linked container
+      // Scanned codes of other record types resolve via their material input
       if (results.length === 0) {
-        const { data: containers, error: containersError } = await supabase
-          .from('containers')
-          .select('id')
-          .ilike('container_id', `%${cleanTerm}%`)
-          .limit(10);
+        const inputIds = await resolveInputIdsForCode(cleanTerm);
 
-        if (containersError) throw containersError;
-
-        if (containers && containers.length > 0) {
-          const { data: byContainer, error: byContainerError } = await supabase
+        if (inputIds.length > 0) {
+          const { data: related, error: relatedError } = await supabase
             .from('material_inputs')
             .select('*')
-            .in('container_id', containers.map((container) => container.id))
+            .in('id', inputIds)
             .order('created_at', { ascending: false })
             .limit(10);
 
-          if (byContainerError) throw byContainerError;
-          results = byContainer || [];
+          if (relatedError) throw relatedError;
+          results = related || [];
         }
       }
 
       setSearchResults(results);
 
       if (results.length === 1) {
-        selectMaterial(results[0]);
+        await selectMaterial(results[0]);
       } else if (results.length === 0) {
         toast({
           title: "Keine Treffer",

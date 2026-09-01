@@ -320,7 +320,34 @@ export default function MaterialBatches() {
 
   const intakeMutation = useProjectMutation<MaterialBatch>(
     async (batch) => {
-      await linkBatchToMaterialInput(batch, supplierName(batch));
+      // Die gecachte Zeile kann veraltet sein. Vor dem Anlegen eines
+      // Wareneingangs den aktuellen Stand lesen, sonst bucht ein zweiter Klick
+      // dieselbe Charge doppelt ein.
+      const { data: current, error: readError } = await supabase
+        .from("material_batches")
+        .select("material_input_id")
+        .eq("id", batch.id)
+        .maybeSingle();
+      if (readError) throw new Error(readError.message);
+      if (!current) throw new Error("Keine Berechtigung oder Charge nicht gefunden");
+      if (current.material_input_id) return;
+
+      const materialInputId = await linkBatchToMaterialInput(batch, supplierName(batch));
+
+      // Die Verknüpfung wird per UPDATE gesetzt und kann von RLS still
+      // gefiltert werden - ohne Prüfung meldeten wir einen Erfolg, der die
+      // Charge unverknüpft zurücklässt.
+      const { data: linked, error: verifyError } = await supabase
+        .from("material_batches")
+        .select("material_input_id")
+        .eq("id", batch.id)
+        .maybeSingle();
+      if (verifyError) throw new Error(verifyError.message);
+      if (!linked || linked.material_input_id !== materialInputId) {
+        throw new Error(
+          "Der Wareneingang wurde angelegt, konnte der Charge aber nicht zugeordnet werden (fehlende Berechtigung).",
+        );
+      }
     },
     {
       successMessage: "Charge in den Wareneingang übernommen",

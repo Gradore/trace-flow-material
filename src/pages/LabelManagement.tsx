@@ -65,7 +65,7 @@ const outputTypeLabels: Record<string, string> = {
 export default function LabelManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<LabelType>("all");
-  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [busyLabel, setBusyLabel] = useState<{ id: string; action: "download" | "print" } | null>(null);
 
   // Fetch containers
   const {
@@ -242,7 +242,7 @@ export default function LabelManagement() {
   };
 
   const handleDownloadLabel = async (label: LabelItem) => {
-    setGeneratingId(label.id);
+    setBusyLabel({ id: label.id, action: "download" });
     try {
       const pdfBlob = await buildLabelPDF(label);
 
@@ -253,23 +253,26 @@ export default function LabelManagement() {
       console.error("Error generating label:", error);
       toast.error("Etikett konnte nicht erstellt werden");
     } finally {
-      setGeneratingId(null);
+      setBusyLabel(null);
     }
   };
 
   const handlePrintLabel = async (label: LabelItem) => {
-    setGeneratingId(label.id);
+    setBusyLabel({ id: label.id, action: "print" });
     try {
       const pdfBlob = await buildLabelPDF(label);
 
-      printPDF(pdfBlob);
+      if (!printPDF(pdfBlob)) {
+        toast.error("Druckfenster wurde blockiert. Bitte Popups für diese Seite erlauben.");
+        return;
+      }
 
-      toast.success("Etikett wird gedruckt");
+      toast.success("Etikett wird im Druckdialog geöffnet");
     } catch (error) {
       console.error("Error printing label:", error);
       toast.error("Etikett konnte nicht gedruckt werden");
     } finally {
-      setGeneratingId(null);
+      setBusyLabel(null);
     }
   };
 
@@ -418,10 +421,10 @@ export default function LabelManagement() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDownloadLabel(label)}
-                          disabled={generatingId === label.id}
+                          disabled={busyLabel?.id === label.id}
                           title="Herunterladen"
                         >
-                          {generatingId === label.id ? (
+                          {busyLabel?.id === label.id && busyLabel.action === "download" ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <Download className="h-4 w-4" />
@@ -432,10 +435,14 @@ export default function LabelManagement() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handlePrintLabel(label)}
-                          disabled={generatingId === label.id}
+                          disabled={busyLabel?.id === label.id}
                           title="Drucken"
                         >
-                          <Printer className="h-4 w-4" />
+                          {busyLabel?.id === label.id && busyLabel.action === "print" ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Printer className="h-4 w-4" />
+                          )}
                           <span className="sr-only">Drucken</span>
                         </Button>
                       </div>

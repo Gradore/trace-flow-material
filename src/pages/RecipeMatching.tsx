@@ -278,6 +278,21 @@ export default function RecipeMatching() {
 
   const currentStepIdx = STEPS.findIndex(s => s.id === wizardStep);
 
+  const resetWizard = () => {
+    setRecipeName("");
+    setRecipeDescription("");
+    setComponents([]);
+    setProcessTemp("");
+    setProcessPressure("");
+    setProcessThroughput("");
+    setProcessNotes("");
+    setDatasheetText("");
+    setMaterialContext("");
+    setSelectedOrder("");
+    setAnalysisResult(null);
+    setWizardStep("recipe");
+  };
+
   const loadSampleData = (sample: any) => {
     if (!sample.sample_results?.length) {
       toast.error('Keine Laborergebnisse für diese Probe');
@@ -300,21 +315,6 @@ export default function RecipeMatching() {
     setActiveView("wizard");
     setWizardStep("analysis");
     toast.success('Probendaten geladen');
-  };
-
-  const resetWizard = () => {
-    setRecipeName("");
-    setRecipeDescription("");
-    setComponents([]);
-    setProcessTemp("");
-    setProcessPressure("");
-    setProcessThroughput("");
-    setProcessNotes("");
-    setDatasheetText("");
-    setMaterialContext("");
-    setSelectedOrder("");
-    setAnalysisResult(null);
-    setWizardStep("recipe");
   };
 
   // ── RENDER ──

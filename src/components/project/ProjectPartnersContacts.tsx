@@ -140,7 +140,21 @@ export default function PartnerContactsTab({
         notes: trimmedOrNull(form.notes),
       };
 
-      let savedId = contactId;
+      /**
+       * Only one primary contact per partner. The demote runs *before* the
+       * record is written: if it ran afterwards and failed, the user would see
+       * "konnte nicht gespeichert werden" for an already saved contact and a
+       * second attempt would insert a duplicate.
+       */
+      if (form.is_primary) {
+        let demote = supabase
+          .from("project_contacts")
+          .update({ is_primary: false })
+          .eq("partner_id", partnerId);
+        if (contactId) demote = demote.neq("id", contactId);
+        const { error: demoteError } = await demote;
+        if (demoteError) throw new Error(demoteError.message);
+      }
 
       if (contactId) {
         const { data, error } = await supabase
@@ -161,17 +175,6 @@ export default function PartnerContactsTab({
         if (!data || data.length === 0) {
           throw new Error("Keine Berechtigung oder Datensatz nicht gefunden");
         }
-        savedId = data[0].id;
-      }
-
-      // Only one primary contact per partner.
-      if (form.is_primary && savedId) {
-        const { error: demoteError } = await supabase
-          .from("project_contacts")
-          .update({ is_primary: false })
-          .eq("partner_id", partnerId)
-          .neq("id", savedId);
-        if (demoteError) throw new Error(demoteError.message);
       }
     },
     {

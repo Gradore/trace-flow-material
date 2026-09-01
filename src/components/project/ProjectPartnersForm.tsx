@@ -28,6 +28,7 @@ import { IpGateBanner } from "@/components/project/ProjectUI";
 import {
   CheckboxGroup,
   RatingPicker,
+  subcategoryLabel,
   type OptionItem,
   trimmedOrNull,
 } from "@/components/project/ProjectPartnersShared";
@@ -235,9 +236,12 @@ export function PartnerFormFields({
             onChange={(event) => set("subcategory", event.target.value)}
             placeholder="z. B. shear_mill"
           />
+          {/* Stored value stays the key, the picker shows the German label. */}
           <datalist id={listId}>
             {subcategorySuggestions.map((entry) => (
-              <option key={entry} value={entry} />
+              <option key={entry} value={entry}>
+                {subcategoryLabel(entry)}
+              </option>
             ))}
           </datalist>
         </div>

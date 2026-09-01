@@ -507,7 +507,7 @@ export default function TestRunsDetail({
                 <span className="ml-1.5 text-xs text-muted-foreground">{parameters.length}</span>
               </TabsTrigger>
               <TabsTrigger value="output">
-                Output
+                Fraktionen
                 <span className="ml-1.5 text-xs text-muted-foreground">{fractions.length}</span>
               </TabsTrigger>
               <TabsTrigger value="analytics">
@@ -1289,8 +1289,8 @@ export default function TestRunsDetail({
                   <AlertTitle>Go/No-Go verletzt</AlertTitle>
                   <AlertDescription className="text-sm">
                     <ul className="mt-1 space-y-1">
-                      {breaches.map((breach) => (
-                        <li key={breach}>• {breach}</li>
+                      {breaches.map((breach, index) => (
+                        <li key={`${index}-${breach}`}>• {breach}</li>
                       ))}
                     </ul>
                   </AlertDescription>

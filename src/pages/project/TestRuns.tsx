@@ -276,13 +276,17 @@ export default function TestRuns() {
 
       if (paramError || !paramData || paramData.length !== parameterRows.length) {
         const reason = paramError?.message ?? "Keine Berechtigung oder Datensatz nicht gefunden";
-        const { error: rollbackError } = await supabase
+        // Löschen ist Admins/Betriebsleitern vorbehalten: ohne .select() würde RLS
+        // die Zeile still herausfiltern und der Rollback fälschlich als Erfolg gelten.
+        const { data: rollbackData, error: rollbackError } = await supabase
           .from("test_runs")
           .delete()
-          .eq("id", runId);
+          .eq("id", runId)
+          .select("id");
+        const rollbackFailed = Boolean(rollbackError) || !rollbackData || rollbackData.length === 0;
         throw new Error(
-          rollbackError
-            ? `Parameter konnten nicht gespeichert werden (${reason}). Der halb angelegte Versuch ${run.run_code} konnte nicht automatisch entfernt werden (${rollbackError.message}) — bitte manuell prüfen.`
+          rollbackFailed
+            ? `Parameter konnten nicht gespeichert werden (${reason}). Der halb angelegte Versuch ${run.run_code} konnte nicht automatisch entfernt werden (${rollbackError?.message ?? "keine Löschberechtigung"}) — bitte manuell prüfen.`
             : `Parameter konnten nicht gespeichert werden (${reason}). Der Versuch wurde wieder entfernt.`,
         );
       }
@@ -391,7 +395,10 @@ export default function TestRuns() {
     batchesQuery.isLoading ||
     doeQuery.isLoading ||
     parametersQuery.isLoading ||
-    fractionsQuery.isLoading;
+    fractionsQuery.isLoading ||
+    analysesQuery.isLoading ||
+    resultsQuery.isLoading ||
+    specsQuery.isLoading;
 
   const loadError =
     (runsQuery.error as Error | null) ??

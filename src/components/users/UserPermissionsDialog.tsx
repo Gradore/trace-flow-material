@@ -198,8 +198,11 @@ export function UserPermissionsDialog({
 
   const loadPermissions = async () => {
     if (!user) return;
-    
+
     setIsLoading(true);
+    // Never carry the previously opened user's switches over: if loading fails
+    // below, those values must not end up being saved onto this user.
+    setPermissions(defaultPermissions);
     try {
       // First check if user has custom permissions
       const { data: existingPerms, error } = await supabase
@@ -240,9 +243,10 @@ export function UserPermissionsDialog({
         setPermissions(perms);
       } else {
         // Get default permissions for role
-        const { data: defaultPerms } = await supabase
+        const { data: defaultPerms, error: defaultsError } = await supabase
           .rpc("get_default_permissions_for_role", { role_name: user.role || "customer" });
-        
+        if (defaultsError) throw defaultsError;
+
         if (defaultPerms && typeof defaultPerms === 'object' && !Array.isArray(defaultPerms)) {
           setPermissions(defaultPerms as unknown as Permissions);
         } else {
@@ -251,9 +255,10 @@ export function UserPermissionsDialog({
       }
     } catch (error: any) {
       console.error("Error loading permissions:", error);
+      setPermissions(defaultPermissions);
       toast({
         title: "Fehler",
-        description: "Berechtigungen konnten nicht geladen werden.",
+        description: error?.message || "Berechtigungen konnten nicht geladen werden.",
         variant: "destructive",
       });
     } finally {
@@ -261,36 +266,43 @@ export function UserPermissionsDialog({
     }
   };
 
+  // supabase-js resolves with { data, error } instead of throwing, so the error
+  // has to be read explicitly - otherwise the button silently does nothing.
+  const fetchRoleDefaults = async (roleName: string): Promise<Permissions | null> => {
+    const { data: defaultPerms, error } = await supabase
+      .rpc("get_default_permissions_for_role", { role_name: roleName });
+
+    if (error || !defaultPerms || typeof defaultPerms !== "object" || Array.isArray(defaultPerms)) {
+      console.error("Error loading default permissions:", error);
+      toast({
+        title: "Fehler",
+        description: error?.message || "Standard-Berechtigungen konnten nicht geladen werden.",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    return defaultPerms as unknown as Permissions;
+  };
+
   const handleResetToRoleDefaults = async () => {
     if (!selectedRole) return;
-    
-    try {
-      const { data: defaultPerms } = await supabase
-        .rpc("get_default_permissions_for_role", { role_name: selectedRole });
-      
-      if (defaultPerms && typeof defaultPerms === 'object' && !Array.isArray(defaultPerms)) {
-        setPermissions(defaultPerms as unknown as Permissions);
-        toast({ title: "Berechtigungen auf Rollen-Standard zurückgesetzt" });
-      }
-    } catch (error: any) {
-      console.error("Error resetting permissions:", error);
-    }
+
+    const defaults = await fetchRoleDefaults(selectedRole);
+    if (!defaults) return;
+
+    setPermissions(defaults);
+    toast({ title: "Berechtigungen auf Rollen-Standard zurückgesetzt" });
   };
 
   const handleRoleChange = async (newRole: string) => {
     setSelectedRole(newRole);
-    
+
     // Get default permissions for new role
-    try {
-      const { data: defaultPerms } = await supabase
-        .rpc("get_default_permissions_for_role", { role_name: newRole });
-      
-      if (defaultPerms && typeof defaultPerms === 'object' && !Array.isArray(defaultPerms)) {
-        setPermissions(defaultPerms as unknown as Permissions);
-      }
-    } catch (error: any) {
-      console.error("Error getting default permissions:", error);
-    }
+    const defaults = await fetchRoleDefaults(newRole);
+    if (!defaults) return;
+
+    setPermissions(defaults);
   };
 
   const handleSave = async () => {
