@@ -9,20 +9,11 @@ import type { EmailTemplate } from "@/lib/project/types";
 
 export const ALL = "all";
 
-export const COMMUNICATION_DIRECTIONS = [
-  { id: "outbound", label: "Ausgehend", tone: "info" },
-  { id: "inbound", label: "Eingehend", tone: "success" },
-] as const;
-
-export const COMMUNICATION_CHANNELS = [
-  { id: "email", label: "E-Mail" },
-  { id: "phone", label: "Telefon" },
-  { id: "meeting", label: "Besprechung" },
-  { id: "visit", label: "Besuch vor Ort" },
-  { id: "letter", label: "Brief / Fax" },
-  { id: "portal", label: "Portal / Formular" },
-  { id: "other", label: "Sonstiges" },
-] as const;
+/**
+ * One definition for both communication UIs - the partner sheet writes the
+ * same communications rows this page reads.
+ */
+export { COMMUNICATION_CHANNELS, COMMUNICATION_DIRECTIONS } from "@/lib/project/constants";
 
 /** Placeholder tokens look like {{contact_name}}. */
 const PLACEHOLDER_SOURCE = "\\{\\{\\s*([A-Za-z0-9_.-]+)\\s*\\}\\}";

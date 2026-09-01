@@ -18,6 +18,10 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjectMutation } from "@/hooks/project/useProjectData";
+import { useUserRole } from "@/hooks/useUserRole";
+import { hasAccess } from "@/components/layout/navigation";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProjectDocuments } from "@/components/project/ProjectDocuments";
 import { useRequestAiAnalysis } from "@/hooks/project/useProjectAi";
 import { linkAnalysisToSample, pushResultsToSample } from "@/lib/project/bridges";
 import { ANALYSIS_STATUSES, PARTNER_CATEGORIES, labelOf, toneOf } from "@/lib/project/constants";
@@ -60,6 +64,9 @@ export function AnalyticsDetail({
   onEdit: () => void;
 }) {
   const { user } = useAuth();
+  const { role, isAdmin } = useUserRole();
+  /* intake darf /projekt/analytik, aber nicht /sampling. */
+  const canOpenSampling = hasAccess("/sampling", role, isAdmin);
   const [sampler, setSampler] = useState("");
   const requestAi = useRequestAiAnalysis();
 
@@ -161,7 +168,13 @@ export function AnalyticsDetail({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <Tabs defaultValue="analysis">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="analysis" className="text-xs py-1.5">Analyse</TabsTrigger>
+            <TabsTrigger value="documents" className="text-xs py-1.5">Dokumente</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="analysis" className="space-y-4 mt-4">
           <GoNoGoAlert breaches={view.breaches} />
 
           <div className="grid grid-cols-2 gap-3">
@@ -219,12 +232,14 @@ export function AnalyticsDetail({
                 <Badge variant="outline" className="bg-success/10 text-success border-success/20">
                   Probe angelegt
                 </Badge>
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/sampling">
-                    Zur Probenverwaltung
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Link>
-                </Button>
+                {canOpenSampling && (
+                  <Button asChild variant="outline" size="sm">
+                    <Link to="/sampling">
+                      Zur Probenverwaltung
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="space-y-2">
@@ -305,7 +320,17 @@ export function AnalyticsDetail({
               <p className="text-sm text-muted-foreground">Noch keine KI-Bewertung vorhanden.</p>
             )}
           </div>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="documents" className="mt-4">
+            <ProjectDocuments
+              entityType="fraction_analysis"
+              entityId={analysis.id}
+              title="Dokumente zur Analyse"
+              description="Laborbericht als PDF, Fotos der Probe und der Prüfkörper."
+            />
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter className="gap-2 sm:gap-2">
           <Button type="button" variant="outline" onClick={onEdit}>

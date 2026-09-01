@@ -10,13 +10,8 @@ import { cn } from "@/lib/utils";
 import { ToneBadge } from "@/components/project/ProjectUI";
 import type { ProjectRisk } from "@/lib/project/types";
 
-/** Local status list - project_risks.status is a free text column in the DB. */
-export const RISK_STATUSES = [
-  { id: "open", label: "Offen", tone: "destructive" },
-  { id: "mitigating", label: "Maßnahmen laufen", tone: "info" },
-  { id: "accepted", label: "Akzeptiert", tone: "warning" },
-  { id: "closed", label: "Geschlossen", tone: "success" },
-] as const;
+/** Single definition in constants.ts - the cockpit renders the same values. */
+export { RISK_STATUSES } from "@/lib/project/constants";
 
 export const PROBABILITY_LABELS: Record<number, string> = {
   1: "sehr unwahrscheinlich",

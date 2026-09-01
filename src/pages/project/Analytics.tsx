@@ -266,6 +266,53 @@ export default function Analytics() {
     });
   };
 
+  const renderActions = (view: AnalysisView) => {
+    const analysis = view.analysis;
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label={`Aktionen für ${analysis.analysis_code}`}>
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="bg-popover">
+          <DropdownMenuItem onClick={() => setResultsId(analysis.id)}>
+            <ClipboardList className="h-4 w-4" />
+            Messwerte erfassen
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setDetailId(analysis.id)}>
+            <FlaskConical className="h-4 w-4" />
+            Details &amp; Probe
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              setEditId(analysis.id);
+              setFormOpen(true);
+            }}
+          >
+            <ListChecks className="h-4 w-4" />
+            Bearbeiten
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!analysis.output_fraction_id || requestAi.isPending}
+            onClick={() => requestSpecAi(view)}
+          >
+            <Sparkles className="h-4 w-4" />
+            KI-Spec-Bewertung
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => setDeleteId(analysis.id)}
+          >
+            <Trash2 className="h-4 w-4" />
+            Löschen
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <ProjectPageHeader
@@ -463,115 +510,173 @@ export default function Analytics() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <Table className="min-w-[900px]">
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Analyse</TableHead>
-                  <TableHead>Fraktion</TableHead>
-                  <TableHead>Labor</TableHead>
-                  <TableHead>Methode</TableHead>
-                  <TableHead>Versand</TableHead>
-                  <TableHead>Ergebnis</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Kosten</TableHead>
-                  <TableHead>Spec</TableHead>
-                  <TableHead className="w-12" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((view) => {
-                  const analysis = view.analysis;
-                  return (
-                    <TableRow
-                      key={analysis.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setDetailId(analysis.id)}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-medium">{analysis.analysis_code}</span>
+            {/* ------------------------------------------------- mobile cards */}
+            <div className="space-y-3 p-3 md:hidden">
+              {filtered.map((view) => {
+                const analysis = view.analysis;
+                return (
+                  <div key={analysis.id} className="rounded-lg border border-border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => setDetailId(analysis.id)}
+                      >
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono text-sm font-semibold">
+                            {analysis.analysis_code}
+                          </span>
+                          <ToneBadge tone={toneOf(ANALYSIS_STATUSES, analysis.status)}>
+                            {labelOf(ANALYSIS_STATUSES, analysis.status)}
+                          </ToneBadge>
+                          <ConformityBadge level={view.level} />
                           {view.breaches.length > 0 && (
-                            <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" aria-hidden />
+                            <AlertTriangle
+                              className="h-3.5 w-3.5 text-destructive shrink-0"
+                              aria-hidden
+                            />
                           )}
                           {analysis.sample_id && (
                             <Beaker className="h-3.5 w-3.5 text-success shrink-0" aria-hidden />
                           )}
                         </div>
-                        <span className="text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           {view.missingMandatory.length === 0
                             ? "Pflichtsatz vollständig"
                             : `${view.missingMandatory.length} Pflichtwerte offen`}
-                        </span>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">{fractionLabel(view.fraction)}</TableCell>
-                      <TableCell className="max-w-[12rem] truncate">{view.lab?.name ?? "—"}</TableCell>
-                      <TableCell className="max-w-[12rem] truncate">{analysis.method ?? "—"}</TableCell>
-                      <TableCell className="whitespace-nowrap">{formatDate(analysis.sample_sent_date)}</TableCell>
-                      <TableCell className="whitespace-nowrap">{formatDate(analysis.result_date)}</TableCell>
-                      <TableCell>
-                        <ToneBadge tone={toneOf(ANALYSIS_STATUSES, analysis.status)}>
-                          {labelOf(ANALYSIS_STATUSES, analysis.status)}
-                        </ToneBadge>
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">{formatEur(analysis.cost_eur)}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <ConformityBadge level={view.level} />
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">
-                            {view.evaluableCount > 0
-                              ? `${view.inSpecCount} von ${view.evaluableCount} Parametern in Spec`
-                              : "keine Sollwerte"}
+                        </p>
+                      </button>
+                      {renderActions(view)}
+                    </div>
+
+                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                      <div className="flex min-w-0 gap-1.5">
+                        <dt className="text-muted-foreground">Fraktion</dt>
+                        <dd className="truncate font-medium">{fractionLabel(view.fraction)}</dd>
+                      </div>
+                      <div className="flex min-w-0 gap-1.5">
+                        <dt className="text-muted-foreground">Labor</dt>
+                        <dd className="truncate font-medium">{view.lab?.name ?? "—"}</dd>
+                      </div>
+                      <div className="flex min-w-0 gap-1.5">
+                        <dt className="text-muted-foreground">Versand</dt>
+                        <dd className="font-medium">{formatDate(analysis.sample_sent_date)}</dd>
+                      </div>
+                      <div className="flex min-w-0 gap-1.5">
+                        <dt className="text-muted-foreground">Ergebnis</dt>
+                        <dd className="font-medium">{formatDate(analysis.result_date)}</dd>
+                      </div>
+                      <div className="flex min-w-0 gap-1.5">
+                        <dt className="text-muted-foreground">Kosten</dt>
+                        <dd className="font-medium">{formatEur(analysis.cost_eur)}</dd>
+                      </div>
+                      <div className="flex min-w-0 gap-1.5">
+                        <dt className="text-muted-foreground">Spec</dt>
+                        <dd className="font-medium">
+                          {view.evaluableCount > 0
+                            ? `${view.inSpecCount}/${view.evaluableCount} in Spec`
+                            : "keine Sollwerte"}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setResultsId(analysis.id)}
+                      >
+                        <ClipboardList className="h-4 w-4 mr-2" />
+                        Messwerte
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setDetailId(analysis.id)}
+                      >
+                        <FlaskConical className="h-4 w-4 mr-2" />
+                        Details
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ------------------------------------------------------ md table */}
+            <div className="hidden md:block">
+              <Table className="min-w-[900px]">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Analyse</TableHead>
+                    <TableHead>Fraktion</TableHead>
+                    <TableHead>Labor</TableHead>
+                    <TableHead>Methode</TableHead>
+                    <TableHead>Versand</TableHead>
+                    <TableHead>Ergebnis</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Kosten</TableHead>
+                    <TableHead>Spec</TableHead>
+                    <TableHead className="w-12" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((view) => {
+                    const analysis = view.analysis;
+                    return (
+                      <TableRow
+                        key={analysis.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setDetailId(analysis.id)}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-medium">{analysis.analysis_code}</span>
+                            {view.breaches.length > 0 && (
+                              <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" aria-hidden />
+                            )}
+                            {analysis.sample_id && (
+                              <Beaker className="h-3.5 w-3.5 text-success shrink-0" aria-hidden />
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {view.missingMandatory.length === 0
+                              ? "Pflichtsatz vollständig"
+                              : `${view.missingMandatory.length} Pflichtwerte offen`}
                           </span>
-                        </div>
-                      </TableCell>
-                      <TableCell onClick={(event) => event.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label={`Aktionen für ${analysis.analysis_code}`}>
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-popover">
-                            <DropdownMenuItem onClick={() => setResultsId(analysis.id)}>
-                              <ClipboardList className="h-4 w-4" />
-                              Messwerte erfassen
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setDetailId(analysis.id)}>
-                              <FlaskConical className="h-4 w-4" />
-                              Details &amp; Probe
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setEditId(analysis.id);
-                                setFormOpen(true);
-                              }}
-                            >
-                              <ListChecks className="h-4 w-4" />
-                              Bearbeiten
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={!analysis.output_fraction_id || requestAi.isPending}
-                              onClick={() => requestSpecAi(view)}
-                            >
-                              <Sparkles className="h-4 w-4" />
-                              KI-Spec-Bewertung
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => setDeleteId(analysis.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Löschen
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">{fractionLabel(view.fraction)}</TableCell>
+                        <TableCell className="max-w-[12rem] truncate">{view.lab?.name ?? "—"}</TableCell>
+                        <TableCell className="max-w-[12rem] truncate">{analysis.method ?? "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap">{formatDate(analysis.sample_sent_date)}</TableCell>
+                        <TableCell className="whitespace-nowrap">{formatDate(analysis.result_date)}</TableCell>
+                        <TableCell>
+                          <ToneBadge tone={toneOf(ANALYSIS_STATUSES, analysis.status)}>
+                            {labelOf(ANALYSIS_STATUSES, analysis.status)}
+                          </ToneBadge>
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap">{formatEur(analysis.cost_eur)}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <ConformityBadge level={view.level} />
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">
+                              {view.evaluableCount > 0
+                                ? `${view.inSpecCount} von ${view.evaluableCount} Parametern in Spec`
+                                : "keine Sollwerte"}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell onClick={(event) => event.stopPropagation()}>
+                          {renderActions(view)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       )}

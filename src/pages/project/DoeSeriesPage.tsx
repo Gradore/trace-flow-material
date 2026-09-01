@@ -366,6 +366,34 @@ export default function DoeSeriesPage() {
     setDialogOpen(true);
   };
 
+  /** Same action menu for the mobile card and the md table row. */
+  const renderSeriesActions = (series: DoeSeries) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label={`Aktionen für ${series.code}`}>
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="bg-popover">
+        <DropdownMenuItem onClick={() => setSelectedId(series.id)}>
+          <Grid3x3 className="h-4 w-4 mr-2" />
+          Öffnen
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openEdit(series)}>
+          <Pencil className="h-4 w-4 mr-2" />
+          Bearbeiten
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          onClick={() => setSeriesToDelete(series)}
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Löschen
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   const runsOfSeriesToDelete = seriesToDelete
     ? (runsBySeries.get(seriesToDelete.id)?.length ?? 0)
     : 0;
@@ -528,107 +556,174 @@ export default function DoeSeriesPage() {
               }
             />
           ) : (
-            <div className="overflow-x-auto -mx-6 px-6">
-              <Table className="min-w-[56rem]">
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Prozesslinie</TableHead>
-                    <TableHead>Design</TableHead>
-                    <TableHead>Faktoren</TableHead>
-                    <TableHead className="min-w-[13rem]">Fortschritt</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-12" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredSeries.map((series) => {
-                    const progress = progressOf(series);
-                    const factors = parseDoeFactors(series.factors);
-                    const isSelected = series.id === selectedId;
-                    return (
-                      <TableRow
-                        key={series.id}
-                        onClick={() => setSelectedId(series.id)}
-                        className={cn("cursor-pointer", isSelected && "bg-primary/5")}
-                      >
-                        <TableCell className="font-mono font-medium whitespace-nowrap">
-                          {series.code}
-                        </TableCell>
-                        <TableCell className="max-w-[16rem] truncate">{series.name}</TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          <Badge variant="outline" className="font-medium">
-                            {labelOf(PROCESS_LINES, series.process_line)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {labelOf(DESIGN_TYPES, series.design_type)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                          {factors.length === 0
-                            ? "keine"
-                            : `${factors.length} · ${factors
-                                .map((factor) => factor.levels.length)
-                                .join("×")}`}
-                        </TableCell>
-                        <TableCell>
-                          <div className="w-48 space-y-1">
-                            <Progress
-                              value={progress.percent}
-                              className="h-2 [&>div]:bg-primary"
-                              aria-label={`Fortschritt ${series.code}`}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                              {progress.completed} von {progress.total}{" "}
-                              {progress.total === 1 ? "Lauf" : "Läufen"} abgeschlossen
-                              {progress.created !== progress.total
-                                ? ` · ${progress.created} angelegt`
-                                : ""}
-                            </p>
+            <>
+              {/* --------------------------------------------------- mobile cards */}
+              <div className="space-y-3 md:hidden">
+                {filteredSeries.map((series) => {
+                  const progress = progressOf(series);
+                  const factors = parseDoeFactors(series.factors);
+                  const isSelected = series.id === selectedId;
+                  return (
+                    <div
+                      key={series.id}
+                      className={cn(
+                        "rounded-lg border border-border p-3",
+                        isSelected && "border-primary/50 bg-primary/5",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 text-left"
+                          onClick={() => setSelectedId(series.id)}
+                        >
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono text-sm font-semibold">{series.code}</span>
+                            <ToneBadge tone={toneOf(DOE_SERIES_STATUSES, series.status)}>
+                              {labelOf(DOE_SERIES_STATUSES, series.status)}
+                            </ToneBadge>
                           </div>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          <ToneBadge tone={toneOf(DOE_SERIES_STATUSES, series.status)}>
-                            {labelOf(DOE_SERIES_STATUSES, series.status)}
-                          </ToneBadge>
-                        </TableCell>
-                        <TableCell onClick={(event) => event.stopPropagation()}>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={`Aktionen für ${series.code}`}
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-popover">
-                              <DropdownMenuItem onClick={() => setSelectedId(series.id)}>
-                                <Grid3x3 className="h-4 w-4 mr-2" />
-                                Öffnen
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openEdit(series)}>
-                                <Pencil className="h-4 w-4 mr-2" />
-                                Bearbeiten
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={() => setSeriesToDelete(series)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Löschen
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                          <p className="mt-1 text-sm font-medium leading-snug">{series.name}</p>
+                        </button>
+                        {renderSeriesActions(series)}
+                      </div>
+
+                      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                        <div className="flex gap-1.5">
+                          <dt className="text-muted-foreground">Linie</dt>
+                          <dd className="truncate font-medium">
+                            {labelOf(PROCESS_LINES, series.process_line)}
+                          </dd>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <dt className="text-muted-foreground">Design</dt>
+                          <dd className="truncate font-medium">
+                            {labelOf(DESIGN_TYPES, series.design_type)}
+                          </dd>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <dt className="text-muted-foreground">Faktoren</dt>
+                          <dd className="font-medium">
+                            {factors.length === 0
+                              ? "keine"
+                              : `${factors.length} · ${factors
+                                  .map((factor) => factor.levels.length)
+                                  .join("×")}`}
+                          </dd>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <dt className="text-muted-foreground">Läufe</dt>
+                          <dd className="font-medium">
+                            {progress.completed} / {progress.total}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <div className="mt-2 space-y-1">
+                        <Progress
+                          value={progress.percent}
+                          className="h-2 [&>div]:bg-primary"
+                          aria-label={`Fortschritt ${series.code}`}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {progress.completed} von {progress.total}{" "}
+                          {progress.total === 1 ? "Lauf" : "Läufen"} abgeschlossen
+                          {progress.created !== progress.total
+                            ? ` · ${progress.created} angelegt`
+                            : ""}
+                        </p>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 w-full"
+                        onClick={() => setSelectedId(series.id)}
+                      >
+                        <Grid3x3 className="mr-2 h-4 w-4" />
+                        Versuchsplan öffnen
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* -------------------------------------------------------- md table */}
+              <div className="-mx-6 hidden overflow-x-auto px-6 md:block">
+                <Table className="min-w-[56rem]">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Code</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Prozesslinie</TableHead>
+                      <TableHead>Design</TableHead>
+                      <TableHead>Faktoren</TableHead>
+                      <TableHead className="min-w-[13rem]">Fortschritt</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-12" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredSeries.map((series) => {
+                      const progress = progressOf(series);
+                      const factors = parseDoeFactors(series.factors);
+                      const isSelected = series.id === selectedId;
+                      return (
+                        <TableRow
+                          key={series.id}
+                          onClick={() => setSelectedId(series.id)}
+                          className={cn("cursor-pointer", isSelected && "bg-primary/5")}
+                        >
+                          <TableCell className="font-mono font-medium whitespace-nowrap">
+                            {series.code}
+                          </TableCell>
+                          <TableCell className="max-w-[16rem] truncate">{series.name}</TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <Badge variant="outline" className="font-medium">
+                              {labelOf(PROCESS_LINES, series.process_line)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {labelOf(DESIGN_TYPES, series.design_type)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                            {factors.length === 0
+                              ? "keine"
+                              : `${factors.length} · ${factors
+                                  .map((factor) => factor.levels.length)
+                                  .join("×")}`}
+                          </TableCell>
+                          <TableCell>
+                            <div className="w-48 space-y-1">
+                              <Progress
+                                value={progress.percent}
+                                className="h-2 [&>div]:bg-primary"
+                                aria-label={`Fortschritt ${series.code}`}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                {progress.completed} von {progress.total}{" "}
+                                {progress.total === 1 ? "Lauf" : "Läufen"} abgeschlossen
+                                {progress.created !== progress.total
+                                  ? ` · ${progress.created} angelegt`
+                                  : ""}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <ToneBadge tone={toneOf(DOE_SERIES_STATUSES, series.status)}>
+                              {labelOf(DOE_SERIES_STATUSES, series.status)}
+                            </ToneBadge>
+                          </TableCell>
+                          <TableCell onClick={(event) => event.stopPropagation()}>
+                            {renderSeriesActions(series)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

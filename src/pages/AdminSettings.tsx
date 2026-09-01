@@ -125,7 +125,7 @@ export default function AdminSettings() {
         title: "Einstellungen lokal gespeichert",
         description: "Die Werte gelten nur in diesem Browser.",
       });
-    } catch (error) {
+    } catch {
       toast({ title: "Fehler beim Speichern", variant: "destructive" });
     } finally {
       setIsSaving(false);

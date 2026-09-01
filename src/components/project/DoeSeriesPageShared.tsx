@@ -6,7 +6,11 @@
  * The React components in DoeSeriesPage*.tsx only render what these helpers
  * return.
  */
-import { ANALYSIS_PARAMETER_KEYS, GO_NO_GO } from "@/lib/project/constants";
+import {
+  DOE_RESPONSE_KEYS,
+  GO_NO_GO,
+  TEST_RUN_PARAMETER_KEYS,
+} from "@/lib/project/constants";
 import { parameterLabel } from "@/lib/project/spec";
 import { formatNumber } from "@/components/project/ProjectUI";
 import type {
@@ -18,13 +22,8 @@ import type {
   TestRunParameter,
 } from "@/lib/project/types";
 
-/** Status values of doe_series - the column has no check constraint. */
-export const DOE_SERIES_STATUSES = [
-  { id: "planned", label: "Geplant", tone: "muted" },
-  { id: "running", label: "Läuft", tone: "info" },
-  { id: "completed", label: "Abgeschlossen", tone: "success" },
-  { id: "cancelled", label: "Abgebrochen", tone: "muted" },
-] as const;
+/** Derived from TEST_RUN_STATUSES in constants.ts - see there. */
+export { DOE_SERIES_STATUSES } from "@/lib/project/constants";
 
 export const DESIGN_TYPES = [
   {
@@ -41,6 +40,16 @@ export const DESIGN_TYPES = [
 
 /** Rows beyond this are not rendered - a phone cannot work with more. */
 export const MAX_PLAN_ROWS = 200;
+
+/**
+ * Keys whose value is not measured in the lab but recorded at the machine
+ * (test_run_parameters), e.g. throughput_kgh. DOE_RESPONSE_KEYS only *offers*
+ * throughput_kgh, but a series may already have another machine key stored in
+ * doe_series.responses - that one has to resolve to its value too.
+ */
+const PARAMETER_RESPONSE_KEYS = new Set<string>(
+  TEST_RUN_PARAMETER_KEYS.filter((entry) => entry.numeric).map((entry) => entry.key),
+);
 
 /** A level needs this many completed runs before it is charted. */
 export const MIN_RUNS_PER_LEVEL = 2;
@@ -218,7 +227,10 @@ export interface RunData {
   run: TestRun;
   /** parameter_key -> the level actually set for this run. */
   levels: Map<string, LevelValue>;
-  /** parameter_key -> mean of all analysis results of this run. */
+  /**
+   * parameter_key -> mean of all analysis results of this run, or the value
+   * recorded at the machine when the key is a test_run_parameters response.
+   */
   responses: Map<string, ResponseStat>;
   fractionCount: number;
   analysisCount: number;
@@ -235,10 +247,12 @@ export interface RunDataInput {
 }
 
 /**
- * Joins test_runs -> test_run_parameters (the factor levels) and
- * test_runs -> output_fractions -> fraction_analyses -> fraction_analysis_results
- * (the measured responses). Several fractions per run are averaged; the number
- * of contributing measurements is kept so the UI can be honest about it.
+ * Joins test_runs -> test_run_parameters (the factor levels and the machine-side
+ * responses such as throughput_kgh) and test_runs -> output_fractions ->
+ * fraction_analyses -> fraction_analysis_results (the measured responses).
+ * Several fractions per run are averaged; the number of contributing
+ * measurements is kept so the UI can be honest about it. A key measured in the
+ * lab wins over the machine value of the same key.
  */
 export function buildRunData(input: RunDataInput): Map<string, RunData> {
   const byRun = new Map<string, RunData>();
@@ -261,6 +275,14 @@ export function buildRunData(input: RunDataInput): Map<string, RunData> {
         : parameter.value_text;
     if (value === null || value === undefined) return;
     entry.levels.set(parameter.parameter_key, value);
+    /* Machine-side responses (throughput etc.) never reach the lab tables. */
+    if (
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      PARAMETER_RESPONSE_KEYS.has(parameter.parameter_key)
+    ) {
+      entry.responses.set(parameter.parameter_key, { mean: value, count: 1 });
+    }
   });
 
   const fractionToRun = new Map<string, string>();
@@ -347,7 +369,7 @@ export function downloadCsv(filename: string, content: string): void {
 
 /**
  * The responses to evaluate: what the series declares, or - when nothing is
- * declared - every analytics parameter that actually has measured data.
+ * declared - every evaluable parameter that actually has measured data.
  */
 export function resolveResponseKeys(
   declared: string[] | null | undefined,
@@ -359,17 +381,28 @@ export function resolveResponseKeys(
   runData.forEach((entry) => {
     entry.responses.forEach((_value, key) => measured.add(key));
   });
-  return ANALYSIS_PARAMETER_KEYS.filter((parameter) => measured.has(parameter.key)).map(
+  return DOE_RESPONSE_KEYS.filter((parameter) => measured.has(parameter.key)).map(
     (parameter) => parameter.key,
   );
 }
 
+/** Label and unit of a response - analytics parameter or machine parameter. */
+function responseMeta(key: string): { label: string; unit: string } {
+  const entry = DOE_RESPONSE_KEYS.find((item) => item.key === key);
+  if (entry) return { label: entry.label, unit: entry.unit };
+  /* A series may declare a machine parameter that is not offered as a response
+   * any more - it still needs its German label instead of the bare key. */
+  const machine = TEST_RUN_PARAMETER_KEYS.find((item) => item.key === key);
+  if (machine) return { label: machine.label, unit: machine.unit };
+  return parameterLabel(key);
+}
+
 /** "Faserlänge Median (mm)" */
 export function responseTitle(key: string): string {
-  const { label, unit } = parameterLabel(key);
+  const { label, unit } = responseMeta(key);
   return unit ? `${label} (${unit})` : label;
 }
 
 export function responseUnit(key: string): string {
-  return parameterLabel(key).unit;
+  return responseMeta(key).unit;
 }

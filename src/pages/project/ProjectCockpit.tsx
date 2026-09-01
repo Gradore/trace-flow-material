@@ -94,6 +94,7 @@ import {
   PATENT_TASK_CODE,
   PROCESS_LINES,
   RISK_CATEGORIES,
+  RISK_STATUSES,
   TASK_PRIORITIES,
   TASK_STATUSES,
   TEST_RUN_STATUSES,
@@ -154,15 +155,6 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   high: "hoch",
   medium: "mittel",
   low: "niedrig",
-};
-
-/** project_risks.status is free text (default 'open') - translate what we know. */
-const RISK_STATUS_LABELS: Record<string, string> = {
-  open: "Offen",
-  mitigating: "Maßnahme läuft",
-  monitoring: "Beobachtung",
-  accepted: "Akzeptiert",
-  closed: "Geschlossen",
 };
 
 function timeOf(value: string | null | undefined): number | null {
@@ -422,7 +414,8 @@ export default function ProjectCockpit() {
   // The specification asks for a daily briefing without user action. It is
   // requested at most once per day: the newest stored briefing decides, and a
   // local marker keeps a reload from firing a second paid model call while the
-  // first is still in flight.
+  // first is still in flight. The marker is dropped again when the request
+  // fails, so a single outage cannot silence the briefing for the whole day.
   const todayKey = new Date().toISOString().slice(0, 10);
   const briefingIsFromToday =
     latestBriefing !== null && latestBriefing.created_at.slice(0, 10) === todayKey;
@@ -444,7 +437,20 @@ export default function ProjectCockpit() {
     } catch {
       /* ignore */
     }
-    requestBriefing.mutate({ analysisType: "daily_briefing" });
+    requestBriefing.mutate(
+      { analysisType: "daily_briefing" },
+      {
+        // Roll the day marker back on failure - otherwise one unreachable
+        // edge function suppresses the automatic briefing until tomorrow.
+        onError: () => {
+          try {
+            window.localStorage.removeItem(AUTO_BRIEFING_KEY);
+          } catch {
+            /* ignore */
+          }
+        },
+      },
+    );
     // requestBriefing is a stable mutation object; re-running on its state
     // would re-trigger the request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -671,8 +677,17 @@ export default function ProjectCockpit() {
     return { planned, actual };
   }, [tasks]);
 
-  const releasedFractionCount = fractions.filter((fraction) => fraction.status === "released").length;
-  const releasedForProductTest = fractions.filter((fraction) => fraction.released_for_product_test).length;
+  /*
+   * "Freigegeben" is the release flag, not the status column: a fraction that
+   * already left the house keeps status 'shipped' (FractionsReleaseDialog), so
+   * counting the status would report less than /projekt/fraktionen does.
+   */
+  const releasedFractions = fractions.filter((fraction) => fraction.released_for_product_test);
+  const releasedForProductTest = releasedFractions.length;
+  const releasedFractionKg = releasedFractions.reduce(
+    (sum, fraction) => sum + fraction.weight_kg,
+    0,
+  );
 
   /** KPI tiles are not lists - show a placeholder while loading and on error. */
   const kpi = (query: QueryLike, value: string): string =>
@@ -789,11 +804,9 @@ export default function ProjectCockpit() {
         />
         <StatCard
           label="Freigegebene Fraktionen"
-          value={kpi(fractionsQuery, formatNumber(releasedFractionCount, 0))}
+          value={kpi(fractionsQuery, formatNumber(releasedForProductTest, 0))}
           hint={
-            loaded(fractionsQuery)
-              ? `${formatNumber(releasedForProductTest, 0)} für Produkttests frei`
-              : undefined
+            loaded(fractionsQuery) ? `${formatKg(releasedFractionKg)} für Produkttests frei` : undefined
           }
           icon={PackageCheck}
           accent="emerald"
@@ -1436,7 +1449,9 @@ export default function ProjectCockpit() {
                     </p>
                   )}
                   <p className="mt-2 text-[11px] text-muted-foreground">
-                    Status: {RISK_STATUS_LABELS[risk.status] ?? risk.status}
+                    {/* Gleiche Statusliste wie das Risikoregister - sonst heißt
+                        derselbe Datensatz auf beiden Seiten anders. */}
+                    Status: {labelOf(RISK_STATUSES, risk.status)}
                     {risk.owner ? ` · ${risk.owner}` : ""}
                   </p>
                 </div>

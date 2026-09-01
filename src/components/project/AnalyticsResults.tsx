@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { ANALYSIS_PARAMETER_KEYS } from "@/lib/project/constants";
 import { evaluateResult, goNoGoBreaches, specWindow, type ParameterVerdict } from "@/lib/project/spec";
 import { useProjectMutation } from "@/hooks/project/useProjectData";
+import { useRequestAiAnalysis } from "@/hooks/project/useProjectAi";
 import { ConformityBadge } from "@/components/project/ProjectUI";
 import type { AnalysisResult, FractionSpec } from "@/lib/project/types";
 import {
@@ -195,6 +196,8 @@ export function AnalyticsResults({
 
   const enteredVerdicts = rows.filter((row) => row.parsed !== null).map((row) => row.verdict);
 
+  const requestAi = useRequestAiAnalysis();
+
   const save = useProjectMutation(
     async (vars: { diff: ResultDiff; complete: boolean }) => {
       if (!analysisId) throw new Error("Keine Analyse ausgewählt");
@@ -250,6 +253,16 @@ export function AnalyticsResults({
       errorMessage: "Messwerte konnten nicht gespeichert werden",
       onDone: () => {
         setSaved(true);
+        // Plan 6.2: Nach dem Abschluss der Messwerte die KI-Interpretation des
+        // Versuchs anstossen. Nur beim Abschliessen - eine Zwischenspeicherung
+        // waehrend der Erfassung soll keinen Modellaufruf ausloesen.
+        if (markCompleted && view?.run) {
+          requestAi.mutate({
+            analysisType: "test_interpretation",
+            scopeType: "test_run",
+            scopeId: view.run.id,
+          });
+        }
         setMarkCompleted(false);
       },
     },

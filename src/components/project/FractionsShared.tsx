@@ -7,6 +7,7 @@
  */
 import { ANALYSIS_PARAMETER_KEYS } from "@/lib/project/constants";
 import {
+  CONFORMITY_META,
   conformityOf,
   evaluateResult,
   goNoGoBreaches,
@@ -201,11 +202,15 @@ export function formatSpecWindow(verdict: ParameterVerdict): string {
   return "—";
 }
 
+/**
+ * Ein Vokabular fuer alle Konformitaetsstufen. CONFORMITY_META in spec.ts ist die
+ * einzige Quelle - sonst heisst dieselbe Stufe je nach Ansicht anders.
+ */
 export const VERDICT_LABEL: Record<ConformityLevel, string> = {
-  pass: "in Spec",
-  borderline: "grenzwertig",
-  fail: "außerhalb",
-  unknown: "kein Sollwert",
+  pass: CONFORMITY_META.pass.label,
+  borderline: CONFORMITY_META.borderline.label,
+  fail: CONFORMITY_META.fail.label,
+  unknown: CONFORMITY_META.unknown.label,
 };
 
 /** Accepts German decimal input ("12,5") and returns null for empty input. */

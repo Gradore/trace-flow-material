@@ -100,7 +100,7 @@ export default function Documents() {
       a.download = doc.name;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (error: any) {
+    } catch {
       toast({
         title: "Fehler",
         description: "Dokument konnte nicht heruntergeladen werden.",

@@ -286,9 +286,14 @@ export default function AiInsights() {
             <Clock className="mt-0.5 h-4 w-4 shrink-0 text-info" />
             <span>
               <strong className="text-foreground">{SCHEDULED_LABELS}</strong> sind für den zeitgesteuerten
-              Betrieb gedacht und laufen turnusmäßig ohne Zutun. Die drei kontextbezogenen Typen
-              (Versuchsauswertung, DoE-Optimierung, Spec-Konformität) werden hier manuell für ein konkretes
-              Objekt angestoßen.
+              Betrieb gedacht. Das Tages-Briefing fordert das Projekt-Cockpit beim ersten Aufruf des Tages
+              selbst an; die übrigen dieser Typen laufen erst dann ohne Zutun, wenn die Cron-Jobs aus{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                docs/BETRIEBSHANDBUCH.md
+              </code>{" "}
+              eingerichtet sind. Solange das nicht geschehen ist, werden sie hier manuell gestartet. Die
+              drei kontextbezogenen Typen (Versuchsauswertung, DoE-Optimierung, Spec-Konformität) werden
+              ohnehin manuell für ein konkretes Objekt angestoßen.
             </span>
           </p>
           <p className="flex items-start gap-2 text-sm text-muted-foreground">

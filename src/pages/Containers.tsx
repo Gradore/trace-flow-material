@@ -136,7 +136,7 @@ export default function Containers() {
       );
       downloadPDF(pdfBlob, `Etikett_${container.container_id}.pdf`);
       toast({ title: "Etikett heruntergeladen" });
-    } catch (error) {
+    } catch {
       toast({ title: "Fehler", description: "Etikett konnte nicht erstellt werden.", variant: "destructive" });
     }
   };

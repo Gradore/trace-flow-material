@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ANALYSIS_PARAMETER_KEYS, GO_NO_GO } from "@/lib/project/constants";
-import { specWindow, type ConformityLevel } from "@/lib/project/spec";
+import { CONFORMITY_META, specWindow, type ConformityLevel } from "@/lib/project/spec";
 import { EmptyState, formatNumber } from "@/components/project/ProjectUI";
 import type { FractionSpec } from "@/lib/project/types";
 import { type AnalysisView, formatSpecWindow, parameterMeta } from "./AnalyticsShared";
@@ -36,11 +36,12 @@ const LEVEL_COLORS: Record<ConformityLevel, string> = {
   unknown: "hsl(var(--info))",
 };
 
+// Beschriftung immer aus CONFORMITY_META - siehe VERDICT_LABEL in FractionsShared.
 const LEVEL_LABELS: Record<ConformityLevel, string> = {
-  pass: "In Spec",
-  borderline: "Grenzwertig",
-  fail: "Außerhalb",
-  unknown: "Ohne Sollwert",
+  pass: CONFORMITY_META.pass.label,
+  borderline: CONFORMITY_META.borderline.label,
+  fail: CONFORMITY_META.fail.label,
+  unknown: CONFORMITY_META.unknown.label,
 };
 
 /** The hard project thresholds, drawn as a red line wherever they apply. */
@@ -214,11 +215,13 @@ export function AnalyticsComparison({ views, specs }: { views: AnalysisView[]; s
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  {/* Ab neun Balken bleibt pro Label zu wenig Platz - dann dünnt
+                      recharts die Ticks aus, statt sie ineinander zu schreiben. */}
                   <XAxis
                     dataKey="code"
                     tick={{ fontSize: 10 }}
                     stroke="hsl(var(--muted-foreground))"
-                    interval={0}
+                    interval={points.length > 8 ? "preserveStartEnd" : 0}
                     angle={-35}
                     textAnchor="end"
                     height={68}

@@ -22,6 +22,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectMutation } from "@/hooks/project/useProjectData";
+import { useRequestAiAnalysis } from "@/hooks/project/useProjectAi";
 import { ConformityBadge, IpGateBanner } from "@/components/project/ProjectUI";
 import { FRACTION_STATUSES, labelOf } from "@/lib/project/constants";
 import { formatSpecWindow, formatVerdictValue, releaseEligibility, type FractionView } from "./FractionsShared";
@@ -36,6 +37,7 @@ export function FractionsReleaseDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [confirmed, setConfirmed] = useState(false);
+  const requestAi = useRequestAiAnalysis();
 
   useEffect(() => {
     if (open) setConfirmed(false);
@@ -69,7 +71,20 @@ export function FractionsReleaseDialog({
   const releasedStatus = fraction.status === "shipped" ? "shipped" : "released";
 
   const handleRelease = () =>
-    mutate.mutate({ id: fraction.id, released: true, status: releasedStatus });
+    mutate.mutate(
+      { id: fraction.id, released: true, status: releasedStatus },
+      {
+        // Plan 6.2: Die Freigabe ist der Ausloeser fuer die KI-Spec-Bewertung
+        // der Fraktion. Das Zuruckziehen loest bewusst nichts aus.
+        onSuccess: () => {
+          requestAi.mutate({
+            analysisType: "spec_conformity",
+            scopeType: "output_fraction",
+            scopeId: fraction.id,
+          });
+        },
+      },
+    );
 
   // Nur ein reiner Freigabestatus fällt zurück - 'shipped' oder 'rejected'
   // beschreiben einen Zustand, den ein Widerruf nicht rückgängig macht.

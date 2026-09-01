@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Search, Filter, Inbox, MoreVertical, FileText, Upload, Calendar, Building2, Loader2, Trash2, Eye, XCircle, AlertTriangle, Pencil, Settings } from "lucide-react";
+import { Plus, Search, Filter, Inbox, MoreVertical, Upload, Calendar, Building2, Loader2, Trash2, Eye, XCircle, AlertTriangle, Pencil, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

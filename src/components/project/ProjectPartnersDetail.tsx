@@ -37,7 +37,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/useUserRole";
+import { hasAccess } from "@/components/layout/navigation";
+import { ProjectDocuments } from "@/components/project/ProjectDocuments";
+import { AiInsightsEntryCard } from "@/components/project/AiInsightsEntryCard";
 import {
+  useAiAnalyses,
   useProductTests,
   useProjectMutation,
   useProjectTasks,
@@ -76,6 +81,7 @@ import {
   PARTNER_CATEGORIES,
   PARTNER_STATUSES,
   PROCESS_LINES,
+  AI_ANALYSIS_TYPES,
   PRODUCT_TEST_CATEGORIES,
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -176,6 +182,8 @@ function PartnerDetailBody({
   onClose: () => void;
 }) {
   const idPrefix = useId();
+  const { role, isAdmin } = useUserRole();
+  const canOpenCompanies = hasAccess("/companies", role, isAdmin);
   const [values, setValues] = useState<PartnerFormValues>(() => partnerToForm(partner));
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -186,9 +194,24 @@ function PartnerDetailBody({
    */
   const recordVersion = `${partner.id}:${partner.updated_at}`;
   const [syncedVersion, setSyncedVersion] = useState(recordVersion);
+  /**
+   * Dirty = the pending write would change the record. Comparing the payloads
+   * and not the raw fields matters after a save: the payload is trimmed, so a
+   * raw comparison would keep the form "dirty" forever (and block the re-sync
+   * below) just because the user typed a trailing space.
+   */
+  const isDirty = useMemo(
+    () =>
+      JSON.stringify(formToPayload(values)) !==
+      JSON.stringify(formToPayload(partnerToForm(partner))),
+    [values, partner],
+  );
   if (recordVersion !== syncedVersion) {
     setSyncedVersion(recordVersion);
-    setValues(partnerToForm(partner));
+    // Never overwrite pending input: any write in this tab (e.g. "Als Firma
+    // anlegen") bumps updated_at, and the user's unsaved edits must survive it.
+    // "Änderungen verwerfen" pulls the stored record when the user wants it.
+    if (!isDirty) setValues(partnerToForm(partner));
   }
 
   const tasksQuery = useProjectTasks();
@@ -276,10 +299,6 @@ function PartnerDetailBody({
   );
 
   const formError = validatePartnerForm(values);
-  const isDirty = useMemo(
-    () => JSON.stringify(values) !== JSON.stringify(partnerToForm(partner)),
-    [values, partner],
-  );
 
   const websiteHref = partner.website
     ? partner.website.startsWith("http")
@@ -318,6 +337,8 @@ function PartnerDetailBody({
               <TabsTrigger value="runs">Versuchsläufe</TabsTrigger>
               <TabsTrigger value="products">Produkttests</TabsTrigger>
               <TabsTrigger value="comms">Kommunikation</TabsTrigger>
+              <TabsTrigger value="documents">Dokumente</TabsTrigger>
+              <TabsTrigger value="ai">KI-Insights</TabsTrigger>
             </TabsList>
           </div>
 
@@ -392,12 +413,21 @@ function PartnerDetailBody({
 
             <div className="flex flex-wrap items-center gap-2">
               {partner.company_id ? (
-                <Button asChild size="sm" variant="outline">
-                  <Link to="/companies">
-                    <Building2 className="h-4 w-4 mr-1.5" />
-                    Firma öffnen
-                  </Link>
-                </Button>
+                /* production und qa duerfen /projekt/partner, aber nicht
+                   /companies - ohne Pruefung landet der Klick auf "Kein Zugriff". */
+                canOpenCompanies ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link to="/companies">
+                      <Building2 className="h-4 w-4 mr-1.5" />
+                      Firma öffnen
+                    </Link>
+                  </Button>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Building2 className="h-4 w-4" />
+                    Als Firma verknüpft
+                  </span>
+                )
               ) : (
                 <Button
                   size="sm"
@@ -622,6 +652,21 @@ function PartnerDetailBody({
           <TabsContent value="comms" className="px-4 py-4 mt-0">
             <PartnerCommunicationTab partnerId={partner.id} partnerName={partner.name} />
           </TabsContent>
+
+          {/* ------------------------------------------------------ documents */}
+          <TabsContent value="documents" className="px-4 py-4 mt-0">
+            <ProjectDocuments
+              entityType="partner"
+              entityId={partner.id}
+              title="Dokumente zum Partner"
+              description="NDA, Verträge, Angebote, Datenblätter und Fotos vom Technikumstermin."
+            />
+          </TabsContent>
+
+          {/* ------------------------------------------------------ ai insights */}
+          <TabsContent value="ai" className="px-4 py-4 mt-0">
+            <PartnerAiTab partnerId={partner.id} partnerName={partner.name} />
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -656,5 +701,47 @@ function PartnerDetailBody({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/**
+ * Partner-scoped AI insights (plan 5.7). The list is read-only: partner_followup
+ * is requested module-wide on /projekt/vorlagen, this tab shows what already
+ * exists for exactly this partner.
+ */
+function PartnerAiTab({ partnerId, partnerName }: { partnerId: string; partnerName: string }) {
+  const aiQuery = useAiAnalyses();
+  const insights = useMemo(
+    () =>
+      (aiQuery.data ?? []).filter(
+        (entry) => entry.scope_type === "partner" && entry.scope_id === partnerId,
+      ),
+    [aiQuery.data, partnerId],
+  );
+
+  if (aiQuery.isLoading) return <LoadingRows rows={2} />;
+  if (aiQuery.isError) {
+    return <ErrorState error={aiQuery.error as Error} onRetry={() => void aiQuery.refetch()} />;
+  }
+  if (insights.length === 0) {
+    return (
+      <EmptyState
+        title="Noch keine KI-Insights zu diesem Partner"
+        description={`Die KI-Auswertung „Partner-Nachfassen“ wird auf der Seite Vorlagen & Mails für alle Partner angefordert. Sobald ein Ergebnis auf ${partnerName} zugeschnitten vorliegt, erscheint es hier.`}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {insights.map((entry) => (
+        <AiInsightsEntryCard
+          key={entry.id}
+          analysis={entry}
+          typeLabel={labelOf(AI_ANALYSIS_TYPES, entry.analysis_type)}
+          scopeLabel={partnerName}
+        />
+      ))}
+    </div>
   );
 }

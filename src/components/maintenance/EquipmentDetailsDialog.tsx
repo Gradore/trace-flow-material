@@ -179,7 +179,6 @@ export function EquipmentDetailsDialog({
     },
   });
 
-  const pendingRecords = maintenanceRecords.filter(m => m.status === 'pending' || m.status === 'overdue');
   const hasMaintenancePlan = maintenanceRecords.some(m => m.interval_days && m.interval_days > 0);
 
   if (!equipment || !currentEquipment) return null;

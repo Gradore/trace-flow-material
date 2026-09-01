@@ -139,7 +139,7 @@ export function DeliveryNoteDetailsDialog({ open, onOpenChange, note }: Delivery
       a.download = `Lieferschein_${note.note_id}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (error: any) {
+    } catch {
       toast({
         title: "Fehler",
         description: "PDF konnte nicht heruntergeladen werden.",

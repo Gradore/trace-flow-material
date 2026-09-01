@@ -190,7 +190,7 @@ export default function Settings() {
         title: "Feldkonfiguration lokal gespeichert",
         description: "Die Konfiguration gilt nur in diesem Browser.",
       });
-    } catch (error) {
+    } catch {
       toast({ title: "Fehler beim Speichern", variant: "destructive" });
     } finally {
       setIsSaving(false);

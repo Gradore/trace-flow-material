@@ -36,32 +36,6 @@ export async function generateQRCodeDataURL(
 }
 
 /**
- * Generate a QR code as SVG string
- */
-export async function generateQRCodeSVG(
-  data: string,
-  options: QRCodeOptions = {}
-): Promise<string> {
-  const defaultOptions = {
-    width: 200,
-    margin: 2,
-    color: {
-      dark: '#000000',
-      light: '#ffffff',
-    },
-    ...options,
-  };
-
-  try {
-    const svg = await QRCode.toString(data, { ...defaultOptions, type: 'svg' });
-    return svg;
-  } catch (error) {
-    console.error('Error generating QR code SVG:', error);
-    throw error;
-  }
-}
-
-/**
  * Build the URL that a printed QR code points at.
  *
  * There are no detail routes such as /containers/:id in the app, so encoding

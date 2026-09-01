@@ -250,6 +250,15 @@ export default function TestRuns() {
   const totalInputKg = runs.reduce((sum, run) => sum + (run.input_weight_kg ?? 0), 0);
   const totalCost = runs.reduce((sum, run) => sum + (run.cost_eur ?? 0), 0);
 
+  /*
+   * The tiles are derived from `runsQuery.data ?? []` and would read as a
+   * factual "0 Versuche / 0 kg / 0 €" while the query is loading and - worse -
+   * keep reading it after the query failed, next to the error state below.
+   */
+  const runsLoaded = !runsQuery.isLoading && runsQuery.error === null;
+  const runKpi = (value: string): string =>
+    runsQuery.isLoading ? "…" : runsQuery.error ? "—" : value;
+
   /* ---------------------------------------------------------------- writes */
 
   const createRun = useProjectMutation<TestRunWizardPayload>(
@@ -423,10 +432,15 @@ export default function TestRuns() {
     void specsQuery.refetch();
   };
 
-  const renderActions = (run: TestRun) => (
+  /**
+   * `size` defaults to the compact table trigger; the mobile card passes "icon"
+   * (40px) because it is the only action affordance there and sits right next
+   * to the tappable title - 32px is too small for gloved hands at the machine.
+   */
+  const renderActions = (run: TestRun, size: "icon" | "icon-sm" = "icon-sm") => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={`Aktionen für ${run.run_code}`}>
+        <Button variant="ghost" size={size} aria-label={`Aktionen für ${run.run_code}`}>
           <MoreVertical className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -467,25 +481,35 @@ export default function TestRuns() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           label="Versuche"
-          value={runs.length}
-          hint={`${filteredRuns.length} angezeigt`}
+          value={runKpi(formatNumber(runs.length, 0))}
+          hint={runsLoaded ? `${filteredRuns.length} angezeigt` : undefined}
           icon={FlaskConical}
           accent="violet"
         />
-        <StatCard label="Läuft" value={runningCount} icon={Activity} accent="amber" />
+        <StatCard
+          label="Läuft"
+          value={runKpi(formatNumber(runningCount, 0))}
+          icon={Activity}
+          accent="amber"
+        />
         <StatCard
           label="Abgeschlossen"
-          value={completedCount}
+          value={runKpi(formatNumber(completedCount, 0))}
           icon={CheckCircle2}
           accent="emerald"
         />
         <StatCard
           label="Einsatzmenge"
-          value={formatKg(totalInputKg)}
+          value={runKpi(formatKg(totalInputKg))}
           icon={Scale}
           accent="sky"
         />
-        <StatCard label="Versuchskosten" value={formatEur(totalCost)} icon={Euro} accent="teal" />
+        <StatCard
+          label="Versuchskosten"
+          value={runKpi(formatEur(totalCost))}
+          icon={Euro}
+          accent="teal"
+        />
       </div>
 
       <Card>
@@ -639,7 +663,7 @@ export default function TestRuns() {
                           </div>
                           <p className="mt-1 text-sm font-medium leading-snug">{run.title}</p>
                         </button>
-                        {renderActions(run)}
+                        {renderActions(run, "icon")}
                       </div>
 
                       <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">

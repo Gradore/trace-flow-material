@@ -81,6 +81,7 @@ import {
   useTestRuns,
 } from "@/hooks/project/useProjectData";
 import { useUserRole } from "@/hooks/useUserRole";
+import { hasAccess } from "@/components/layout/navigation";
 import { supabase } from "@/integrations/supabase/client";
 import { linkFractionToOutputMaterial } from "@/lib/project/bridges";
 import {
@@ -89,16 +90,14 @@ import {
   labelOf,
   toneOf,
 } from "@/lib/project/constants";
-import type { ConformityLevel } from "@/lib/project/spec";
+import { CONFORMITY_META, type ConformityLevel } from "@/lib/project/spec";
 import type { FractionSpec, OutputFraction } from "@/lib/project/types";
 import { toast } from "@/hooks/use-toast";
 
-const CONFORMITY_FILTERS: { id: ConformityLevel; label: string }[] = [
-  { id: "pass", label: "In Spec" },
-  { id: "borderline", label: "Grenzwertig" },
-  { id: "fail", label: "Außerhalb" },
-  { id: "unknown", label: "Keine Daten" },
-];
+// Filterbeschriftung aus CONFORMITY_META, damit Filter, Badge und PDF gleich heissen.
+const CONFORMITY_FILTERS: { id: ConformityLevel; label: string }[] = (
+  ["pass", "borderline", "fail", "unknown"] as ConformityLevel[]
+).map((id) => ({ id, label: CONFORMITY_META[id].label }));
 
 const CHART_COLOR: Record<string, string> = {
   F1: "hsl(var(--primary))",
@@ -116,8 +115,10 @@ export default function Fractions() {
   const resultsQuery = useAnalysisResults();
   const productTestsQuery = useProductTests();
   const productTestResultsQuery = useProductTestResults();
-  const { isAdmin, isBetriebsleiter } = useUserRole();
+  const { role, isAdmin, isBetriebsleiter } = useUserRole();
   const mayEditSpecs = isAdmin || isBetriebsleiter;
+  // /output ist fuer intake gesperrt - dann nur ein Hinweis statt eines Links.
+  const canOpenOutput = hasAccess("/output", role, isAdmin);
 
   const [search, setSearch] = useState("");
   const [targetFilter, setTargetFilter] = useState("all");
@@ -290,6 +291,43 @@ export default function Fractions() {
     }
   };
 
+  /** Zeilenaktionen - identisch in der Karten- und der Tabellenansicht. */
+  const renderFractionActions = (view: FractionView) => {
+    const fraction = view.fraction;
+    const isBooking = bookToStock.isPending && bookToStock.variables?.id === fraction.id;
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label={`Aktionen für ${fraction.fraction_code}`}>
+            {isBooking ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onClick={() => setDetailId(fraction.id)}>
+            <Package className="h-4 w-4 mr-2" />
+            Details
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setReleaseId(fraction.id)}>
+            <CheckCircle2 className="h-4 w-4 mr-2" />
+            {fraction.released_for_product_test ? "Freigabe verwalten" : "Für Produkttest freigeben"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => handleDatasheet(view)}>
+            <FileDown className="h-4 w-4 mr-2" />
+            Datenblatt (PDF)
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={Boolean(fraction.output_material_id) || bookToStock.isPending}
+            onClick={() => bookToStock.mutate(fraction)}
+          >
+            <Warehouse className="h-4 w-4 mr-2" />
+            {fraction.output_material_id ? "Bereits gebucht" : "In Lagerbestand buchen"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
+
   const asError = (value: unknown): Error | null => (value instanceof Error ? value : null);
 
   const listError =
@@ -316,7 +354,7 @@ export default function Fractions() {
   };
 
   return (
-    <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
+    <div className="max-w-[1600px] mx-auto">
       <ProjectPageHeader
         title="Zielfraktionen"
         description="Ausgangsfraktionen F1–F5, Spec-Konformität, Freigabe und Datenblätter"
@@ -643,140 +681,225 @@ export default function Fractions() {
               action={<Button variant="outline" size="sm" onClick={resetFilters}>Filter zurücksetzen</Button>}
             />
           ) : (
-            <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-              <Table className="min-w-[68rem]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fraktion</TableHead>
-                    <TableHead>Versuch</TableHead>
-                    <TableHead>Zielfraktion</TableHead>
-                    <TableHead className="text-right">Menge</TableHead>
-                    <TableHead className="text-right">Ausbeute</TableHead>
-                    <TableHead>Lagerort</TableHead>
-                    <TableHead className="text-right">Rückstellmuster</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Konformität</TableHead>
-                    <TableHead>Freigabe</TableHead>
-                    <TableHead>Lagerbestand</TableHead>
-                    <TableHead className="w-12" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((view) => {
-                    const { fraction, spec, run } = view;
-                    const isBooking = bookToStock.isPending && bookToStock.variables?.id === fraction.id;
-                    return (
-                      <TableRow key={fraction.id} className="hover:bg-muted/40">
-                        <TableCell>
-                          <button
-                            type="button"
-                            onClick={() => setDetailId(fraction.id)}
-                            className="font-mono font-medium text-primary hover:underline underline-offset-2 text-left"
-                          >
-                            {fraction.fraction_code}
-                          </button>
+            <>
+              {/* --------------------------------------------------- mobile cards */}
+              <div className="space-y-3 md:hidden">
+                {filtered.map((view) => {
+                  const { fraction, spec, run } = view;
+                  return (
+                    <div key={fraction.id} className="rounded-lg border border-border p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 text-left"
+                          onClick={() => setDetailId(fraction.id)}
+                        >
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono text-sm font-semibold">
+                              {fraction.fraction_code}
+                            </span>
+                            <ToneBadge tone={toneOf(FRACTION_STATUSES, fraction.status)}>
+                              {labelOf(FRACTION_STATUSES, fraction.status)}
+                            </ToneBadge>
+                            <ConformityBadge level={view.conformity} />
+                            {fraction.released_for_product_test ? (
+                              <ToneBadge tone="success">Freigegeben</ToneBadge>
+                            ) : (
+                              <ToneBadge tone="muted">Offen</ToneBadge>
+                            )}
+                          </div>
                           {view.breaches.length > 0 && (
-                            <span className="block text-[11px] text-destructive">
+                            <span className="mt-1 block text-[11px] text-destructive">
                               {view.breaches.length} Grenzwertverletzung
                               {view.breaches.length === 1 ? "" : "en"}
                             </span>
                           )}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {run ? (
-                            <>
-                              <span className="font-mono">{run.run_code}</span>
-                              <span className="block text-muted-foreground max-w-[12rem] truncate">{run.title}</span>
-                            </>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {spec ? (
-                            <>
-                              <span className="font-mono font-semibold">{spec.id}</span>
-                              <span className="block text-muted-foreground max-w-[12rem] truncate">{spec.name}</span>
-                            </>
-                          ) : (
-                            <span className="text-muted-foreground">nicht zugeordnet</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs">{formatKg(fraction.weight_kg)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {fraction.yield_pct === null ? "—" : `${formatNumber(fraction.yield_pct)} %`}
-                        </TableCell>
-                        <TableCell className="text-xs max-w-[10rem] truncate">
-                          {fraction.storage_location ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {fraction.retained_sample_kg === null ? "—" : formatKg(fraction.retained_sample_kg)}
-                        </TableCell>
-                        <TableCell>
-                          <ToneBadge tone={toneOf(FRACTION_STATUSES, fraction.status)}>
-                            {labelOf(FRACTION_STATUSES, fraction.status)}
-                          </ToneBadge>
-                        </TableCell>
-                        <TableCell>
-                          <ConformityBadge level={view.conformity} />
-                        </TableCell>
-                        <TableCell>
-                          {fraction.released_for_product_test ? (
-                            <ToneBadge tone="success">Freigegeben</ToneBadge>
-                          ) : (
-                            <ToneBadge tone="muted">Offen</ToneBadge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {fraction.output_material_id ? (
-                            <Link
-                              to="/output"
-                              className="inline-flex items-center gap-1 text-xs text-info underline underline-offset-2"
+                        </button>
+                        {renderFractionActions(view)}
+                      </div>
+
+                      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Versuch</dt>
+                          <dd className="truncate font-mono font-medium">{run?.run_code ?? "—"}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Zielfraktion</dt>
+                          <dd className="truncate font-medium">
+                            {spec ? `${spec.id} · ${spec.name}` : "nicht zugeordnet"}
+                          </dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Menge</dt>
+                          <dd className="font-medium">{formatKg(fraction.weight_kg)}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Ausbeute</dt>
+                          <dd className="font-medium">
+                            {fraction.yield_pct === null
+                              ? "—"
+                              : `${formatNumber(fraction.yield_pct)} %`}
+                          </dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Lagerort</dt>
+                          <dd className="truncate font-medium">
+                            {fraction.storage_location ?? "—"}
+                          </dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Rückstellmuster</dt>
+                          <dd className="font-medium">
+                            {fraction.retained_sample_kg === null
+                              ? "—"
+                              : formatKg(fraction.retained_sample_kg)}
+                          </dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Lagerbestand</dt>
+                          <dd className="font-medium">
+                            {fraction.output_material_id ? "gebucht" : "—"}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => setDetailId(fraction.id)}
+                        >
+                          <Package className="h-4 w-4 mr-2" />
+                          Details
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => setReleaseId(fraction.id)}
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-2" />
+                          Freigabe
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* -------------------------------------------------------- md table */}
+              <div className="-mx-4 hidden overflow-x-auto px-4 sm:mx-0 sm:px-0 md:block">
+                <Table className="min-w-[68rem]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fraktion</TableHead>
+                      <TableHead>Versuch</TableHead>
+                      <TableHead>Zielfraktion</TableHead>
+                      <TableHead className="text-right">Menge</TableHead>
+                      <TableHead className="text-right">Ausbeute</TableHead>
+                      <TableHead>Lagerort</TableHead>
+                      <TableHead className="text-right">Rückstellmuster</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Konformität</TableHead>
+                      <TableHead>Freigabe</TableHead>
+                      <TableHead>Lagerbestand</TableHead>
+                      <TableHead className="w-12" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((view) => {
+                      const { fraction, spec, run } = view;
+                      return (
+                        <TableRow key={fraction.id} className="hover:bg-muted/40">
+                          <TableCell>
+                            <button
+                              type="button"
+                              onClick={() => setDetailId(fraction.id)}
+                              className="font-mono font-medium text-primary hover:underline underline-offset-2 text-left"
                             >
-                              <Warehouse className="h-3.5 w-3.5" />
-                              Gebucht
-                            </Link>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" aria-label={`Aktionen für ${fraction.fraction_code}`}>
-                                {isBooking ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuItem onClick={() => setDetailId(fraction.id)}>
-                                <Package className="h-4 w-4 mr-2" />
-                                Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setReleaseId(fraction.id)}>
-                                <CheckCircle2 className="h-4 w-4 mr-2" />
-                                {fraction.released_for_product_test ? "Freigabe verwalten" : "Für Produkttest freigeben"}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDatasheet(view)}>
-                                <FileDown className="h-4 w-4 mr-2" />
-                                Datenblatt (PDF)
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                disabled={Boolean(fraction.output_material_id) || bookToStock.isPending}
-                                onClick={() => bookToStock.mutate(fraction)}
-                              >
-                                <Warehouse className="h-4 w-4 mr-2" />
-                                {fraction.output_material_id ? "Bereits gebucht" : "In Lagerbestand buchen"}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                              {fraction.fraction_code}
+                            </button>
+                            {view.breaches.length > 0 && (
+                              <span className="block text-[11px] text-destructive">
+                                {view.breaches.length} Grenzwertverletzung
+                                {view.breaches.length === 1 ? "" : "en"}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {run ? (
+                              <>
+                                <span className="font-mono">{run.run_code}</span>
+                                <span className="block text-muted-foreground max-w-[12rem] truncate">{run.title}</span>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {spec ? (
+                              <>
+                                <span className="font-mono font-semibold">{spec.id}</span>
+                                <span className="block text-muted-foreground max-w-[12rem] truncate">{spec.name}</span>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">nicht zugeordnet</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">{formatKg(fraction.weight_kg)}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {fraction.yield_pct === null ? "—" : `${formatNumber(fraction.yield_pct)} %`}
+                          </TableCell>
+                          <TableCell className="text-xs max-w-[10rem] truncate">
+                            {fraction.storage_location ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {fraction.retained_sample_kg === null ? "—" : formatKg(fraction.retained_sample_kg)}
+                          </TableCell>
+                          <TableCell>
+                            <ToneBadge tone={toneOf(FRACTION_STATUSES, fraction.status)}>
+                              {labelOf(FRACTION_STATUSES, fraction.status)}
+                            </ToneBadge>
+                          </TableCell>
+                          <TableCell>
+                            <ConformityBadge level={view.conformity} />
+                          </TableCell>
+                          <TableCell>
+                            {fraction.released_for_product_test ? (
+                              <ToneBadge tone="success">Freigegeben</ToneBadge>
+                            ) : (
+                              <ToneBadge tone="muted">Offen</ToneBadge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {fraction.output_material_id ? (
+                              canOpenOutput ? (
+                                <Link
+                                  to="/output"
+                                  className="inline-flex items-center gap-1 text-xs text-info underline underline-offset-2"
+                                >
+                                  <Warehouse className="h-3.5 w-3.5" />
+                                  Gebucht
+                                </Link>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-xs text-info">
+                                  <Warehouse className="h-3.5 w-3.5" />
+                                  Gebucht
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{renderFractionActions(view)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

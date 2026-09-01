@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Brain,
@@ -10,6 +10,8 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+import { downloadPDF } from "@/lib/pdf";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +65,13 @@ import {
   trimmedOrNull,
 } from "@/components/project/TestRunsShared";
 import { ProcessLineCard } from "@/components/project/TestRunsProcessLine";
+import { ProjectDocuments } from "@/components/project/ProjectDocuments";
+import { loadEntityPhotos } from "@/components/project/ProjectDocumentsShared";
+import {
+  buildTestRunProtocolPdf,
+  protocolFileName,
+  type ProtocolPhoto,
+} from "@/components/project/TestRunsProtocol";
 import {
   ANALYSIS_STATUSES,
   FRACTION_STATUSES,
@@ -72,6 +81,8 @@ import {
   TEST_RUN_PARAMETER_KEYS,
   TEST_RUN_STATUSES,
   labelOf,
+  matchParameterTextOption,
+  parameterTextOptions,
   toneOf,
 } from "@/lib/project/constants";
 import { evaluateResult, goNoGoBreaches } from "@/lib/project/spec";
@@ -175,6 +186,21 @@ function paramRowsFrom(parameters: TestRunParameter[]): ParamRow[] {
   }));
 }
 
+/** "„ohne“" - the declared textual levels of a numeric parameter, quoted. */
+function quotedTextOptions(key: string): string {
+  return parameterTextOptions(key)
+    .map((option) => `„${option}“`)
+    .join(" / ");
+}
+
+/** Error text of a numeric parameter, naming its allowed textual levels. */
+function numericHint(key: string): string {
+  const options = quotedTextOptions(key);
+  return options
+    ? `Bitte eine gültige Zahl oder ${options} eingeben.`
+    : "Bitte eine gültige Zahl eingeben.";
+}
+
 function emptyFractionForm(): FractionForm {
   return {
     targetFractionId: NONE,
@@ -210,6 +236,42 @@ export default function TestRunsDetail({
   const [paramRows, setParamRows] = useState<ParamRow[]>(() => paramRowsFrom(parameters));
   const [paramErrors, setParamErrors] = useState<Record<string, string>>({});
   const [newParamKey, setNewParamKey] = useState<string>(NONE);
+
+  /**
+   * The dialog is mounted with key={run.id}, so it survives every refetch. Without
+   * a re-sync a parameter row written after the dialog opened would never appear
+   * and - worse - the save below would delete it as "removed by the user".
+   */
+  const parameterSignature = useMemo(
+    () =>
+      parameters
+        .map(
+          (param) =>
+            `${param.id}:${param.parameter_key}:${param.value_numeric ?? ""}:${param.value_text ?? ""}:${param.unit ?? ""}`,
+        )
+        .sort()
+        .join("|"),
+    [parameters],
+  );
+  /** The stored keys the visible rows were built from - the delete baseline. */
+  const syncedParamKeysRef = useRef<string[]>(parameters.map((param) => param.parameter_key));
+  useEffect(() => {
+    setParamRows(paramRowsFrom(parameters));
+    syncedParamKeysRef.current = parameters.map((param) => param.parameter_key);
+    setParamErrors({});
+    // parameters is covered by its own signature - comparing the array identity
+    // would re-run on every refetch and eat the current input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parameterSignature]);
+
+  const updateParamRow = (index: number, patch: Partial<ParamRow>) =>
+    setParamRows((current) =>
+      current.map((entry, entryIndex) => (entryIndex === index ? { ...entry, ...patch } : entry)),
+    );
+  const removeParamRow = (index: number) =>
+    setParamRows((current) => current.filter((_, entryIndex) => entryIndex !== index));
+
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const [fractionForm, setFractionForm] = useState<FractionForm>(emptyFractionForm);
   const [fractionErrors, setFractionErrors] = useState<Record<string, string>>({});
@@ -314,7 +376,10 @@ export default function TestRunsDetail({
       const filled = rows.filter((row) => row.value.trim().length > 0);
       const payload = filled.map((row) => {
         const meta = paramMeta(row.key);
-        if (meta.numeric) {
+        /* A numeric parameter may carry a declared textual level ("ohne" =
+         * kein Sieb). It is a real process setting and goes into value_text. */
+        const textOption = matchParameterTextOption(row.key, row.value);
+        if (meta.numeric && !textOption) {
           const parsed = parseDecimal(row.value);
           return {
             test_run_id: run.id,
@@ -328,7 +393,7 @@ export default function TestRunsDetail({
           test_run_id: run.id,
           parameter_key: row.key,
           value_numeric: null,
-          value_text: row.value.trim(),
+          value_text: textOption ?? row.value.trim(),
           unit: trimmedOrNull(row.unit),
         };
       });
@@ -345,9 +410,9 @@ export default function TestRunsDetail({
       }
 
       const keptKeys = new Set(filled.map((row) => row.key));
-      const keysToDelete = parameters
-        .filter((param) => !keptKeys.has(param.parameter_key))
-        .map((param) => param.parameter_key);
+      // Only keys the user actually saw may be deleted - never one that reached
+      // the database after the visible rows were built.
+      const keysToDelete = syncedParamKeysRef.current.filter((key) => !keptKeys.has(key));
 
       if (keysToDelete.length) {
         const { data, error } = await supabase
@@ -372,11 +437,11 @@ export default function TestRunsDetail({
     const found: Record<string, string> = {};
     paramRows.forEach((row) => {
       if (!row.value.trim()) return;
-      if (paramMeta(row.key).numeric) {
-        const parsed = parseDecimal(row.value);
-        if (!parsed.ok || parsed.value === null) {
-          found[row.key] = "Bitte eine gültige Zahl eingeben.";
-        }
+      if (!paramMeta(row.key).numeric) return;
+      if (matchParameterTextOption(row.key, row.value)) return;
+      const parsed = parseDecimal(row.value);
+      if (!parsed.ok || parsed.value === null) {
+        found[row.key] = numericHint(row.key);
       }
     });
     setParamErrors(found);
@@ -458,6 +523,51 @@ export default function TestRunsDetail({
 
   const fractionTotalKg = fractions.reduce((sum, fraction) => sum + (fraction.weight_kg ?? 0), 0);
 
+  /**
+   * The protocol is the patent evidence, so it carries the photos linked to the
+   * run. They have to be fetched and decoded first - the PDF builder itself is
+   * synchronous. If the pictures cannot be loaded we still hand out the
+   * protocol via the page-level export rather than leaving the user empty.
+   */
+  const handleExportProtocol = async () => {
+    setExportingPdf(true);
+    // undefined means "not loaded" - the protocol then says so instead of
+    // claiming that no photos are stored for this run.
+    let photos: ProtocolPhoto[] | undefined;
+    try {
+      photos = await loadEntityPhotos("test_run", run.id);
+    } catch (error) {
+      console.error("handleExportProtocol photos:", error);
+      toast({
+        variant: "destructive",
+        title: "Fotos konnten nicht geladen werden",
+        description: "Das Protokoll wird ohne Fotodokumentation erstellt.",
+      });
+    }
+    try {
+      const blob = buildTestRunProtocolPdf({
+        run,
+        partners,
+        batches,
+        doeSeries,
+        parameters,
+        fractions,
+        specs,
+        analyses,
+        results,
+        photos,
+      });
+      downloadPDF(blob, protocolFileName(run));
+      toast({ title: "Versuchsprotokoll erstellt", description: protocolFileName(run) });
+    } catch (error) {
+      console.error("handleExportProtocol:", error);
+      // Fall back to the page-level export so the user still gets a document.
+      onExportPdf();
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const analysisRows = analyses.map((analysis) => {
     const fraction = fractions.find((entry) => entry.id === analysis.output_fraction_id) ?? null;
     const spec =
@@ -491,8 +601,17 @@ export default function TestRunsDetail({
             · geplant {formatDate(run.planned_date)}
           </DialogDescription>
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button variant="outline" size="sm" onClick={onExportPdf}>
-              <FileText className="mr-2 h-4 w-4" />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={exportingPdf}
+              onClick={() => void handleExportProtocol()}
+            >
+              {exportingPdf ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="mr-2 h-4 w-4" />
+              )}
               Versuchsprotokoll (PDF)
             </Button>
           </div>
@@ -514,6 +633,7 @@ export default function TestRunsDetail({
                 Analytik
                 <span className="ml-1.5 text-xs text-muted-foreground">{analyses.length}</span>
               </TabsTrigger>
+              <TabsTrigger value="documents">Dokumente</TabsTrigger>
               <TabsTrigger value="ai">KI-Auswertung</TabsTrigger>
             </TabsList>
           </div>
@@ -850,80 +970,142 @@ export default function TestRunsDetail({
                   description="Erfassen Sie Drehzahl, Schnittspalt, Sieblochung und Messerzustand — sie sind die Faktoren jeder späteren Auswertung."
                 />
               ) : (
-                <div className="-mx-4 overflow-x-auto px-4 sm:-mx-5 sm:px-5">
-                  <Table className="min-w-[34rem]">
-                    <TableHeader>
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead className="w-[14rem]">Parameter</TableHead>
-                        <TableHead>Wert</TableHead>
-                        <TableHead className="w-[7rem]">Einheit</TableHead>
-                        <TableHead className="w-12" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {paramRows.map((row, index) => {
-                        const meta = paramMeta(row.key);
-                        return (
-                          <TableRow key={row.key}>
-                            <TableCell className="align-top">
+                <>
+                  {/*
+                    Below md the parameter editor is a stacked card per row: the
+                    table needs 34rem, the dialog is 384px wide on a phone, so
+                    Einheit and Löschen would sit off-screen.
+                  */}
+                  <div className="space-y-3 md:hidden">
+                    {paramRows.map((row, index) => {
+                      const meta = paramMeta(row.key);
+                      return (
+                        <div key={row.key} className="space-y-2 rounded-lg border border-border p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
                               <p className="text-sm font-medium">{meta.label}</p>
                               <p className="font-mono text-xs text-muted-foreground">{row.key}</p>
-                            </TableCell>
-                            <TableCell className="align-top">
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`${meta.label} entfernen`}
+                              onClick={() => removeParamRow(index)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-[1fr_6rem] gap-2">
+                            <div className="min-w-0 space-y-1">
+                              <Label htmlFor={`param-value-${row.key}`} className="text-xs">
+                                Wert
+                              </Label>
                               <Input
+                                id={`param-value-${row.key}`}
                                 value={row.value}
                                 inputMode={meta.numeric ? "decimal" : "text"}
-                                aria-label={`${meta.label} Wert`}
                                 aria-invalid={Boolean(paramErrors[row.key])}
-                                onChange={(event) => {
-                                  const value = event.target.value;
-                                  setParamRows((current) =>
-                                    current.map((entry, entryIndex) =>
-                                      entryIndex === index ? { ...entry, value } : entry,
-                                    ),
-                                  );
-                                }}
-                              />
-                              {paramErrors[row.key] && (
-                                <p className="mt-1 text-xs text-destructive">
-                                  {paramErrors[row.key]}
-                                </p>
-                              )}
-                            </TableCell>
-                            <TableCell className="align-top">
-                              <Input
-                                value={row.unit}
-                                aria-label={`${meta.label} Einheit`}
-                                onChange={(event) => {
-                                  const unit = event.target.value;
-                                  setParamRows((current) =>
-                                    current.map((entry, entryIndex) =>
-                                      entryIndex === index ? { ...entry, unit } : entry,
-                                    ),
-                                  );
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell className="align-top">
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={`${meta.label} entfernen`}
-                                onClick={() =>
-                                  setParamRows((current) =>
-                                    current.filter((_, entryIndex) => entryIndex !== index),
-                                  )
+                                onChange={(event) =>
+                                  updateParamRow(index, { value: event.target.value })
                                 }
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                              />
+                            </div>
+                            <div className="min-w-0 space-y-1">
+                              <Label htmlFor={`param-unit-${row.key}`} className="text-xs">
+                                Einheit
+                              </Label>
+                              <Input
+                                id={`param-unit-${row.key}`}
+                                value={row.unit}
+                                onChange={(event) =>
+                                  updateParamRow(index, { unit: event.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+                          {paramErrors[row.key] ? (
+                            <p className="text-xs text-destructive">{paramErrors[row.key]}</p>
+                          ) : (
+                            meta.numeric &&
+                            quotedTextOptions(row.key) && (
+                              <p className="text-xs text-muted-foreground">
+                                Zahl oder {quotedTextOptions(row.key)}
+                              </p>
+                            )
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="hidden md:-mx-5 md:block md:overflow-x-auto md:px-5">
+                    <Table className="min-w-[34rem]">
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="w-[14rem]">Parameter</TableHead>
+                          <TableHead>Wert</TableHead>
+                          <TableHead className="w-[7rem]">Einheit</TableHead>
+                          <TableHead className="w-12" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paramRows.map((row, index) => {
+                          const meta = paramMeta(row.key);
+                          return (
+                            <TableRow key={row.key}>
+                              <TableCell className="align-top">
+                                <p className="text-sm font-medium">{meta.label}</p>
+                                <p className="font-mono text-xs text-muted-foreground">{row.key}</p>
+                              </TableCell>
+                              <TableCell className="align-top">
+                                <Input
+                                  value={row.value}
+                                  inputMode={meta.numeric ? "decimal" : "text"}
+                                  aria-label={`${meta.label} Wert`}
+                                  aria-invalid={Boolean(paramErrors[row.key])}
+                                  onChange={(event) =>
+                                    updateParamRow(index, { value: event.target.value })
+                                  }
+                                />
+                                {paramErrors[row.key] ? (
+                                  <p className="mt-1 text-xs text-destructive">
+                                    {paramErrors[row.key]}
+                                  </p>
+                                ) : (
+                                  meta.numeric &&
+                                  quotedTextOptions(row.key) && (
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      Zahl oder {quotedTextOptions(row.key)}
+                                    </p>
+                                  )
+                                )}
+                              </TableCell>
+                              <TableCell className="align-top">
+                                <Input
+                                  value={row.unit}
+                                  aria-label={`${meta.label} Einheit`}
+                                  onChange={(event) =>
+                                    updateParamRow(index, { unit: event.target.value })
+                                  }
+                                />
+                              </TableCell>
+                              <TableCell className="align-top">
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={`${meta.label} entfernen`}
+                                  onClick={() => removeParamRow(index)}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
 
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -1394,6 +1576,16 @@ export default function TestRunsDetail({
                   </div>
                 ))
               )}
+            </TabsContent>
+
+            {/* -------------------------------------------------------- Dokumente */}
+            <TabsContent value="documents" className="mt-0">
+              <ProjectDocuments
+                entityType="test_run"
+                entityId={run.id}
+                title="Dokumente zum Versuchslauf"
+                description="Fotos vom Material und von der Maschine, Prüfberichte und Datenblätter. Die Fotos erscheinen im Versuchsprotokoll (PDF) als Patentnachweis."
+              />
             </TabsContent>
 
             {/* --------------------------------------------------------------- KI */}

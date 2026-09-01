@@ -33,6 +33,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProjectDocuments } from "@/components/project/ProjectDocuments";
 import { useProjectMutation } from "@/hooks/project/useProjectData";
 import {
   CONCRETE_TEST_AGES_DAYS,
@@ -215,6 +217,13 @@ export function ProductTestResultsDialog({
           </p>
         )}
 
+        <Tabs defaultValue="results">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="results" className="text-xs py-1.5">Messwerte</TabsTrigger>
+            <TabsTrigger value="documents" className="text-xs py-1.5">Dokumente</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="results" className="space-y-4 mt-4">
         {/* ------------------------------------------------ existing results */}
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">Erfasste Messwerte ({sortedResults.length})</h3>
@@ -415,6 +424,17 @@ export function ProductTestResultsDialog({
             Messwert hinzufügen
           </Button>
         </div>
+          </TabsContent>
+
+          <TabsContent value="documents" className="mt-4">
+            <ProjectDocuments
+              entityType="product_test"
+              entityId={test.id}
+              title="Dokumente zum Produkttest"
+              description="Prüfberichte, Rezepturblätter und Fotos der Prüfkörper."
+            />
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

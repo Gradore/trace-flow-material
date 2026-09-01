@@ -211,7 +211,7 @@ export default function MaterialFlow() {
   const hasVisible = visible.nodeIds.size > 0;
 
   return (
-    <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
+    <div className="max-w-[1600px] mx-auto">
       <ProjectPageHeader
         title="Materialfluss"
         description="Lückenlose Rückverfolgung: Lieferant → Charge → Versuch → Fraktion → Analytik → Produkttest → Kunde"
@@ -573,66 +573,119 @@ export default function MaterialFlow() {
                   }
                 />
               ) : (
-                <div className="overflow-x-auto">
-                  <Table className="min-w-[46rem]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Stufe</TableHead>
-                        <TableHead className="text-right">Einträge</TableHead>
-                        <TableHead className="text-right">Eingegangen</TableHead>
-                        <TableHead className="text-right">Verarbeitet</TableHead>
-                        <TableHead className="text-right">Ausgegeben</TableHead>
-                        <TableHead className="text-right">Verlust</TableHead>
-                        <TableHead className="text-right">Verlust %</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {stageBalances.map((entry) => (
-                        <TableRow key={entry.stage.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="h-2.5 w-2.5 rounded-sm shrink-0"
-                                style={{ backgroundColor: entry.stage.color }}
-                                aria-hidden
-                              />
-                              <span className="font-medium whitespace-nowrap">{entry.stage.label}</span>
+                <>
+                  {/* --------------------------------------------- mobile cards */}
+                  <div className="space-y-3 md:hidden">
+                    {stageBalances.map((entry) => (
+                      <div key={entry.stage.id} className="rounded-lg border border-border p-3">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 rounded-sm shrink-0"
+                            style={{ backgroundColor: entry.stage.color }}
+                            aria-hidden
+                          />
+                          <span className="text-sm font-semibold">{entry.stage.label}</span>
+                          <span className="ml-auto text-xs text-muted-foreground">
+                            {entry.nodeCount} {entry.nodeCount === 1 ? "Eintrag" : "Einträge"}
+                          </span>
+                        </div>
+                        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Eingegangen</dt>
+                            <dd className="font-medium">{formatKg(entry.inKg)}</dd>
+                          </div>
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Verarbeitet</dt>
+                            <dd className="font-medium">
+                              {entry.terminal ? "—" : formatKg(entry.processedKg)}
+                            </dd>
+                          </div>
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Ausgegeben</dt>
+                            <dd className="font-medium">
+                              {entry.terminal ? "— Kettenende" : formatKg(entry.outKg)}
+                            </dd>
+                          </div>
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Verlust</dt>
+                            <dd className={cn("font-medium", lossTextClass(entry.lossPct))}>
+                              {entry.lossKg === null ? "—" : formatKg(entry.lossKg)}
+                              {!entry.terminal && ` · ${formatPct(entry.lossPct)}`}
+                            </dd>
+                          </div>
+                          {!entry.terminal && entry.stockKg > 0.05 && (
+                            <div className="flex min-w-0 gap-1.5">
+                              <dt className="text-muted-foreground">Bestand</dt>
+                              <dd className="font-medium">{formatKg(entry.stockKg)}</dd>
                             </div>
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">{entry.nodeCount}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatKg(entry.inKg)}</TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {entry.terminal ? (
-                              <span className="text-muted-foreground">—</span>
-                            ) : (
-                              <>
-                                {formatKg(entry.processedKg)}
-                                {entry.stockKg > 0.05 && (
-                                  <span className="block text-[11px] text-muted-foreground">
-                                    Bestand {formatKg(entry.stockKg)}
-                                  </span>
-                                )}
-                              </>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {entry.terminal ? (
-                              <span className="text-muted-foreground whitespace-nowrap">— Kettenende</span>
-                            ) : (
-                              formatKg(entry.outKg)
-                            )}
-                          </TableCell>
-                          <TableCell className={cn("text-right tabular-nums", lossTextClass(entry.lossPct))}>
-                            {entry.lossKg === null ? "—" : formatKg(entry.lossKg)}
-                          </TableCell>
-                          <TableCell className={cn("text-right tabular-nums", lossTextClass(entry.lossPct))}>
-                            {entry.terminal ? "—" : formatPct(entry.lossPct)}
-                          </TableCell>
+                          )}
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ------------------------------------------------- md table */}
+                  <div className="hidden overflow-x-auto md:block">
+                    <Table className="min-w-[46rem]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Stufe</TableHead>
+                          <TableHead className="text-right">Einträge</TableHead>
+                          <TableHead className="text-right">Eingegangen</TableHead>
+                          <TableHead className="text-right">Verarbeitet</TableHead>
+                          <TableHead className="text-right">Ausgegeben</TableHead>
+                          <TableHead className="text-right">Verlust</TableHead>
+                          <TableHead className="text-right">Verlust %</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {stageBalances.map((entry) => (
+                          <TableRow key={entry.stage.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="h-2.5 w-2.5 rounded-sm shrink-0"
+                                  style={{ backgroundColor: entry.stage.color }}
+                                  aria-hidden
+                                />
+                                <span className="font-medium whitespace-nowrap">{entry.stage.label}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">{entry.nodeCount}</TableCell>
+                            <TableCell className="text-right tabular-nums">{formatKg(entry.inKg)}</TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {entry.terminal ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : (
+                                <>
+                                  {formatKg(entry.processedKg)}
+                                  {entry.stockKg > 0.05 && (
+                                    <span className="block text-[11px] text-muted-foreground">
+                                      Bestand {formatKg(entry.stockKg)}
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {entry.terminal ? (
+                                <span className="text-muted-foreground whitespace-nowrap">— Kettenende</span>
+                              ) : (
+                                formatKg(entry.outKg)
+                              )}
+                            </TableCell>
+                            <TableCell className={cn("text-right tabular-nums", lossTextClass(entry.lossPct))}>
+                              {entry.lossKg === null ? "—" : formatKg(entry.lossKg)}
+                            </TableCell>
+                            <TableCell className={cn("text-right tabular-nums", lossTextClass(entry.lossPct))}>
+                              {entry.terminal ? "—" : formatPct(entry.lossPct)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -662,7 +715,107 @@ export default function MaterialFlow() {
                 />
               ) : (
                 <>
-                  <div className="overflow-x-auto">
+                  {/* --------------------------------------------- mobile cards */}
+                  <div className="space-y-3 md:hidden">
+                    {runBalances.map((balance) => (
+                      <button
+                        key={balance.runId}
+                        type="button"
+                        onClick={() => selectNode(balance.nodeId)}
+                        className={cn(
+                          "block w-full rounded-lg border border-border p-3 text-left",
+                          trace && !trace.nodeIds.has(balance.nodeId) && "opacity-50",
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono text-sm font-semibold">{balance.runCode}</span>
+                          <ToneBadge tone={balance.statusTone}>{balance.statusLabel}</ToneBadge>
+                          {balance.lossPct !== null && balance.lossPct > LOSS_WARNING_PCT && (
+                            <span className={cn("inline-flex items-center gap-1 text-xs", lossTextClass(balance.lossPct))}>
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                              {formatPct(balance.lossPct)} Verlust
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm font-medium leading-snug">{balance.title}</p>
+
+                        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Charge</dt>
+                            <dd className="truncate font-medium">{balance.batchCode ?? "—"}</dd>
+                          </div>
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Linie</dt>
+                            <dd className="truncate font-medium">
+                              {labelOf(PROCESS_LINES, balance.processLine)}
+                            </dd>
+                          </div>
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Termin</dt>
+                            <dd className="font-medium">{formatDate(balance.date)}</dd>
+                          </div>
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Fraktionen</dt>
+                            <dd className="font-medium">{balance.fractionCount}</dd>
+                          </div>
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Eingang</dt>
+                            <dd className="font-medium">
+                              {balance.inputKg !== null
+                                ? formatKg(balance.inputKg)
+                                : balance.derivedInputKg !== null
+                                  ? `≈ ${formatKg(balance.derivedInputKg)}`
+                                  : "—"}
+                            </dd>
+                          </div>
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Ausgang</dt>
+                            <dd className="font-medium">{formatKg(balance.outputKg)}</dd>
+                          </div>
+                          <div className="flex min-w-0 gap-1.5">
+                            <dt className="text-muted-foreground">Verlust</dt>
+                            <dd className={cn("font-medium", lossTextClass(balance.lossPct))}>
+                              {balance.lossKg !== null ? formatKg(balance.lossKg) : "—"} ·{" "}
+                              {formatPct(balance.lossPct)}
+                            </dd>
+                          </div>
+                        </dl>
+                      </button>
+                    ))}
+
+                    <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs">
+                      <p className="font-semibold">
+                        Summe ({totals.countedRuns} bilanzierte{" "}
+                        {totals.countedRuns === 1 ? "Lauf" : "Läufe"}
+                        {totals.skippedRuns > 0 ? `, ${totals.skippedRuns} ohne Bilanz` : ""})
+                      </p>
+                      <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Eingang</dt>
+                          <dd className="font-medium">{formatKg(totals.inputKg)}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Ausgang</dt>
+                          <dd className="font-medium">{formatKg(totals.outputKg)}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Verlust</dt>
+                          <dd className={cn("font-medium", lossTextClass(totals.lossPct))}>
+                            {totals.countedRuns ? formatKg(totals.lossKg) : "—"}
+                          </dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Verlust %</dt>
+                          <dd className={cn("font-medium", lossTextClass(totals.lossPct))}>
+                            {formatPct(totals.lossPct)}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  </div>
+
+                  {/* ------------------------------------------------- md table */}
+                  <div className="hidden overflow-x-auto md:block">
                     <Table className="min-w-[62rem]">
                       <TableHeader>
                         <TableRow>

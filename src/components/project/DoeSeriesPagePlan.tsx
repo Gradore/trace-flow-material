@@ -371,7 +371,70 @@ export default function DoeSeriesPagePlan({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto -mx-6 px-6">
+          {/* Der Plan wird am Automaten gelesen - unter md eine Karte je Lauf. */}
+          <div className="space-y-3 md:hidden">
+            {plan.rows.map((row) => {
+              const run = runByNumber.get(row.runNumber) ?? null;
+              const data = run ? runData.get(run.id) : undefined;
+              return (
+                <div
+                  key={row.runNumber}
+                  className={cn("rounded-lg border border-border p-3", !run && "bg-muted/30")}
+                >
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-mono text-sm font-semibold">Lauf {row.runNumber}</span>
+                    {run ? (
+                      <>
+                        <Link
+                          to="/projekt/versuche"
+                          className="font-mono text-sm underline underline-offset-2"
+                        >
+                          {run.run_code}
+                        </Link>
+                        <ToneBadge tone={toneOf(TEST_RUN_STATUSES, run.status)}>
+                          {labelOf(TEST_RUN_STATUSES, run.status)}
+                        </ToneBadge>
+                      </>
+                    ) : (
+                      <Badge variant="outline" className="text-muted-foreground">
+                        nicht angelegt
+                      </Badge>
+                    )}
+                  </div>
+
+                  <dl className="mt-2 space-y-1 text-xs">
+                    {plan.factors.map((factor, index) => {
+                      const planned = row.levels[index];
+                      const actual = data?.levels.get(factor.key);
+                      const deviates =
+                        actual !== undefined && levelKey(actual) !== levelKey(planned);
+                      return (
+                        <div key={factor.key} className="flex items-baseline justify-between gap-3">
+                          <dt className="min-w-0 text-muted-foreground">
+                            {factor.label}
+                            {factor.unit ? ` [${factor.unit}]` : ""}
+                          </dt>
+                          <dd
+                            className={cn(
+                              "shrink-0 text-right font-medium",
+                              deviates && "text-warning",
+                            )}
+                          >
+                            {deviates ? formatLevel(actual) : formatLevel(planned)}
+                            {deviates && (
+                              <span className="ml-1">≠ Plan {formatLevel(planned)}</span>
+                            )}
+                          </dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="-mx-6 hidden overflow-x-auto px-6 md:block">
             <Table className="min-w-[48rem]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">

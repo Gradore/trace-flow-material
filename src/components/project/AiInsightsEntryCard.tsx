@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { Markdown, ToneBadge, formatDateTime, formatNumber } from "@/components/project/ProjectUI";
 import { useAcknowledgeAiAnalysis } from "@/hooks/project/useProjectAi";
@@ -44,35 +43,13 @@ export function AiInsightsEntryCard({ analysis, typeLabel, scopeLabel }: AiInsig
   const mark = async (action: "read" | "acted") => {
     setPendingAction(action);
     try {
+      // useAcknowledgeAiAnalysis schreibt mit .select("id") und wirft, wenn RLS
+      // die Zeile still herausfiltert - eine zweite Lesekontrolle hier würde
+      // nichts zusätzlich absichern, aber bei einem Netzfehler fälschlich
+      // „nicht gespeichert“ melden.
       await acknowledge.mutateAsync(
         action === "acted" ? { id: analysis.id, actedUpon: true } : { id: analysis.id },
       );
-
-      // Das UPDATE im Hook läuft ohne .select(): filtert RLS die Zeile still
-      // heraus, meldet Supabase weder einen Fehler noch betroffene Zeilen.
-      // Ohne diese Nachkontrolle hätten wir Erfolg gemeldet, obwohl nichts
-      // gespeichert wurde.
-      const { data: saved, error } = await supabase
-        .from("ai_analyses")
-        .select("acknowledged_at, acted_upon")
-        .eq("id", analysis.id)
-        .maybeSingle();
-
-      const stored =
-        !error && saved !== null && Boolean(saved.acknowledged_at) &&
-        (action !== "acted" || saved.acted_upon);
-
-      if (!stored) {
-        toast({
-          variant: "destructive",
-          title: "Nicht gespeichert",
-          description:
-            error?.message ??
-            "Die Markierung wurde nicht übernommen (fehlende Berechtigung oder Auswertung nicht gefunden).",
-        });
-        return;
-      }
-
       toast({ title: action === "acted" ? "Als umgesetzt markiert" : "Als gelesen markiert" });
     } catch {
       // Der Fehler-Toast kommt bereits aus useAcknowledgeAiAnalysis.

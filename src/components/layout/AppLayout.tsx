@@ -117,8 +117,10 @@ export function AppLayout({ children }: AppLayoutProps) {
       <MobileSidebar open={mobileMenuOpen} onOpenChange={setMobileMenuOpen} />
       
       {/* Main Content */}
+      {/* The margin transition is scoped to md so no sidebar animation can
+          ever run on a phone, where the content is never offset. */}
       <div className={cn(
-        "transition-all duration-300",
+        "md:transition-all md:duration-300",
         !isMobile && (sidebarOpen ? "ml-64" : "ml-16"),
         isMobile && "ml-0"
       )}>

@@ -397,12 +397,12 @@ export default function DoeSeriesPageEvaluation({
       {responseKeys.length === 0 ? (
         <EmptyState
           title="Keine Zielgrößen auswertbar"
-          description="Für diese Serie sind keine Zielgrößen hinterlegt und es liegen noch keine Analyseergebnisse der erzeugten Fraktionen vor."
+          description="Für diese Serie sind keine Zielgrößen hinterlegt und es liegen weder Analyseergebnisse der erzeugten Fraktionen noch auswertbare Maschinenparameter vor."
         />
       ) : runsWithResponse === 0 ? (
         <EmptyState
           title="Keine Messwerte für diese Zielgröße"
-          description={`Für ${responseTitle(activeResponse)} liegen in den abgeschlossenen Läufen dieser Serie noch keine Analyseergebnisse vor. Prüfen Sie die erzeugten Fraktionen und deren Analysen.`}
+          description={`Für ${responseTitle(activeResponse)} liegen in den abgeschlossenen Läufen dieser Serie noch keine Messwerte vor. Prüfen Sie die erzeugten Fraktionen und deren Analysen bzw. die am Versuch erfassten Maschinenparameter.`}
         />
       ) : (
         <>

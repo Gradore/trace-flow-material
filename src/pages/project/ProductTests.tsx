@@ -266,6 +266,44 @@ export default function ProductTests() {
     updateStatus.mutate({ id: test.id, status, actualDate });
   };
 
+  /** Zeilenaktionen - identisch in der Karten- und der Tabellenansicht. */
+  const renderTestActions = (test: ProductTest) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label={`Aktionen für ${test.test_code}`}>
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="bg-popover w-56">
+        <DropdownMenuItem onSelect={() => setResultsTestId(test.id)}>
+          <BarChart3 className="h-4 w-4" />
+          Ergebnisse erfassen
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+          Status setzen
+        </DropdownMenuLabel>
+        {PRODUCT_TEST_STATUSES.map((status) => (
+          <DropdownMenuItem
+            key={status.id}
+            disabled={test.status === status.id || updateStatus.isPending}
+            onSelect={() => handleStatusChange(test, status.id)}
+          >
+            {status.label}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          onSelect={() => setDeleteTest(test)}
+        >
+          <Trash2 className="h-4 w-4" />
+          Produkttest löschen
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   /* ----------------------------------------------------------- results view */
 
   const resultsTest = resultsTestId ? tests.find((test) => test.id === resultsTestId) ?? null : null;
@@ -549,116 +587,161 @@ export default function ProductTests() {
               />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="whitespace-nowrap">Code</TableHead>
-                    <TableHead className="whitespace-nowrap">Titel</TableHead>
-                    <TableHead className="whitespace-nowrap">Kategorie</TableHead>
-                    <TableHead className="whitespace-nowrap">Partner</TableHead>
-                    <TableHead className="whitespace-nowrap">Fraktion</TableHead>
-                    <TableHead className="whitespace-nowrap text-right">Dosierung</TableHead>
-                    <TableHead className="whitespace-nowrap">Geplant</TableHead>
-                    <TableHead className="whitespace-nowrap">Durchgeführt</TableHead>
-                    <TableHead className="whitespace-nowrap">Status</TableHead>
-                    <TableHead className="whitespace-nowrap text-right">Kosten</TableHead>
-                    <TableHead className="whitespace-nowrap text-right">Messwerte</TableHead>
-                    <TableHead className="whitespace-nowrap text-right">Bestes Δ</TableHead>
-                    <TableHead className="w-10" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTests.map((test) => {
-                    const testResults = resultsByTest.get(test.id) ?? [];
-                    const deltas = testResults
-                      .map((row) => row.delta_pct)
-                      .filter((value): value is number => value !== null);
-                    const bestDelta = deltas.length ? Math.max(...deltas) : null;
-                    const fraction = test.output_fraction_id
-                      ? fractionById.get(test.output_fraction_id) ?? null
-                      : null;
-                    const partner = test.partner_id ? partnerById.get(test.partner_id) ?? null : null;
+            <>
+              {/* --------------------------------------------------- mobile cards */}
+              <div className="space-y-3 p-3 md:hidden">
+                {filteredTests.map((test) => {
+                  const testResults = resultsByTest.get(test.id) ?? [];
+                  const deltas = testResults
+                    .map((row) => row.delta_pct)
+                    .filter((value): value is number => value !== null);
+                  const bestDelta = deltas.length ? Math.max(...deltas) : null;
+                  const fraction = test.output_fraction_id
+                    ? fractionById.get(test.output_fraction_id) ?? null
+                    : null;
+                  const partner = test.partner_id ? partnerById.get(test.partner_id) ?? null : null;
 
-                    return (
-                      <TableRow key={test.id}>
-                        <TableCell className="whitespace-nowrap font-mono text-xs">
-                          {test.test_code}
-                        </TableCell>
-                        <TableCell className="min-w-[14rem] font-medium">{test.title}</TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {labelOf(PRODUCT_TEST_CATEGORIES, test.category)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">{partner?.name ?? "—"}</TableCell>
-                        <TableCell className="whitespace-nowrap font-mono text-xs">
-                          {fractionLabel(fraction)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-right tabular-nums">
-                          {dosageLabel(test.dosage_pct)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">{formatDate(test.planned_date)}</TableCell>
-                        <TableCell className="whitespace-nowrap">{formatDate(test.actual_date)}</TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          <ToneBadge tone={toneOf(PRODUCT_TEST_STATUSES, test.status)}>
-                            {labelOf(PRODUCT_TEST_STATUSES, test.status)}
-                          </ToneBadge>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-right tabular-nums">
-                          {formatEur(test.cost_eur)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-right tabular-nums">
-                          {testResults.length}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-right">
-                          <DeltaBadge value={bestDelta} className="justify-end" />
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                aria-label={`Aktionen für ${test.test_code}`}
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-popover w-56">
-                              <DropdownMenuItem onSelect={() => setResultsTestId(test.id)}>
-                                <BarChart3 className="h-4 w-4" />
-                                Ergebnisse erfassen
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                                Status setzen
-                              </DropdownMenuLabel>
-                              {PRODUCT_TEST_STATUSES.map((status) => (
-                                <DropdownMenuItem
-                                  key={status.id}
-                                  disabled={test.status === status.id || updateStatus.isPending}
-                                  onSelect={() => handleStatusChange(test, status.id)}
-                                >
-                                  {status.label}
-                                </DropdownMenuItem>
-                              ))}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onSelect={() => setDeleteTest(test)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Produkttest löschen
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                  return (
+                    <div key={test.id} className="rounded-lg border border-border p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono text-sm font-semibold">{test.test_code}</span>
+                            <ToneBadge tone={toneOf(PRODUCT_TEST_STATUSES, test.status)}>
+                              {labelOf(PRODUCT_TEST_STATUSES, test.status)}
+                            </ToneBadge>
+                            <DeltaBadge value={bestDelta} />
+                          </div>
+                          <p className="mt-1 text-sm font-medium leading-snug">{test.title}</p>
+                        </div>
+                        {renderTestActions(test)}
+                      </div>
+
+                      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Kategorie</dt>
+                          <dd className="truncate font-medium">
+                            {labelOf(PRODUCT_TEST_CATEGORIES, test.category)}
+                          </dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Partner</dt>
+                          <dd className="truncate font-medium">{partner?.name ?? "—"}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Fraktion</dt>
+                          <dd className="truncate font-mono font-medium">
+                            {fractionLabel(fraction)}
+                          </dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Dosierung</dt>
+                          <dd className="font-medium">{dosageLabel(test.dosage_pct)}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Geplant</dt>
+                          <dd className="font-medium">{formatDate(test.planned_date)}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Durchgeführt</dt>
+                          <dd className="font-medium">{formatDate(test.actual_date)}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Kosten</dt>
+                          <dd className="font-medium">{formatEur(test.cost_eur)}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Messwerte</dt>
+                          <dd className="font-medium">{testResults.length}</dd>
+                        </div>
+                      </dl>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 w-full"
+                        onClick={() => setResultsTestId(test.id)}
+                      >
+                        <BarChart3 className="h-4 w-4 mr-2" />
+                        Ergebnisse erfassen
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* -------------------------------------------------------- md table */}
+              <div className="hidden overflow-x-auto md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap">Code</TableHead>
+                      <TableHead className="whitespace-nowrap">Titel</TableHead>
+                      <TableHead className="whitespace-nowrap">Kategorie</TableHead>
+                      <TableHead className="whitespace-nowrap">Partner</TableHead>
+                      <TableHead className="whitespace-nowrap">Fraktion</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Dosierung</TableHead>
+                      <TableHead className="whitespace-nowrap">Geplant</TableHead>
+                      <TableHead className="whitespace-nowrap">Durchgeführt</TableHead>
+                      <TableHead className="whitespace-nowrap">Status</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Kosten</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Messwerte</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Bestes Δ</TableHead>
+                      <TableHead className="w-10" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTests.map((test) => {
+                      const testResults = resultsByTest.get(test.id) ?? [];
+                      const deltas = testResults
+                        .map((row) => row.delta_pct)
+                        .filter((value): value is number => value !== null);
+                      const bestDelta = deltas.length ? Math.max(...deltas) : null;
+                      const fraction = test.output_fraction_id
+                        ? fractionById.get(test.output_fraction_id) ?? null
+                        : null;
+                      const partner = test.partner_id ? partnerById.get(test.partner_id) ?? null : null;
+
+                      return (
+                        <TableRow key={test.id}>
+                          <TableCell className="whitespace-nowrap font-mono text-xs">
+                            {test.test_code}
+                          </TableCell>
+                          <TableCell className="min-w-[14rem] font-medium">{test.title}</TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {labelOf(PRODUCT_TEST_CATEGORIES, test.category)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">{partner?.name ?? "—"}</TableCell>
+                          <TableCell className="whitespace-nowrap font-mono text-xs">
+                            {fractionLabel(fraction)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right tabular-nums">
+                            {dosageLabel(test.dosage_pct)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">{formatDate(test.planned_date)}</TableCell>
+                          <TableCell className="whitespace-nowrap">{formatDate(test.actual_date)}</TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <ToneBadge tone={toneOf(PRODUCT_TEST_STATUSES, test.status)}>
+                              {labelOf(PRODUCT_TEST_STATUSES, test.status)}
+                            </ToneBadge>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right tabular-nums">
+                            {formatEur(test.cost_eur)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right tabular-nums">
+                            {testResults.length}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right">
+                            <DeltaBadge value={bestDelta} className="justify-end" />
+                          </TableCell>
+                          <TableCell>{renderTestActions(test)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

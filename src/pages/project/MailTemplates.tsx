@@ -98,6 +98,16 @@ import { cn } from "@/lib/utils";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * ai_analyses.confidence stores the raw model verdict in English - the cockpit
+ * and the risk register translate it, so this page must not print "high".
+ */
+const CONFIDENCE_LABELS: Record<string, string> = {
+  high: "hoch",
+  medium: "mittel",
+  low: "niedrig",
+};
+
 /** ai_analyses.recommendations is free-form jsonb - accept strings and objects. */
 function parseRecommendations(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -295,7 +305,13 @@ export default function MailTemplates() {
 
   const senderName = profileQuery.data?.name ?? "";
   const senderEmail = profileQuery.data?.email ?? user?.email ?? "";
-  const senderMissing = !profileQuery.isLoading && senderName.trim() === "";
+  /*
+   * A failed profile load is not an incomplete profile: without this the
+   * composer would claim "Kein Profilname gefunden" for an RLS or network
+   * error and offer no retry.
+   */
+  const senderFailed = profileQuery.isError;
+  const senderMissing = !profileQuery.isLoading && !senderFailed && senderName.trim() === "";
 
   const directionMeta = (direction: string) => ({
     label: labelOf(COMMUNICATION_DIRECTIONS, direction),
@@ -404,7 +420,9 @@ export default function MailTemplates() {
                 <span>{formatDateTime(latestAi.created_at)}</span>
                 {latestAi.model && <Badge variant="outline" className="font-mono text-[10px]">{latestAi.model}</Badge>}
                 {latestAi.confidence && (
-                  <Badge variant="outline" className="text-[10px]">Konfidenz: {latestAi.confidence}</Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    Konfidenz: {CONFIDENCE_LABELS[latestAi.confidence] ?? latestAi.confidence}
+                  </Badge>
                 )}
                 {latestAi.acknowledged_at && (
                   <Badge variant="outline" className="border-success/20 bg-success/10 text-[10px] text-success">
@@ -476,6 +494,8 @@ export default function MailTemplates() {
               senderName={senderName}
               senderEmail={senderEmail}
               senderMissing={senderMissing}
+              senderFailed={senderFailed}
+              onRetrySender={() => void profileQuery.refetch()}
             />
           </div>
 

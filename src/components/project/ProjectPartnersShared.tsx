@@ -7,6 +7,8 @@ import { Building2, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { hasAccess } from "@/components/layout/navigation";
+import { useUserRole } from "@/hooks/useUserRole";
 import type { Partner } from "@/lib/project/types";
 
 /** Sentinel for shadcn selects - Radix forbids an empty string value. */
@@ -33,20 +35,11 @@ export function subcategoryLabel(value: string | null | undefined): string {
   return PARTNER_SUBCATEGORY_LABELS[value] ?? value;
 }
 
-export const COMMUNICATION_DIRECTIONS = [
-  { id: "outbound", label: "Ausgehend", tone: "info" },
-  { id: "inbound", label: "Eingehend", tone: "success" },
-] as const;
-
-export const COMMUNICATION_CHANNELS = [
-  { id: "email", label: "E-Mail" },
-  { id: "phone", label: "Telefon" },
-  { id: "meeting", label: "Termin vor Ort" },
-  { id: "video_call", label: "Videokonferenz" },
-  { id: "letter", label: "Brief" },
-  { id: "portal", label: "Portal / Formular" },
-  { id: "other", label: "Sonstiges" },
-] as const;
+/**
+ * One definition for both communication UIs - /projekt/vorlagen writes the
+ * same communications rows this sheet reads.
+ */
+export { COMMUNICATION_CHANNELS, COMMUNICATION_DIRECTIONS } from "@/lib/project/constants";
 
 export interface OptionItem {
   id: string;
@@ -72,16 +65,38 @@ export function FixedPartnerBadge({ className }: { className?: string }) {
   );
 }
 
+/**
+ * Production and QA may open /projekt/partner but not /companies - for them the
+ * badge stays a plain badge, otherwise the click lands on "Kein Zugriff".
+ */
 export function CompanyLinkBadge({ className }: { className?: string }) {
+  const { role, isAdmin } = useUserRole();
+  const canOpenCompanies = hasAccess("/companies", role, isAdmin);
+
+  const badge = (
+    <Badge
+      variant="outline"
+      className={cn(
+        "gap-1 border-emerald-400/40 bg-emerald-400/15 text-emerald-300 font-medium",
+        canOpenCompanies && "hover:bg-emerald-400/25",
+      )}
+    >
+      <Building2 className="h-3 w-3" aria-hidden />
+      Verknüpft mit Firma
+    </Badge>
+  );
+
+  if (!canOpenCompanies) {
+    return (
+      <span className={cn("inline-flex", className)} title="Verknüpft mit einer Firma">
+        {badge}
+      </span>
+    );
+  }
+
   return (
     <Link to="/companies" className={cn("inline-flex", className)} title="Zur Firmenliste">
-      <Badge
-        variant="outline"
-        className="gap-1 border-emerald-400/40 bg-emerald-400/15 text-emerald-300 font-medium hover:bg-emerald-400/25"
-      >
-        <Building2 className="h-3 w-3" aria-hidden />
-        Verknüpft mit Firma
-      </Badge>
+      {badge}
     </Link>
   );
 }

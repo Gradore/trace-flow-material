@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, Loader2, RotateCcw, Wand2 } from "lucide-react";
 import {
   Dialog,
@@ -106,6 +106,42 @@ const STEPS = [
   { index: 3, label: "Parameter" },
 ] as const;
 
+/** Feldreihenfolge im Dialog - so wird immer der oberste Fehler angesprungen. */
+const ERROR_FIELD_ORDER = ["title", "processLine", "costEur", "inputWeightKg", "doeRunNumber"];
+
+/** Id des Eingabefelds, das zu einem Validierungsfehler gehört. */
+function focusIdForError(key: string): string | null {
+  if (key === "title") return "run-title";
+  if (key === "processLine") return `line-${PROCESS_LINES[0]?.id ?? ""}`;
+  if (key === "costEur") return "run-cost";
+  if (key === "inputWeightKg") return "run-input-kg";
+  if (key === "doeRunNumber") return "run-doe-number";
+  if (key.startsWith("param_")) return `param-${key.slice("param_".length)}`;
+  return null;
+}
+
+/**
+ * Der Dialogkörper ist der Scroller. Ohne Sprung zum Fehler wirkt "Weiter" auf
+ * dem Handy tot, weil die Meldung weit über dem sichtbaren Bereich steht.
+ */
+function focusFirstError(found: Record<string, string>) {
+  const keys = Object.keys(found);
+  if (!keys.length) return;
+  const ordered = [
+    ...ERROR_FIELD_ORDER.filter((key) => keys.includes(key)),
+    ...keys.filter((key) => !ERROR_FIELD_ORDER.includes(key)),
+  ];
+  const id = focusIdForError(ordered[0]);
+  if (!id) return;
+  // Erst nach dem Render des Schritts suchen, sonst existiert das Feld noch nicht.
+  window.requestAnimationFrame(() => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    element.focus({ preventScroll: true });
+  });
+}
+
 function emptyForm(): FormState {
   return {
     title: "",
@@ -136,6 +172,9 @@ export default function TestRunsWizard({
   onSubmit,
 }: TestRunsWizardProps) {
   const { isFiled: patentFiled } = usePatentFiled();
+
+  // Der Dialogkörper scrollt selbst - der Ref hält ihn für Sprünge greifbar.
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -255,11 +294,16 @@ export default function TestRunsWizard({
     return found;
   };
 
+  const scrollBodyToTop = () => {
+    bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const goToStep = (target: number) => {
     if (target === step) return;
     if (target < step) {
       setErrors({});
       setStep(target);
+      scrollBodyToTop();
       return;
     }
     for (let current = step; current < target; current += 1) {
@@ -267,11 +311,13 @@ export default function TestRunsWizard({
       if (Object.keys(found).length) {
         setErrors(found);
         setStep(current);
+        focusFirstError(found);
         return;
       }
     }
     setErrors({});
     setStep(target);
+    scrollBodyToTop();
   };
 
   /* --------------------------------------------------------- DoE template */
@@ -343,15 +389,15 @@ export default function TestRunsWizard({
   const canSubmit = Boolean(runCode) && !codeLoading && (!requiresIpConfirmation || ipConfirmed);
 
   const handleSubmit = () => {
-    const allErrors = { ...validateStep(1), ...validateStep(2), ...validateStep(3) };
-    if (Object.keys(allErrors).length) {
-      setErrors(allErrors);
-      const firstStep = Object.keys(validateStep(1)).length
-        ? 1
-        : Object.keys(validateStep(2)).length
-          ? 2
-          : 3;
-      setStep(firstStep);
+    const perStep = [validateStep(1), validateStep(2), validateStep(3)];
+    const firstFailing = perStep.findIndex((found) => Object.keys(found).length > 0);
+    if (firstFailing >= 0) {
+      setErrors({ ...perStep[0], ...perStep[1], ...perStep[2] });
+      setStep(firstFailing + 1);
+      // Der Fehler kann auf einem früheren Schritt liegen. Ohne Sprung zum Feld
+      // wirkt "Versuch anlegen" auf dem Handy tot: der Schritt wechselt weit
+      // über dem sichtbaren Bereich, die Meldung bleibt ungesehen.
+      focusFirstError(perStep[firstFailing]);
       return;
     }
     if (!runCode) {
@@ -422,7 +468,10 @@ export default function TestRunsWizard({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!isSaving ? onOpenChange(next) : undefined)}>
-      <DialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent
+        ref={bodyRef}
+        className="max-w-[calc(100vw-1.5rem)] sm:max-w-2xl max-h-[92vh] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>Neuen Versuch anlegen</DialogTitle>
           <DialogDescription>

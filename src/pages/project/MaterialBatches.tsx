@@ -79,6 +79,8 @@ import {
   useTestRuns,
 } from "@/hooks/project/useProjectData";
 import { linkBatchToMaterialInput } from "@/lib/project/bridges";
+import { hasAccess } from "@/components/layout/navigation";
+import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import type { MaterialBatch, Partner } from "@/lib/project/types";
 import { cn } from "@/lib/utils";
@@ -97,6 +99,9 @@ export default function MaterialBatches() {
   const batchesQuery = useMaterialBatches();
   const partnersQuery = usePartners();
   const testRunsQuery = useTestRuns();
+  const { role, isAdmin } = useUserRole();
+  // Der Wareneingang ist fuer qa gesperrt - dann nur ein Badge ohne Link.
+  const canOpenIntake = hasAccess("/intake", role, isAdmin);
 
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState<string>(ALL);
@@ -375,14 +380,14 @@ export default function MaterialBatches() {
 
   /* ----------------------------------------------------------------- views */
 
-  const renderConsumption = (batch: MaterialBatch) => {
+  const renderConsumption = (batch: MaterialBatch, fullWidth = false) => {
     const used = consumption.get(batch.id);
     const usedKg = used?.kg ?? 0;
     const total = batch.weight_kg ?? 0;
     const pct = total > 0 ? Math.min(100, (usedKg / total) * 100) : 0;
     const over = total > 0 && usedKg > total;
     return (
-      <div className="w-40 space-y-1">
+      <div className={cn("space-y-1", fullWidth ? "w-full" : "w-40")}>
         <Progress
           value={pct}
           className={cn("h-2", over ? "[&>div]:bg-destructive" : "[&>div]:bg-primary")}
@@ -396,17 +401,25 @@ export default function MaterialBatches() {
     );
   };
 
-  const renderIntakeCell = (batch: MaterialBatch) => {
+  const renderIntakeCell = (batch: MaterialBatch, fullWidth = false) => {
     if (batch.material_input_id) {
+      const badge = (
+        <Badge
+          variant="outline"
+          className={cn(
+            "border-success/20 bg-success/10 text-success font-medium gap-1.5",
+            canOpenIntake && "hover:bg-success/20",
+          )}
+        >
+          <Truck className="h-3 w-3" />
+          Im Wareneingang
+        </Badge>
+      );
+      // Ohne Zugriff auf /intake wuerde der Link nur auf "Kein Zugriff" fuehren.
+      if (!canOpenIntake) return badge;
       return (
         <Link to="/intake" className="inline-flex">
-          <Badge
-            variant="outline"
-            className="border-success/20 bg-success/10 text-success font-medium gap-1.5 hover:bg-success/20"
-          >
-            <Truck className="h-3 w-3" />
-            Im Wareneingang
-          </Badge>
+          {badge}
         </Link>
       );
     }
@@ -415,7 +428,7 @@ export default function MaterialBatches() {
       <Button
         variant="outline"
         size="sm"
-        className="whitespace-nowrap"
+        className={cn("whitespace-nowrap", fullWidth && "w-full")}
         disabled={intakeMutation.isPending}
         onClick={() => intakeMutation.mutate(batch)}
       >
@@ -585,114 +598,217 @@ export default function MaterialBatches() {
               }
             />
           ) : (
-            <div className="overflow-x-auto -mx-6 px-6">
-              <Table className="min-w-[80rem]">
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Chargencode</TableHead>
-                    <TableHead>Lieferant</TableHead>
-                    <TableHead>Materialklasse</TableHead>
-                    <TableHead>Harztyp</TableHead>
-                    <TableHead className="text-right">kg</TableHead>
-                    <TableHead>Eingang</TableHead>
-                    <TableHead className="text-right">Faseranteil</TableHead>
-                    <TableHead>Füllstoff</TableHead>
-                    <TableHead>Lagerort</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Verbrauch</TableHead>
-                    <TableHead>Wareneingang</TableHead>
-                    <TableHead className="w-12" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredBatches.map((batch) => {
-                    const materialClass = MATERIAL_CLASSES.find(
-                      (entry) => entry.id === batch.material_class,
-                    );
-                    return (
-                      <TableRow key={batch.id}>
-                        <TableCell className="font-mono font-medium whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            {batch.batch_code}
-                            {batch.contamination_notes && (
-                              <span
-                                title={`Störstoffe: ${batch.contamination_notes}`}
-                                aria-label={`Störstoffe: ${batch.contamination_notes}`}
-                                className="inline-flex"
-                              >
-                                <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0" />
-                              </span>
-                            )}
+            <>
+              {/* --------------------------------------------------- mobile cards */}
+              <div className="space-y-3 md:hidden">
+                {filteredBatches.map((batch) => {
+                  const materialClass = MATERIAL_CLASSES.find(
+                    (entry) => entry.id === batch.material_class,
+                  );
+                  return (
+                    <div key={batch.id} className="rounded-lg border border-border p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono text-sm font-semibold">
+                              {batch.batch_code}
+                            </span>
+                            <ToneBadge tone={toneOf(BATCH_STATUSES, batch.status)}>
+                              {labelOf(BATCH_STATUSES, batch.status)}
+                            </ToneBadge>
+                            <ToneBadge tone="info">{batch.material_class}</ToneBadge>
                           </div>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {batch.supplier_partner_id
-                            ? (partnerById.get(batch.supplier_partner_id)?.name ?? "Unbekannter Partner")
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          <span className="font-mono text-xs text-muted-foreground mr-1.5">
-                            {batch.material_class}
+                          <p className="mt-1 text-sm leading-snug text-muted-foreground">
+                            {materialClass?.label ?? "Unbekannte Klasse"}
+                          </p>
+                        </div>
+                        {batch.contamination_notes && (
+                          <span
+                            title={`Störstoffe: ${batch.contamination_notes}`}
+                            aria-label={`Störstoffe: ${batch.contamination_notes}`}
+                            className="inline-flex pt-0.5"
+                          >
+                            <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
                           </span>
-                          {materialClass?.label ?? "Unbekannte Klasse"}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">{batch.resin_type ?? "—"}</TableCell>
-                        <TableCell className="text-right whitespace-nowrap">
-                          {formatKg(batch.weight_kg)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {formatDate(batch.received_date)}
-                        </TableCell>
-                        <TableCell className="text-right whitespace-nowrap">
-                          {batch.declared_fiber_content_pct === null
-                            ? "—"
-                            : `${formatNumber(batch.declared_fiber_content_pct, 1)} %`}
-                        </TableCell>
-                        <TableCell className="max-w-[10rem] truncate">
-                          {batch.declared_filler ?? "—"}
-                        </TableCell>
-                        <TableCell className="max-w-[10rem] truncate">
-                          {batch.storage_location ?? "—"}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          <ToneBadge tone={toneOf(BATCH_STATUSES, batch.status)}>
-                            {labelOf(BATCH_STATUSES, batch.status)}
-                          </ToneBadge>
-                        </TableCell>
-                        <TableCell>{renderConsumption(batch)}</TableCell>
-                        <TableCell>{renderIntakeCell(batch)}</TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={`Aktionen für ${batch.batch_code}`}
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-popover">
-                              <DropdownMenuItem onClick={() => openEdit(batch)}>
-                                <Pencil className="h-4 w-4 mr-2" />
-                                Bearbeiten
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={() => setBatchToDelete(batch)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Löschen
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                        )}
+                      </div>
+
+                      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Lieferant</dt>
+                          <dd className="truncate font-medium">
+                            {batch.supplier_partner_id
+                              ? (partnerById.get(batch.supplier_partner_id)?.name ??
+                                "Unbekannter Partner")
+                              : "—"}
+                          </dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Menge</dt>
+                          <dd className="font-medium">{formatKg(batch.weight_kg)}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Eingang</dt>
+                          <dd className="font-medium">{formatDate(batch.received_date)}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Harztyp</dt>
+                          <dd className="truncate font-medium">{batch.resin_type ?? "—"}</dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Faseranteil</dt>
+                          <dd className="font-medium">
+                            {batch.declared_fiber_content_pct === null
+                              ? "—"
+                              : `${formatNumber(batch.declared_fiber_content_pct, 1)} %`}
+                          </dd>
+                        </div>
+                        <div className="flex min-w-0 gap-1.5">
+                          <dt className="text-muted-foreground">Lagerort</dt>
+                          <dd className="truncate font-medium">{batch.storage_location ?? "—"}</dd>
+                        </div>
+                      </dl>
+
+                      <div className="mt-3">{renderConsumption(batch, true)}</div>
+
+                      <div className="mt-3 space-y-2">
+                        {renderIntakeCell(batch, true)}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => openEdit(batch)}
+                          >
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Bearbeiten
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 text-destructive hover:text-destructive"
+                            onClick={() => setBatchToDelete(batch)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Löschen
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* -------------------------------------------------------- md table */}
+              <div className="-mx-6 hidden overflow-x-auto px-6 md:block">
+                <Table className="min-w-[80rem]">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Chargencode</TableHead>
+                      <TableHead>Lieferant</TableHead>
+                      <TableHead>Materialklasse</TableHead>
+                      <TableHead>Harztyp</TableHead>
+                      <TableHead className="text-right">kg</TableHead>
+                      <TableHead>Eingang</TableHead>
+                      <TableHead className="text-right">Faseranteil</TableHead>
+                      <TableHead>Füllstoff</TableHead>
+                      <TableHead>Lagerort</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Verbrauch</TableHead>
+                      <TableHead>Wareneingang</TableHead>
+                      <TableHead className="w-12" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredBatches.map((batch) => {
+                      const materialClass = MATERIAL_CLASSES.find(
+                        (entry) => entry.id === batch.material_class,
+                      );
+                      return (
+                        <TableRow key={batch.id}>
+                          <TableCell className="font-mono font-medium whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              {batch.batch_code}
+                              {batch.contamination_notes && (
+                                <span
+                                  title={`Störstoffe: ${batch.contamination_notes}`}
+                                  aria-label={`Störstoffe: ${batch.contamination_notes}`}
+                                  className="inline-flex"
+                                >
+                                  <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0" />
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {batch.supplier_partner_id
+                              ? (partnerById.get(batch.supplier_partner_id)?.name ?? "Unbekannter Partner")
+                              : "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <span className="font-mono text-xs text-muted-foreground mr-1.5">
+                              {batch.material_class}
+                            </span>
+                            {materialClass?.label ?? "Unbekannte Klasse"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">{batch.resin_type ?? "—"}</TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            {formatKg(batch.weight_kg)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {formatDate(batch.received_date)}
+                          </TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            {batch.declared_fiber_content_pct === null
+                              ? "—"
+                              : `${formatNumber(batch.declared_fiber_content_pct, 1)} %`}
+                          </TableCell>
+                          <TableCell className="max-w-[10rem] truncate">
+                            {batch.declared_filler ?? "—"}
+                          </TableCell>
+                          <TableCell className="max-w-[10rem] truncate">
+                            {batch.storage_location ?? "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <ToneBadge tone={toneOf(BATCH_STATUSES, batch.status)}>
+                              {labelOf(BATCH_STATUSES, batch.status)}
+                            </ToneBadge>
+                          </TableCell>
+                          <TableCell>{renderConsumption(batch)}</TableCell>
+                          <TableCell>{renderIntakeCell(batch)}</TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={`Aktionen für ${batch.batch_code}`}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="bg-popover">
+                                <DropdownMenuItem onClick={() => openEdit(batch)}>
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Bearbeiten
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setBatchToDelete(batch)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Löschen
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

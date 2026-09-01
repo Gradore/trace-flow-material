@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Recycle, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Recycle, Loader2, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 
@@ -62,6 +63,7 @@ export default function ResetPassword() {
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
+    setResetError(false);
 
     const validation = passwordSchema.safeParse({ password, confirmPassword });
     if (!validation.success) {
@@ -99,10 +101,16 @@ export default function ResetPassword() {
       description: "Ihr Passwort wurde erfolgreich geändert.",
     });
 
-    // Sign out and redirect to login after a short delay
+    // Sign out and redirect to login after a short delay. A failing signOut
+    // must not swallow the redirect, otherwise the success card is a dead end.
     setTimeout(async () => {
-      await supabase.auth.signOut();
-      navigate("/auth");
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutError) {
+        console.error("Sign out after password reset failed:", signOutError);
+      } finally {
+        navigate("/auth");
+      }
     }, 2000);
   };
 
@@ -190,6 +198,15 @@ export default function ResetPassword() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {resetError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                Das Passwort konnte nicht geändert werden. Bitte versuchen Sie es erneut oder
+                fordern Sie einen neuen Link zum Zurücksetzen an.
+              </AlertDescription>
+            </Alert>
+          )}
           <form onSubmit={handleResetPassword} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="password">Neues Passwort</Label>

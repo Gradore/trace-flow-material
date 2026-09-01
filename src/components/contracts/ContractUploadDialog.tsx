@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { Upload, FileText, Sparkles, Check, AlertCircle } from "lucide-react";
+import { Upload, FileText, Sparkles, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface ContractUploadDialogProps {

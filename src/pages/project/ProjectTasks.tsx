@@ -672,125 +672,214 @@ export default function ProjectTasks() {
                   }
                 />
               ) : view === "list" ? (
-                <div className="overflow-x-auto -mx-6 px-6">
-                  <Table className="min-w-[68rem]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead
-                          className="w-[7.5rem]"
-                          aria-sort={
-                            sortKey === "code"
-                              ? sortDirection === "asc" ? "ascending" : "descending"
-                              : "none"
-                          }
+                <>
+                  {/* ----------------------------------------------- mobile cards */}
+                  <div className="space-y-3 md:hidden">
+                    {filteredTasks.map((task) => {
+                      const phase = task.phase_id ? phaseById.get(task.phase_id) ?? null : null;
+                      const partner = task.partner_id ? partnerById.get(task.partner_id) ?? null : null;
+                      const overdue = isOverdue(task, today);
+                      const ipLocked = ipLockedFor(task);
+                      const openPredecessors = resolve(predecessorIds.get(task.id)).filter(
+                        (entry) => !SATISFIED_STATUSES.has(entry.status),
+                      );
+                      return (
+                        <div
+                          key={task.id}
+                          className={cn(
+                            "rounded-lg border border-border p-3",
+                            ipLocked && "border-destructive/30 bg-destructive/5",
+                          )}
                         >
-                          <button
-                            type="button"
-                            onClick={() => toggleSort("code")}
-                            className="inline-flex items-center gap-1 hover:text-foreground"
-                          >
-                            Code <SortIcon column="code" />
-                          </button>
-                        </TableHead>
-                        <TableHead className="min-w-[16rem]">Titel</TableHead>
-                        <TableHead className="w-[7rem]">Phase</TableHead>
-                        <TableHead className="w-[10rem]">Status</TableHead>
-                        <TableHead className="w-[7rem]">Priorität</TableHead>
-                        <TableHead
-                          className="w-[8rem]"
-                          aria-sort={
-                            sortKey === "due_date"
-                              ? sortDirection === "asc" ? "ascending" : "descending"
-                              : "none"
-                          }
-                        >
-                          <button
-                            type="button"
-                            onClick={() => toggleSort("due_date")}
-                            className="inline-flex items-center gap-1 hover:text-foreground"
-                          >
-                            Fällig <SortIcon column="due_date" />
-                          </button>
-                        </TableHead>
-                        <TableHead className="min-w-[10rem]">Partner</TableHead>
-                        <TableHead className="w-[11rem] text-right">Kosten geplant/ist</TableHead>
-                        <TableHead className="w-[4rem]" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredTasks.map((task) => {
-                        const phase = task.phase_id ? phaseById.get(task.phase_id) ?? null : null;
-                        const partner = task.partner_id ? partnerById.get(task.partner_id) ?? null : null;
-                        const overdue = isOverdue(task, today);
-                        const ipLocked = ipLockedFor(task);
-                        const openPredecessors = resolve(predecessorIds.get(task.id)).filter(
-                          (entry) => !SATISFIED_STATUSES.has(entry.status),
-                        );
-                        return (
-                          <TableRow key={task.id} className={cn(ipLocked && "bg-destructive/5")}>
-                            <TableCell className="font-mono font-medium align-top">{task.code}</TableCell>
-                            <TableCell className="align-top">
-                              <button
-                                type="button"
-                                onClick={() => openEdit(task)}
-                                className="text-left font-medium hover:underline underline-offset-2"
-                              >
-                                {task.title}
-                              </button>
-                              {ipLocked && (
-                                <div className="mt-1 flex items-start gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
-                                  <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-px" />
-                                  <span>{IP_WARNING}</span>
-                                </div>
-                              )}
-                              {openPredecessors.length > 0 && (
-                                <p className="mt-1 text-[11px] text-muted-foreground">
-                                  Wartet auf: {openPredecessors.map((entry) => entry.code).join(", ")}
-                                </p>
-                              )}
-                              {task.status === "blocked" && task.blocker_reason && (
-                                <p className="mt-1 text-[11px] text-destructive">{task.blocker_reason}</p>
-                              )}
-                            </TableCell>
-                            <TableCell className="align-top text-xs text-muted-foreground">
-                              {phase ? phase.code : "—"}
-                            </TableCell>
-                            <TableCell className="align-top">{renderStatusSelect(task)}</TableCell>
-                            <TableCell className="align-top">
-                              <ToneBadge tone={toneOf(TASK_PRIORITIES, task.priority)}>
-                                {labelOf(TASK_PRIORITIES, task.priority)}
-                              </ToneBadge>
-                            </TableCell>
-                            <TableCell
-                              className={cn("align-top text-sm", overdue && "text-destructive font-medium")}
+                          <div className="flex items-start justify-between gap-2">
+                            <button
+                              type="button"
+                              className="min-w-0 flex-1 text-left"
+                              onClick={() => openEdit(task)}
                             >
-                              {formatDate(task.due_date)}
-                            </TableCell>
-                            <TableCell className="align-top text-sm">
-                              {partner ? partner.name : <span className="text-muted-foreground">—</span>}
-                            </TableCell>
-                            <TableCell className="align-top text-right text-sm tabular-nums">
-                              <div className="text-muted-foreground text-xs">
-                                Plan {formatEur(task.estimated_cost_eur)}
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-mono text-sm font-semibold">{task.code}</span>
+                                <ToneBadge tone={toneOf(TASK_PRIORITIES, task.priority)}>
+                                  {labelOf(TASK_PRIORITIES, task.priority)}
+                                </ToneBadge>
                               </div>
-                              <div className="font-medium">Ist {formatEur(task.actual_cost_eur)}</div>
-                            </TableCell>
-                            <TableCell className="align-top text-right">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => openEdit(task)}
-                                aria-label={`Aufgabe ${task.code} bearbeiten`}
+                              <p className="mt-1 text-sm font-medium leading-snug">{task.title}</p>
+                            </button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openEdit(task)}
+                              aria-label={`Aufgabe ${task.code} bearbeiten`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </div>
+
+                          {ipLocked && (
+                            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
+                              <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-px" />
+                              <span>{IP_WARNING}</span>
+                            </div>
+                          )}
+                          {openPredecessors.length > 0 && (
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              Wartet auf: {openPredecessors.map((entry) => entry.code).join(", ")}
+                            </p>
+                          )}
+                          {task.status === "blocked" && task.blocker_reason && (
+                            <p className="mt-1 text-[11px] text-destructive">{task.blocker_reason}</p>
+                          )}
+
+                          <div className="mt-2">{renderStatusSelect(task, "h-10 w-full text-sm")}</div>
+
+                          <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                            <div className="flex min-w-0 gap-1.5">
+                              <dt className="text-muted-foreground">Phase</dt>
+                              <dd className="font-medium">{phase ? phase.code : "—"}</dd>
+                            </div>
+                            <div className="flex min-w-0 gap-1.5">
+                              <dt className="text-muted-foreground">Fällig</dt>
+                              <dd className={cn("font-medium", overdue && "text-destructive")}>
+                                {formatDate(task.due_date)}
+                              </dd>
+                            </div>
+                            <div className="flex min-w-0 gap-1.5">
+                              <dt className="text-muted-foreground">Partner</dt>
+                              <dd className="truncate font-medium">{partner ? partner.name : "—"}</dd>
+                            </div>
+                            <div className="flex min-w-0 gap-1.5">
+                              <dt className="text-muted-foreground">Kosten</dt>
+                              <dd className="font-medium">
+                                {formatEur(task.estimated_cost_eur)} / {formatEur(task.actual_cost_eur)}
+                              </dd>
+                            </div>
+                          </dl>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* ---------------------------------------------------- md table */}
+                  <div className="-mx-6 hidden overflow-x-auto px-6 md:block">
+                    <Table className="min-w-[68rem]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead
+                            className="w-[7.5rem]"
+                            aria-sort={
+                              sortKey === "code"
+                                ? sortDirection === "asc" ? "ascending" : "descending"
+                                : "none"
+                            }
+                          >
+                            <button
+                              type="button"
+                              onClick={() => toggleSort("code")}
+                              className="inline-flex items-center gap-1 hover:text-foreground"
+                            >
+                              Code <SortIcon column="code" />
+                            </button>
+                          </TableHead>
+                          <TableHead className="min-w-[16rem]">Titel</TableHead>
+                          <TableHead className="w-[7rem]">Phase</TableHead>
+                          <TableHead className="w-[10rem]">Status</TableHead>
+                          <TableHead className="w-[7rem]">Priorität</TableHead>
+                          <TableHead
+                            className="w-[8rem]"
+                            aria-sort={
+                              sortKey === "due_date"
+                                ? sortDirection === "asc" ? "ascending" : "descending"
+                                : "none"
+                            }
+                          >
+                            <button
+                              type="button"
+                              onClick={() => toggleSort("due_date")}
+                              className="inline-flex items-center gap-1 hover:text-foreground"
+                            >
+                              Fällig <SortIcon column="due_date" />
+                            </button>
+                          </TableHead>
+                          <TableHead className="min-w-[10rem]">Partner</TableHead>
+                          <TableHead className="w-[11rem] text-right">Kosten geplant/ist</TableHead>
+                          <TableHead className="w-[4rem]" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredTasks.map((task) => {
+                          const phase = task.phase_id ? phaseById.get(task.phase_id) ?? null : null;
+                          const partner = task.partner_id ? partnerById.get(task.partner_id) ?? null : null;
+                          const overdue = isOverdue(task, today);
+                          const ipLocked = ipLockedFor(task);
+                          const openPredecessors = resolve(predecessorIds.get(task.id)).filter(
+                            (entry) => !SATISFIED_STATUSES.has(entry.status),
+                          );
+                          return (
+                            <TableRow key={task.id} className={cn(ipLocked && "bg-destructive/5")}>
+                              <TableCell className="font-mono font-medium align-top">{task.code}</TableCell>
+                              <TableCell className="align-top">
+                                <button
+                                  type="button"
+                                  onClick={() => openEdit(task)}
+                                  className="text-left font-medium hover:underline underline-offset-2"
+                                >
+                                  {task.title}
+                                </button>
+                                {ipLocked && (
+                                  <div className="mt-1 flex items-start gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
+                                    <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-px" />
+                                    <span>{IP_WARNING}</span>
+                                  </div>
+                                )}
+                                {openPredecessors.length > 0 && (
+                                  <p className="mt-1 text-[11px] text-muted-foreground">
+                                    Wartet auf: {openPredecessors.map((entry) => entry.code).join(", ")}
+                                  </p>
+                                )}
+                                {task.status === "blocked" && task.blocker_reason && (
+                                  <p className="mt-1 text-[11px] text-destructive">{task.blocker_reason}</p>
+                                )}
+                              </TableCell>
+                              <TableCell className="align-top text-xs text-muted-foreground">
+                                {phase ? phase.code : "—"}
+                              </TableCell>
+                              <TableCell className="align-top">{renderStatusSelect(task)}</TableCell>
+                              <TableCell className="align-top">
+                                <ToneBadge tone={toneOf(TASK_PRIORITIES, task.priority)}>
+                                  {labelOf(TASK_PRIORITIES, task.priority)}
+                                </ToneBadge>
+                              </TableCell>
+                              <TableCell
+                                className={cn("align-top text-sm", overdue && "text-destructive font-medium")}
                               >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                                {formatDate(task.due_date)}
+                              </TableCell>
+                              <TableCell className="align-top text-sm">
+                                {partner ? partner.name : <span className="text-muted-foreground">—</span>}
+                              </TableCell>
+                              <TableCell className="align-top text-right text-sm tabular-nums">
+                                <div className="text-muted-foreground text-xs">
+                                  Plan {formatEur(task.estimated_cost_eur)}
+                                </div>
+                                <div className="font-medium">Ist {formatEur(task.actual_cost_eur)}</div>
+                              </TableCell>
+                              <TableCell className="align-top text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openEdit(task)}
+                                  aria-label={`Aufgabe ${task.code} bearbeiten`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               ) : (
                 <div className="overflow-x-auto -mx-6 px-6 pb-2">
                   <div className="flex gap-3 min-w-max items-start">

@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  ANALYSIS_PARAMETER_KEYS,
+  DOE_RESPONSE_KEYS,
   PROCESS_LINES,
   PROCESS_RULE_OF_THUMB,
   TEST_RUN_PARAMETER_KEYS,
@@ -647,10 +647,12 @@ export default function DoeSeriesPageDialog({
           <div className="space-y-2">
             <Label>Zielgrößen</Label>
             <p className="text-xs text-muted-foreground">
-              Diese Analytikparameter werden in der Auswertung als Antwortgrößen ausgewertet.
+              Diese Größen werden in der Auswertung als Antwortgrößen ausgewertet — aus den
+              Analysenwerten der erzeugten Fraktionen oder, wo am Ende der Liste gekennzeichnet,
+              aus den am Versuch erfassten Maschinenparametern.
             </p>
             <div className="grid gap-2 sm:grid-cols-2 max-h-52 overflow-y-auto rounded-lg border border-border p-3">
-              {ANALYSIS_PARAMETER_KEYS.map((parameter) => {
+              {DOE_RESPONSE_KEYS.map((parameter) => {
                 const checked = form.responses.includes(parameter.key);
                 return (
                   <label
@@ -668,6 +670,9 @@ export default function DoeSeriesPageDialog({
                       {parameter.label}
                       {parameter.unit && (
                         <span className="text-muted-foreground"> ({parameter.unit})</span>
+                      )}
+                      {parameter.source === "parameter" && (
+                        <span className="text-muted-foreground"> · Maschinenwert</span>
                       )}
                     </span>
                   </label>

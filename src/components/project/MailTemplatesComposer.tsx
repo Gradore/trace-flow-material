@@ -72,6 +72,9 @@ interface MailComposerProps {
   senderName: string;
   senderEmail: string;
   senderMissing: boolean;
+  /** The profile query failed - distinct from "profile has no name". */
+  senderFailed: boolean;
+  onRetrySender: () => void;
 }
 
 export default function MailComposer({
@@ -84,6 +87,8 @@ export default function MailComposer({
   senderName,
   senderEmail,
   senderMissing,
+  senderFailed,
+  onRetrySender,
 }: MailComposerProps) {
   const { user } = useAuth();
   const [partnerId, setPartnerId] = useState<string>("");
@@ -374,6 +379,22 @@ export default function MailComposer({
         </div>
 
         {isPhaseTwoMail && <IpGateBanner compact />}
+
+        {senderFailed && (
+          <p className="flex flex-wrap items-start gap-x-1.5 gap-y-1 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              Absenderprofil konnte nicht geladen werden — {"{{sender_name}}"} bitte prüfen.
+            </span>
+            <button
+              type="button"
+              className="underline underline-offset-2"
+              onClick={onRetrySender}
+            >
+              Erneut versuchen
+            </button>
+          </p>
+        )}
 
         {senderMissing && (
           <p className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 p-2 text-xs text-warning">

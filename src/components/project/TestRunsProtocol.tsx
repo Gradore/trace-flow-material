@@ -23,6 +23,20 @@ import type {
 } from "@/lib/project/types";
 import { paramMeta, processLine, sortParameters } from "./TestRunsShared";
 
+/**
+ * A linked photo, already loaded as a data URL by the caller - the builder is
+ * synchronous, so the pictures have to arrive decoded.
+ */
+export interface ProtocolPhoto {
+  name: string;
+  dataUrl: string;
+  /** Natural pixel size, used to keep the aspect ratio on the page. */
+  width: number;
+  height: number;
+  format: "JPEG" | "PNG";
+  capturedAt?: string | null;
+}
+
 /** Everything the protocol needs - the caller passes the unfiltered lists. */
 export interface ProtocolSources {
   run: TestRun;
@@ -34,12 +48,19 @@ export interface ProtocolSources {
   specs: FractionSpec[];
   analyses: FractionAnalysis[];
   results: AnalysisResult[];
+  /**
+   * Photos linked to the run (documents.linked_to_type = 'test_run'). Plan 5.3
+   * requires them in the protocol as patent evidence.
+   */
+  photos?: ProtocolPhoto[];
 }
 
 const MARGIN = 15;
 const WIDTH = 180;
 const PAGE_BOTTOM = 272;
 const LINE = 4.6;
+/** Tallest a protocol photo may be drawn, so caption and image share a page. */
+const MAX_PHOTO_HEIGHT = 110;
 
 /** jsPDF's standard fonts are WinAnsi - map the typography we use in the UI. */
 function s(value: string | number | null | undefined): string {
@@ -528,6 +549,58 @@ export function buildTestRunProtocolPdf(sources: ProtocolSources): Blob {
     });
   } else {
     note("Keine KI-Interpretation angefordert.");
+  }
+
+  /* ------------------------------------------------------ Fotodokumentation */
+
+  const photos = sources.photos;
+  y += 3;
+  heading("10. Fotodokumentation");
+  if (!photos) {
+    // The caller did not load the linked pictures (e.g. the list shortcut).
+    // Claiming "no photos" here would be a false statement in the evidence.
+    note(
+      "Fotodokumentation in diesem Export nicht enthalten - das Protokoll aus dem Versuchslauf-Dialog erzeugen, um die verknuepften Fotos einzubetten.",
+    );
+  } else if (photos.length) {
+    note(
+      "Fotos aus der Dokumentenablage dieses Versuchslaufs - Nachweis des Materialzustands und der Maschineneinstellung.",
+    );
+    y += 2;
+    photos.forEach((photo, index) => {
+      const ratio =
+        photo.width > 0 && photo.height > 0 ? photo.height / photo.width : 0.75;
+      // Fit into the box without distorting: a portrait photo (ratio > 1) has
+      // to lose width, not be squeezed into a landscape rectangle.
+      const drawWidth = Math.min(WIDTH, 120, MAX_PHOTO_HEIGHT / ratio);
+      const drawHeight = drawWidth * ratio;
+      ensure(drawHeight + 10);
+      try {
+        pdf.addImage(photo.dataUrl, photo.format, MARGIN, y, drawWidth, drawHeight);
+      } catch (imageError) {
+        // A picture jsPDF refuses must not lose the rest of the protocol.
+        console.error("buildTestRunProtocolPdf photo:", imageError);
+        note(`Foto ${index + 1} konnte nicht eingebettet werden.`);
+        return;
+      }
+      y += drawHeight + 3.5;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(110);
+      pdf.text(
+        s(
+          `Foto ${index + 1}: ${photo.name}${
+            photo.capturedAt ? ` (${dateTime(photo.capturedAt)})` : ""
+          }`,
+        ),
+        MARGIN,
+        y,
+      );
+      pdf.setTextColor(20);
+      y += 6;
+    });
+  } else {
+    note("Keine Fotos zu diesem Versuchslauf hinterlegt.");
   }
 
   /* ----------------------------------------------------------------- Footer */

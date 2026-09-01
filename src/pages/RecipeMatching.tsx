@@ -13,13 +13,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { 
   FlaskConical, 
-  Upload, 
   Sparkles, 
   FileText, 
   CheckCircle,
   Loader2,
   Beaker,
-  Target,
   ChevronRight,
   Settings,
   Plus,

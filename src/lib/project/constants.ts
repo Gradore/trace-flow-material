@@ -110,6 +110,12 @@ export const TEST_RUN_STATUSES = [
   { id: "cancelled", label: "Abgebrochen", tone: "muted" },
 ] as const;
 
+/**
+ * Status values of doe_series - the column has no check constraint. A series
+ * never "fails"; otherwise it is the run status list, so it is derived from it.
+ */
+export const DOE_SERIES_STATUSES = TEST_RUN_STATUSES.filter((entry) => entry.id !== "failed");
+
 export const BATCH_STATUSES = [
   { id: "received", label: "Eingegangen", tone: "info" },
   { id: "in_test", label: "Im Versuch", tone: "warning" },
@@ -163,21 +169,52 @@ export const RISK_CATEGORIES = [
   { id: "schedule", label: "Termine" },
 ] as const;
 
+/** Status values of project_risks - the column is free text in the DB. */
+export const RISK_STATUSES = [
+  { id: "open", label: "Offen", tone: "destructive" },
+  { id: "mitigating", label: "Maßnahmen laufen", tone: "info" },
+  { id: "accepted", label: "Akzeptiert", tone: "warning" },
+  { id: "closed", label: "Geschlossen", tone: "success" },
+] as const;
+
 /** Machine parameters recorded per test run (the DoE factors). */
 export const TEST_RUN_PARAMETER_KEYS = [
   { key: "rpm", label: "Rotordrehzahl", unit: "U/min", numeric: true },
   { key: "blade_edge_radius_mm", label: "Schneidkantenradius", unit: "mm", numeric: true },
   { key: "wedge_angle_deg", label: "Keilwinkel", unit: "°", numeric: true },
   { key: "cutting_gap_mm", label: "Schnittspalt Rotor/Stator", unit: "mm", numeric: true },
-  { key: "screen_size_mm", label: "Sieblochung", unit: "mm", numeric: true },
+  /* "ohne" = no screen at all; a specified process setting, not a missing value. */
+  { key: "screen_size_mm", label: "Sieblochung", unit: "mm", numeric: true, textOptions: ["ohne"] },
   { key: "screen_type", label: "Siebtyp", unit: "", numeric: false },
   { key: "blade_condition", label: "Messerzustand", unit: "", numeric: false },
   { key: "air_velocity_ms", label: "Sichtergeschwindigkeit", unit: "m/s", numeric: true },
-  { key: "throughput_kgh", label: "Durchsatz", unit: "kg/h", numeric: true },
+  /* The only machine value that is an outcome, not a setting - see DOE_RESPONSE_KEYS. */
+  { key: "throughput_kgh", label: "Durchsatz", unit: "kg/h", numeric: true, isResponse: true },
   { key: "circumferential_speed_ms", label: "Umfangsgeschwindigkeit", unit: "m/s", numeric: true },
   { key: "cooling_type", label: "Kühlung", unit: "", numeric: false },
   { key: "wear_protection", label: "Verschleißschutz", unit: "", numeric: false },
 ] as const;
+
+/**
+ * Textual values a numeric machine parameter may still carry, e.g. the level
+ * "ohne" (no screen) of screen_size_mm. Such a value is stored in
+ * test_run_parameters.value_text instead of value_numeric.
+ */
+export function parameterTextOptions(key: string): readonly string[] {
+  const entry = TEST_RUN_PARAMETER_KEYS.find((item) => item.key === key);
+  if (!entry || !("textOptions" in entry)) return [];
+  return entry.textOptions;
+}
+
+/**
+ * The declared spelling of a non-numeric level, or null when the input is not
+ * one - "OHNE" is stored as the declared "ohne".
+ */
+export function matchParameterTextOption(key: string, raw: string): string | null {
+  const value = raw.trim().toLowerCase();
+  if (!value) return null;
+  return parameterTextOptions(key).find((option) => option.toLowerCase() === value) ?? null;
+}
 
 /** Mandatory analytics parameters per test run (section 1.6 of the spec). */
 export const ANALYSIS_PARAMETER_KEYS = [
@@ -193,6 +230,38 @@ export const ANALYSIS_PARAMETER_KEYS = [
   { key: "tool_wear_g_t", label: "Werkzeugverschleiß", unit: "g/t", method: "Wägung Verschleißteile" },
   { key: "metal_ppm", label: "Fremdstoffe (Metall)", unit: "ppm", method: "RFA / Magnetprüfung" },
 ] as const;
+
+export interface ResponseKeyMeta {
+  key: string;
+  label: string;
+  unit: string;
+  /** Where a measured value for this key comes from. */
+  source: "analysis" | "parameter";
+}
+
+/**
+ * Every key a DoE series can evaluate as a response. Analytics parameters are
+ * measured in fraction_analysis_results, the machine parameters marked
+ * `isResponse` (throughput_kgh) in test_run_parameters - the evaluation reads
+ * both. Every other machine parameter is a *set* value and therefore a factor:
+ * offering it as a response would plot a factor against itself.
+ */
+export const DOE_RESPONSE_KEYS: readonly ResponseKeyMeta[] = [
+  ...ANALYSIS_PARAMETER_KEYS.map((entry) => ({
+    key: entry.key,
+    label: entry.label,
+    unit: entry.unit,
+    source: "analysis" as const,
+  })),
+  ...TEST_RUN_PARAMETER_KEYS.filter(
+    (entry) => entry.numeric && "isResponse" in entry && entry.isResponse,
+  ).map((entry) => ({
+    key: entry.key,
+    label: entry.label,
+    unit: entry.unit,
+    source: "parameter" as const,
+  })),
+];
 
 export const PRODUCT_TEST_PARAMETER_KEYS = [
   { key: "flexural_strength_mpa", label: "Biegezugfestigkeit", unit: "MPa" },
@@ -248,6 +317,27 @@ export const EMAIL_TEMPLATE_CATEGORIES = [
   { id: "science_coop", label: "Wissenschaft" },
   { id: "follow_up", label: "Nachfassen" },
   { id: "result_share", label: "Ergebnisübermittlung" },
+] as const;
+
+/**
+ * communications.direction / .channel. Both the mail page and the partner
+ * sheet write and read the very same rows, so there is exactly one list -
+ * a second one would render the other page's stored id as a raw token.
+ */
+export const COMMUNICATION_DIRECTIONS = [
+  { id: "outbound", label: "Ausgehend", tone: "info" },
+  { id: "inbound", label: "Eingehend", tone: "success" },
+] as const;
+
+export const COMMUNICATION_CHANNELS = [
+  { id: "email", label: "E-Mail" },
+  { id: "phone", label: "Telefon" },
+  { id: "video_call", label: "Videokonferenz" },
+  { id: "meeting", label: "Besprechung" },
+  { id: "visit", label: "Besuch vor Ort" },
+  { id: "letter", label: "Brief / Fax" },
+  { id: "portal", label: "Portal / Formular" },
+  { id: "other", label: "Sonstiges" },
 ] as const;
 
 export function labelOf<T extends { id: string; label: string }>(

@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Recycle, Loader2, Info, ShieldCheck } from "lucide-react";
+import { Recycle, Loader2, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { RateLimitError, withRateLimit } from "@/lib/rateLimit";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Benutzername ist erforderlich"),
@@ -21,9 +22,6 @@ export default function Auth() {
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
-  const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
   const [forceLogout, setForceLogout] = useState(false);
 
   const { signIn, user } = useAuth();
@@ -49,35 +47,6 @@ export default function Auth() {
     }
   }, [user, forceLogout, navigate]);
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!forgotPasswordEmail || !z.string().email().safeParse(forgotPasswordEmail).success) {
-      toast({
-        variant: "destructive",
-        title: "Ungültige E-Mail",
-        description: "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
-      });
-      return;
-    }
-
-    setIsLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(forgotPasswordEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setIsLoading(false);
-
-    if (error) {
-      toast({ variant: "destructive", title: "Fehler", description: error.message });
-      return;
-    }
-
-    setForgotPasswordSent(true);
-    toast({
-      title: "E-Mail gesendet",
-      description: "Falls ein Konto mit dieser E-Mail existiert, erhalten Sie einen Link zum Zurücksetzen des Passworts.",
-    });
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
@@ -95,10 +64,16 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      // Look up the login e-mail by username.
-      const { data: email, error: lookupError } = await supabase.rpc("get_email_by_username", {
-        _username: loginUsername.toLowerCase(),
-      });
+      // Look up the login e-mail by username. The RPC is callable by anon, so
+      // it is throttled at the edge - otherwise the login form doubles as a
+      // username enumeration endpoint.
+      const { data: email, error: lookupError } = await withRateLimit(
+        "login-lookup",
+        async () =>
+          await supabase.rpc("get_email_by_username", {
+            _username: loginUsername.toLowerCase(),
+          })
+      );
 
       if (lookupError || !email) {
         toast({
@@ -123,8 +98,16 @@ export default function Auth() {
       }
 
       navigate("/");
-    } catch {
+    } catch (err) {
       setIsLoading(false);
+      if (err instanceof RateLimitError) {
+        toast({
+          variant: "destructive",
+          title: "Zu viele Anmeldeversuche",
+          description: err.message,
+        });
+        return;
+      }
       toast({
         variant: "destructive",
         title: "Anmeldung fehlgeschlagen",
@@ -141,67 +124,6 @@ export default function Auth() {
       <span className="text-2xl font-bold">RekuFLOW</span>
     </div>
   );
-
-  if (showForgotPassword) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            {brandHeader}
-            <CardTitle>Passwort zurücksetzen</CardTitle>
-            <CardDescription>
-              {forgotPasswordSent ? "E-Mail wurde gesendet" : "Geben Sie Ihre E-Mail-Adresse ein"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {forgotPasswordSent ? (
-              <>
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertDescription>
-                    Falls ein Konto mit der E-Mail <strong>{forgotPasswordEmail}</strong> existiert,
-                    erhalten Sie in Kürze einen Link zum Zurücksetzen des Passworts.
-                  </AlertDescription>
-                </Alert>
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  onClick={() => {
-                    setShowForgotPassword(false);
-                    setForgotPasswordSent(false);
-                    setForgotPasswordEmail("");
-                  }}
-                >
-                  Zurück zur Anmeldung
-                </Button>
-              </>
-            ) : (
-              <form onSubmit={handleForgotPassword} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="forgot-email">E-Mail</Label>
-                  <Input
-                    id="forgot-email"
-                    type="email"
-                    placeholder="name@firma.de"
-                    value={forgotPasswordEmail}
-                    onChange={(e) => setForgotPasswordEmail(e.target.value)}
-                    disabled={isLoading}
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Link senden
-                </Button>
-                <Button type="button" className="w-full" variant="outline" onClick={() => setShowForgotPassword(false)}>
-                  Zurück
-                </Button>
-              </form>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">

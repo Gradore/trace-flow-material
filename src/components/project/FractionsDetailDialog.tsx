@@ -23,6 +23,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectMutation } from "@/hooks/project/useProjectData";
+import { useUserRole } from "@/hooks/useUserRole";
+import { hasAccess } from "@/components/layout/navigation";
+import { ProjectDocuments } from "@/components/project/ProjectDocuments";
 import { toast } from "@/hooks/use-toast";
 import {
   ConformityBadge,
@@ -76,6 +79,10 @@ export function FractionsDetailDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { role, isAdmin } = useUserRole();
+  /* intake darf /projekt/fraktionen, aber nicht /output. */
+  const canOpenOutput = hasAccess("/output", role, isAdmin);
+
   const [form, setForm] = useState<FormState>({
     targetFractionId: "",
     weightKg: "",
@@ -183,11 +190,12 @@ export function FractionsDetailDialog({
         </DialogHeader>
 
         <Tabs defaultValue="master">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto gap-1">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 h-auto gap-1">
             <TabsTrigger value="master" className="text-xs py-1.5">Stammdaten</TabsTrigger>
             <TabsTrigger value="spec" className="text-xs py-1.5">Ist vs. Soll</TabsTrigger>
             <TabsTrigger value="retained" className="text-xs py-1.5">Rückstellmuster</TabsTrigger>
             <TabsTrigger value="tests" className="text-xs py-1.5">Produkttests</TabsTrigger>
+            <TabsTrigger value="documents" className="text-xs py-1.5">Dokumente</TabsTrigger>
           </TabsList>
 
           {/* ------------------------------------------------ master data */}
@@ -290,9 +298,13 @@ export function FractionsDetailDialog({
                 <dt className="text-muted-foreground">Lagerbestand</dt>
                 <dd className="font-medium">
                   {fraction.output_material_id ? (
-                    <Link to="/output" className="underline underline-offset-2 inline-flex items-center gap-1">
-                      gebucht <ExternalLink className="h-3 w-3" />
-                    </Link>
+                    canOpenOutput ? (
+                      <Link to="/output" className="underline underline-offset-2 inline-flex items-center gap-1">
+                        gebucht <ExternalLink className="h-3 w-3" />
+                      </Link>
+                    ) : (
+                      "gebucht"
+                    )
                   ) : "nicht gebucht"}
                 </dd>
               </div>
@@ -466,6 +478,16 @@ export function FractionsDetailDialog({
             <Link to="/projekt/produkttests" className="text-xs underline underline-offset-2 inline-flex items-center gap-1">
               Zu den Produkttests <ExternalLink className="h-3 w-3" />
             </Link>
+          </TabsContent>
+
+          {/* --------------------------------------------------- documents */}
+          <TabsContent value="documents" className="mt-4">
+            <ProjectDocuments
+              entityType="output_fraction"
+              entityId={fraction.id}
+              title="Dokumente zur Fraktion"
+              description="Fotos der Fraktion, Laborberichte und Datenblätter."
+            />
           </TabsContent>
         </Tabs>
 
