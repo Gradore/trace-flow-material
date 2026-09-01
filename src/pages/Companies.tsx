@@ -20,12 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Building2, Users, Phone, Mail, Edit, Trash2 } from "lucide-react";
+import { Plus, Search, Building2, Users, Phone, Mail, Edit, Trash2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { CompanyDialog } from "@/components/companies/CompanyDialog";
 import { ContactsDialog } from "@/components/companies/ContactsDialog";
+import { ContractUploadDialog } from "@/components/contracts/ContractUploadDialog";
 import { useExport } from "@/hooks/useExport";
 import { PageDescription } from "@/components/layout/PageDescription";
+import { useUserRole } from "@/hooks/useUserRole";
+import { hasAccess } from "@/components/layout/navigation";
 
 // ... keep existing code
 
@@ -52,20 +55,27 @@ export default function Companies() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [contactsDialogOpen, setContactsDialogOpen] = useState(false);
+  const [contractDialogOpen, setContractDialogOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const queryClient = useQueryClient();
   const { exportDataToCSV } = useExport();
+  const { role, isAdmin } = useUserRole();
 
-  const { data: companies, isLoading } = useQuery({
-    queryKey: ["companies", search, typeFilter, statusFilter],
+  // PostgREST parses , ( ) and " inside an or(...) filter string - strip them from free text
+  const sanitizedSearch = search.replace(/[,()"\\]/g, " ").trim();
+
+  const { data: companies, isLoading, isError, error: companiesError } = useQuery({
+    queryKey: ["companies", sanitizedSearch, typeFilter, statusFilter],
     queryFn: async () => {
       let query = supabase
         .from("companies")
         .select("*")
         .order("name", { ascending: true });
 
-      if (search) {
-        query = query.or(`name.ilike.%${search}%,company_id.ilike.%${search}%,email.ilike.%${search}%`);
+      if (sanitizedSearch) {
+        query = query.or(
+          `name.ilike.%${sanitizedSearch}%,company_id.ilike.%${sanitizedSearch}%,email.ilike.%${sanitizedSearch}%`
+        );
       }
       if (typeFilter !== "all") {
         query = query.eq("type", typeFilter);
@@ -82,8 +92,15 @@ export default function Companies() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("companies").delete().eq("id", id);
+      const { data, error } = await supabase
+        .from("companies")
+        .delete()
+        .eq("id", id)
+        .select("id");
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["companies"] });
@@ -102,6 +119,11 @@ export default function Companies() {
   const handleContacts = (company: Company) => {
     setSelectedCompany(company);
     setContactsDialogOpen(true);
+  };
+
+  const handleContract = (company: Company) => {
+    setSelectedCompany(company);
+    setContractDialogOpen(true);
   };
 
   const handleExport = () => {
@@ -134,11 +156,11 @@ export default function Companies() {
           "Vertrag hochladen → Für Konditionen"
         ]}
         workflowLinks={[
-          { label: "Materialeingang", path: "/intake", direction: "next" },
-          { label: "Aufträge", path: "/orders", direction: "next" },
-          { label: "Lieferscheine", path: "/delivery-notes", direction: "next" },
-          { label: "Vertriebssuche", path: "/sales-search", direction: "next" },
-        ]}
+          { label: "Materialeingang", path: "/intake", direction: "next" as const },
+          { label: "Aufträge", path: "/orders", direction: "next" as const },
+          { label: "Lieferscheine", path: "/delivery-notes", direction: "next" as const },
+          { label: "Vertriebssuche", path: "/sales-search", direction: "next" as const },
+        ].filter((link) => hasAccess(link.path, role, isAdmin))}
       />
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -204,6 +226,11 @@ export default function Companies() {
             <div className="text-center py-8 text-muted-foreground">
               Lädt...
             </div>
+          ) : isError ? (
+            <div className="text-center py-8 text-destructive">
+              Firmen konnten nicht geladen werden:{" "}
+              {(companiesError as Error)?.message || "Unbekannter Fehler"}
+            </div>
           ) : companies?.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               Keine Firmen gefunden
@@ -264,6 +291,16 @@ export default function Companies() {
                           >
                             <Users className="h-4 w-4" />
                           </Button>
+                          {isAdmin && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleContract(company)}
+                              title="Vertrag hochladen"
+                            >
+                              <FileText className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -304,9 +341,20 @@ export default function Companies() {
 
       {selectedCompany && (
         <ContactsDialog
+          key={`contacts-${selectedCompany.id}`}
           open={contactsDialogOpen}
           onOpenChange={setContactsDialogOpen}
           company={selectedCompany}
+        />
+      )}
+
+      {selectedCompany && (
+        <ContractUploadDialog
+          key={`contract-${selectedCompany.id}`}
+          open={contractDialogOpen}
+          onOpenChange={setContractDialogOpen}
+          companyId={selectedCompany.id}
+          companyName={selectedCompany.name}
         />
       )}
     </div>

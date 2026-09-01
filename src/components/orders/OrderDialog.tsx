@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -25,6 +25,7 @@ import { format } from "date-fns";
 type Order = {
   id: string;
   order_id: string;
+  company_id?: string | null;
   customer_name: string;
   customer_email: string | null;
   customer_phone: string | null;
@@ -39,6 +40,13 @@ type Order = {
   delivery_address: string | null;
   status: string;
   notes: string | null;
+};
+
+type CompanyOption = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
 };
 
 interface OrderDialogProps {
@@ -56,6 +64,7 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
   const queryClient = useQueryClient();
 
   const [formData, setFormData] = useState({
+    company_id: "",
     customer_name: "",
     customer_email: "",
     customer_phone: "",
@@ -73,6 +82,7 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
   useEffect(() => {
     if (order) {
       setFormData({
+        company_id: order.company_id || "",
         customer_name: order.customer_name,
         customer_email: order.customer_email || "",
         customer_phone: order.customer_phone || "",
@@ -88,6 +98,7 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
       });
     } else {
       setFormData({
+        company_id: "",
         customer_name: "",
         customer_email: "",
         customer_phone: "",
@@ -103,6 +114,36 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
       });
     }
   }, [order, open]);
+
+  const {
+    data: companies,
+    isError: companiesError,
+  } = useQuery({
+    queryKey: ["companies", "order-customers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("companies")
+        .select("id, name, email, phone")
+        .in("type", ["customer", "both"])
+        .eq("status", "active")
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      return data as CompanyOption[];
+    },
+    enabled: open,
+  });
+
+  const handleCompanyChange = (companyId: string) => {
+    const company = companies?.find((c) => c.id === companyId);
+    setFormData((prev) => ({
+      ...prev,
+      company_id: companyId,
+      customer_name: company?.name || prev.customer_name,
+      customer_email: company?.email || prev.customer_email,
+      customer_phone: company?.phone || prev.customer_phone,
+    }));
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -130,18 +171,16 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
         throw new Error("Auftrags-ID konnte nicht generiert werden. Bitte versuchen Sie es erneut.");
       }
 
-      // Generate product name from configuration
-      const productName = `${data.product_category}-${data.product_grain_size}-${data.product_subcategory}`;
-
+      // product_name is a generated column in the DB and must not be written
       const { error } = await supabase.from("orders").insert({
         order_id: orderId,
+        company_id: data.company_id || null,
         customer_name: data.customer_name.trim(),
         customer_email: data.customer_email || null,
         customer_phone: data.customer_phone || null,
         product_category: data.product_category,
         product_grain_size: data.product_grain_size,
         product_subcategory: data.product_subcategory,
-        product_name: productName,
         quantity_kg: parseFloat(data.quantity_kg),
         production_deadline: data.production_deadline,
         delivery_deadline: data.delivery_deadline,
@@ -178,19 +217,17 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
     mutationFn: async (data: typeof formData) => {
       if (!order) return;
 
-      // Generate product name from configuration
-      const productName = `${data.product_category}-${data.product_grain_size}-${data.product_subcategory}`;
-
-      const { error } = await supabase
+      // product_name is a generated column in the DB and must not be written
+      const { data: updated, error } = await supabase
         .from("orders")
         .update({
+          company_id: data.company_id || null,
           customer_name: data.customer_name,
           customer_email: data.customer_email || null,
           customer_phone: data.customer_phone || null,
           product_category: data.product_category,
           product_grain_size: data.product_grain_size,
           product_subcategory: data.product_subcategory,
-          product_name: productName,
           quantity_kg: parseFloat(data.quantity_kg),
           production_deadline: data.production_deadline,
           delivery_deadline: data.delivery_deadline,
@@ -198,9 +235,13 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
           delivery_address: data.delivery_address || null,
           notes: data.notes || null,
         })
-        .eq("id", order.id);
+        .eq("id", order.id)
+        .select("id");
 
       if (error) throw error;
+      if (!updated || updated.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -215,6 +256,11 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.company_id && !formData.customer_name) {
+      toast.error("Bitte einen Kunden auswählen");
+      return;
+    }
 
     if (!formData.customer_name || !formData.product_category || !formData.product_grain_size || !formData.product_subcategory || !formData.quantity_kg || !formData.production_deadline || !formData.delivery_deadline) {
       toast.error("Bitte alle Pflichtfelder ausfüllen");
@@ -249,16 +295,32 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="customer_name">Kundenname *</Label>
-                <Input
-                  id="customer_name"
-                  value={formData.customer_name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, customer_name: e.target.value })
-                  }
-                  placeholder="Firmenname"
-                  required
-                />
+                <Label htmlFor="company_id">Kunde *</Label>
+                <Select
+                  value={formData.company_id}
+                  onValueChange={handleCompanyChange}
+                >
+                  <SelectTrigger id="company_id">
+                    <SelectValue placeholder="Firma wählen..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies?.map((company) => (
+                      <SelectItem key={company.id} value={company.id}>
+                        {company.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {companiesError && (
+                  <p className="text-xs text-destructive">
+                    Firmen konnten nicht geladen werden.
+                  </p>
+                )}
+                {!formData.company_id && formData.customer_name && (
+                  <p className="text-xs text-muted-foreground">
+                    Erfasster Kunde: {formData.customer_name} (keiner Firma zugeordnet)
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="customer_email">E-Mail</Label>

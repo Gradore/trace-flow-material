@@ -2,14 +2,37 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, FlaskConical, ClipboardList, Truck, CheckCircle, Clock, AlertTriangle, TrendingUp } from "lucide-react";
+import { Package, FlaskConical, ClipboardList, Truck, CheckCircle, Clock, AlertTriangle, TrendingUp, ShieldOff } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
 import { de } from "date-fns/locale";
+import { useUserPermissions } from "@/hooks/useUserPermissions";
+
+// Same status vocabulary as src/pages/Orders.tsx
+const orderStatusLabels: Record<string, string> = {
+  pending: "Ausstehend",
+  in_production: "In Produktion",
+  produced: "Produziert",
+  shipped: "Versendet",
+  delivered: "Geliefert",
+  cancelled: "Storniert",
+};
+
+// Same output types as src/components/output/OutputMaterialDialog.tsx
+const outputTypeLabels: Record<string, string> = {
+  glass_fiber: "Recycelte Glasfasern",
+  resin_powder: "Harzpulver",
+  pp_regrind: "PP Regranulat",
+  pa_regrind: "PA Regranulat",
+};
 
 export default function ReportingDashboard() {
+  // Individual permissions an admin configured for this user take precedence
+  // over the role defaults enforced by the route guard.
+  const { canView, hasCustomPermissions, isLoading: permissionsLoading } = useUserPermissions();
+
   // Material intake stats
-  const { data: intakeStats, isLoading: intakeLoading } = useQuery({
+  const { data: intakeStats, isLoading: intakeLoading, isError: intakeError } = useQuery({
     queryKey: ['reporting-intake'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -30,7 +53,7 @@ export default function ReportingDashboard() {
   });
 
   // Samples stats
-  const { data: sampleStats, isLoading: samplesLoading } = useQuery({
+  const { data: sampleStats, isLoading: samplesLoading, isError: samplesError } = useQuery({
     queryKey: ['reporting-samples'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -50,7 +73,7 @@ export default function ReportingDashboard() {
   });
 
   // Orders stats
-  const { data: orderStats, isLoading: ordersLoading } = useQuery({
+  const { data: orderStats, isLoading: ordersLoading, isError: ordersError } = useQuery({
     queryKey: ['reporting-orders'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -68,7 +91,7 @@ export default function ReportingDashboard() {
       
       const today = new Date();
       const overdue = data?.filter(o => 
-        o.status !== 'completed' && o.status !== 'delivered' && 
+        !['delivered', 'cancelled'].includes(o.status) && 
         new Date(o.delivery_deadline) < today
       ).length || 0;
       
@@ -77,7 +100,7 @@ export default function ReportingDashboard() {
   });
 
   // Processing stats
-  const { data: processingStats, isLoading: processingLoading } = useQuery({
+  const { data: processingStats, isLoading: processingLoading, isError: processingError } = useQuery({
     queryKey: ['reporting-processing'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -96,25 +119,26 @@ export default function ReportingDashboard() {
   });
 
   // Output materials
-  const { data: outputStats, isLoading: outputLoading } = useQuery({
+  const { data: outputStats, isLoading: outputLoading, isError: outputError } = useQuery({
     queryKey: ['reporting-output'],
     queryFn: async () => {
+      // Only material that is still on stock - shipped/reserved batches are not stock
       const { data, error } = await supabase
         .from('output_materials')
-        .select('weight_kg, output_type, status');
+        .select('weight_kg, output_type, status')
+        .eq('status', 'in_stock');
       
       if (error) throw error;
       
-      const total = data?.length || 0;
+      const inStock = data?.length || 0;
       const totalWeight = data?.reduce((sum, item) => sum + Number(item.weight_kg), 0) || 0;
-      const inStock = data?.filter(o => o.status === 'in_stock').length || 0;
       
       const byType = data?.reduce((acc, item) => {
         acc[item.output_type] = (acc[item.output_type] || 0) + Number(item.weight_kg);
         return acc;
       }, {} as Record<string, number>) || {};
       
-      return { total, totalWeight, inStock, byType };
+      return { totalWeight, inStock, byType };
     },
   });
 
@@ -128,11 +152,7 @@ export default function ReportingDashboard() {
 
   const orderStatusData = orderStats?.byStatus 
     ? Object.entries(orderStats.byStatus).map(([status, count], idx) => ({
-        name: status === 'pending' ? 'Ausstehend' 
-          : status === 'in_production' ? 'In Produktion'
-          : status === 'completed' ? 'Abgeschlossen'
-          : status === 'delivered' ? 'Geliefert'
-          : status,
+        name: orderStatusLabels[status] || status,
         value: count,
         fill: statusColors[idx % statusColors.length],
       }))
@@ -140,12 +160,32 @@ export default function ReportingDashboard() {
 
   const outputTypeData = outputStats?.byType
     ? Object.entries(outputStats.byType).map(([type, weight]) => ({
-        name: type,
+        name: outputTypeLabels[type] || type,
         weight: Math.round(weight),
       }))
     : [];
 
   const isLoading = intakeLoading || samplesLoading || ordersLoading || processingLoading || outputLoading;
+  const hasLoadError = intakeError || samplesError || ordersError || processingError || outputError;
+
+  if (!permissionsLoading && hasCustomPermissions && !canView("can_view_reporting")) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Card className="max-w-md w-full">
+          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+              <ShieldOff className="h-6 w-6 text-destructive" />
+            </div>
+            <h1 className="text-lg font-semibold">Kein Zugriff</h1>
+            <p className="text-sm text-muted-foreground">
+              Für Ihren Benutzer wurde der Zugriff auf das Reporting deaktiviert.
+              Wenden Sie sich an einen Administrator, wenn Sie Zugriff benötigen.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -153,6 +193,18 @@ export default function ReportingDashboard() {
         <h1 className="text-3xl font-bold">Reporting Dashboard</h1>
         <p className="text-muted-foreground">Übersicht der wichtigsten Kennzahlen</p>
       </div>
+
+      {hasLoadError && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+          <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-destructive">Einige Kennzahlen konnten nicht geladen werden</p>
+            <p className="text-xs text-muted-foreground">
+              Die angezeigten Werte sind unvollständig. Bitte laden Sie die Seite neu.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -164,6 +216,8 @@ export default function ReportingDashboard() {
           <CardContent>
             {intakeLoading ? (
               <Skeleton className="h-8 w-24" />
+            ) : intakeError ? (
+              <p className="text-sm text-destructive">Nicht verfügbar</p>
             ) : (
               <>
                 <div className="text-2xl font-bold">{intakeStats?.total || 0}</div>
@@ -183,6 +237,8 @@ export default function ReportingDashboard() {
           <CardContent>
             {samplesLoading ? (
               <Skeleton className="h-8 w-24" />
+            ) : samplesError ? (
+              <p className="text-sm text-destructive">Nicht verfügbar</p>
             ) : (
               <>
                 <div className="text-2xl font-bold">{sampleStats?.approvalRate || 0}%</div>
@@ -202,6 +258,8 @@ export default function ReportingDashboard() {
           <CardContent>
             {ordersLoading ? (
               <Skeleton className="h-8 w-24" />
+            ) : ordersError ? (
+              <p className="text-sm text-destructive">Nicht verfügbar</p>
             ) : (
               <>
                 <div className="text-2xl font-bold">{orderStats?.total || 0}</div>
@@ -221,6 +279,8 @@ export default function ReportingDashboard() {
           <CardContent>
             {outputLoading ? (
               <Skeleton className="h-8 w-24" />
+            ) : outputError ? (
+              <p className="text-sm text-destructive">Nicht verfügbar</p>
             ) : (
               <>
                 <div className="text-2xl font-bold">{((outputStats?.totalWeight || 0) / 1000).toFixed(1)} t</div>
@@ -291,6 +351,10 @@ export default function ReportingDashboard() {
           <CardContent>
             {samplesLoading ? (
               <Skeleton className="h-[250px] w-full" />
+            ) : samplesError ? (
+              <div className="h-[250px] flex items-center justify-center text-destructive text-sm">
+                Probendaten konnten nicht geladen werden.
+              </div>
             ) : samplePieData.length > 0 ? (
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
@@ -322,11 +386,15 @@ export default function ReportingDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Ausgangsmaterial nach Typ</CardTitle>
-            <CardDescription>Gewicht in kg</CardDescription>
+            <CardDescription>Lagerbestand in kg</CardDescription>
           </CardHeader>
           <CardContent>
             {outputLoading ? (
               <Skeleton className="h-[250px] w-full" />
+            ) : outputError ? (
+              <div className="h-[250px] flex items-center justify-center text-destructive text-sm">
+                Ausgangsmaterial konnte nicht geladen werden.
+              </div>
             ) : outputTypeData.length > 0 ? (
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={outputTypeData}>
@@ -355,6 +423,10 @@ export default function ReportingDashboard() {
         <CardContent>
           {ordersLoading ? (
             <Skeleton className="h-[200px] w-full" />
+          ) : ordersError ? (
+            <div className="h-[200px] flex items-center justify-center text-destructive text-sm">
+              Auftragsdaten konnten nicht geladen werden.
+            </div>
           ) : orderStatusData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={orderStatusData} layout="vertical">

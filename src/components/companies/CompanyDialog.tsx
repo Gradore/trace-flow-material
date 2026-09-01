@@ -98,7 +98,7 @@ export function CompanyDialog({ open, onOpenChange, company }: CompanyDialogProp
   const mutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       if (company) {
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
           .from("companies")
           .update({
             name: data.name,
@@ -113,10 +113,15 @@ export function CompanyDialog({ open, onOpenChange, company }: CompanyDialogProp
             notes: data.notes || null,
             status: data.status,
           })
-          .eq("id", company.id);
+          .eq("id", company.id)
+          .select("id");
         if (error) {
           console.error("Update error:", error);
           throw new Error(`Firma konnte nicht aktualisiert werden: ${error.message}`);
+        }
+        // An update filtered out by RLS affects zero rows without raising an error
+        if (!updated || updated.length === 0) {
+          throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
         }
       } else {
         // Check if company with same name already exists

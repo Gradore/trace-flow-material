@@ -2,7 +2,7 @@
  * Partner detail sheet: master data, contacts, linked tasks, test runs,
  * product tests and the communication log.
  */
-import { ReactNode, useEffect, useId, useMemo, useState } from "react";
+import { ReactNode, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Building2,
@@ -179,10 +179,17 @@ function PartnerDetailBody({
   const [values, setValues] = useState<PartnerFormValues>(() => partnerToForm(partner));
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  // Re-sync the form whenever the record changed (own save or another writer).
-  useEffect(() => {
+  /**
+   * Re-sync the form when the stored record actually changed (own save or a
+   * concurrent writer) - a plain refetch must not discard pending edits, so we
+   * compare the record version instead of the object identity.
+   */
+  const recordVersion = `${partner.id}:${partner.updated_at}`;
+  const [syncedVersion, setSyncedVersion] = useState(recordVersion);
+  if (recordVersion !== syncedVersion) {
+    setSyncedVersion(recordVersion);
     setValues(partnerToForm(partner));
-  }, [partner]);
+  }
 
   const tasksQuery = useProjectTasks();
   const testRunsQuery = useTestRuns();

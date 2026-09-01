@@ -132,10 +132,8 @@ export function ContractUploadDialog({
           .upload(fileName, file);
         if (uploadError) throw uploadError;
 
-        const { data: urlData } = supabase.storage
-          .from("documents")
-          .getPublicUrl(fileName);
-        pdfUrl = urlData.publicUrl;
+        // The documents bucket is private - store the object path, not a public URL
+        pdfUrl = fileName;
       }
 
       const { error } = await supabase.from("company_contracts").insert({
@@ -154,7 +152,12 @@ export function ContractUploadDialog({
         extracted_data: extractedData || {},
         status: "active",
       });
-      if (error) throw error;
+      if (error) {
+        if (error.code === "42501") {
+          throw new Error("Keine Berechtigung zum Speichern von Verträgen.");
+        }
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["company-contracts"] });

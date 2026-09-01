@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -74,7 +74,7 @@ export function ContactsDialog({ open, onOpenChange, company }: ContactsDialogPr
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       if (editingContact) {
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
           .from("contacts")
           .update({
             first_name: data.first_name,
@@ -85,8 +85,12 @@ export function ContactsDialog({ open, onOpenChange, company }: ContactsDialogPr
             is_primary: data.is_primary,
             notes: data.notes || null,
           })
-          .eq("id", editingContact.id);
+          .eq("id", editingContact.id)
+          .select("id");
         if (error) throw error;
+        if (!updated || updated.length === 0) {
+          throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+        }
       } else {
         const { error } = await supabase.from("contacts").insert({
           company_id: company.id,
@@ -113,8 +117,15 @@ export function ContactsDialog({ open, onOpenChange, company }: ContactsDialogPr
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("contacts").delete().eq("id", id);
+      const { data, error } = await supabase
+        .from("contacts")
+        .delete()
+        .eq("id", id)
+        .select("id");
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts", company.id] });
@@ -138,6 +149,12 @@ export function ContactsDialog({ open, onOpenChange, company }: ContactsDialogPr
       notes: "",
     });
   };
+
+  // The dialog stays mounted while the selected company changes - never keep
+  // the edit state of the previously opened company.
+  useEffect(() => {
+    resetForm();
+  }, [company.id, open]);
 
   const handleEdit = (contact: Contact) => {
     setEditingContact(contact);

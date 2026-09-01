@@ -17,7 +17,7 @@ const statusConfig = {
 export function PendingSamples() {
   const navigate = useNavigate();
 
-  const { data: samples = [], isLoading } = useQuery({
+  const { data: samples = [], isLoading, isError } = useQuery({
     queryKey: ["pending-samples"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -57,6 +57,11 @@ export function PendingSamples() {
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
+      ) : isError ? (
+        <div className="text-center py-8">
+          <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" />
+          <p className="text-sm text-destructive">Proben konnten nicht geladen werden.</p>
+        </div>
       ) : samples.length === 0 ? (
         <div className="text-center py-8">
           <FlaskConical className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
@@ -73,6 +78,15 @@ export function PendingSamples() {
               <div
                 key={sample.id}
                 className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer"
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate("/sampling")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate("/sampling");
+                  }
+                }}
               >
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-warning/10">

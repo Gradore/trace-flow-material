@@ -70,6 +70,11 @@ const tableNames: Record<ExportType, string> = {
   delivery_notes: "Lieferscheine",
 };
 
+// Quote a CSV cell and escape embedded quotes so notes with " do not break the file
+function escapeCsvCell(value: unknown): string {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
 export function useExport() {
   const exportToCSV = async (type: ExportType) => {
     try {
@@ -90,7 +95,7 @@ export function useExport() {
 
       const csvContent = [
         header.join(";"),
-        ...data.map((row) => mapper(row).map(cell => `"${cell}"`).join(";")),
+        ...data.map((row) => mapper(row).map(escapeCsvCell).join(";")),
       ].join("\n");
 
       const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8" });
@@ -118,7 +123,7 @@ export function useExport() {
     const header = Object.keys(data[0]);
     const csvContent = [
       header.join(";"),
-      ...data.map((row) => header.map(key => `"${row[key] ?? ""}"`).join(";")),
+      ...data.map((row) => header.map(key => escapeCsvCell(row[key])).join(";")),
     ].join("\n");
 
     const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8" });

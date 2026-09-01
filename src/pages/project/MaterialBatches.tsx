@@ -137,26 +137,22 @@ export default function MaterialBatches() {
 
   /* --------------------------------------------------------------- filters */
 
-  /** Only suppliers that actually occur in the batch list - the filter always bites. */
+  /**
+   * Suppliers that occur in the batch list, plus the currently selected one so
+   * the filter never loses its own value while data is refreshed.
+   */
   const supplierOptions = useMemo(() => {
     const ids = new Set<string>();
     batches.forEach((batch) => {
       if (batch.supplier_partner_id) ids.add(batch.supplier_partner_id);
     });
+    if (supplierFilter !== ALL && supplierFilter !== WITHOUT_SUPPLIER) {
+      ids.add(supplierFilter);
+    }
     return Array.from(ids)
       .map((id) => ({ id, name: partnerById.get(id)?.name ?? "Unbekannter Partner" }))
       .sort((a, b) => a.name.localeCompare(b.name, "de"));
-  }, [batches, partnerById]);
-
-  const hasBatchWithoutSupplier = useMemo(
-    () => batches.some((batch) => !batch.supplier_partner_id),
-    [batches],
-  );
-
-  const classOptions = useMemo(() => {
-    const used = new Set(batches.map((batch) => batch.material_class));
-    return MATERIAL_CLASSES.filter((entry) => used.has(entry.id));
-  }, [batches]);
+  }, [batches, partnerById, supplierFilter]);
 
   const isFiltered =
     search.trim().length > 0 ||
@@ -483,7 +479,7 @@ export default function MaterialBatches() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Alle Materialklassen</SelectItem>
-                {classOptions.map((entry) => (
+                {MATERIAL_CLASSES.map((entry) => (
                   <SelectItem key={entry.id} value={entry.id}>
                     {entry.id} · {entry.label}
                   </SelectItem>
@@ -516,9 +512,7 @@ export default function MaterialBatches() {
                     {supplier.name}
                   </SelectItem>
                 ))}
-                {hasBatchWithoutSupplier && (
-                  <SelectItem value={WITHOUT_SUPPLIER}>Ohne Lieferant</SelectItem>
-                )}
+                <SelectItem value={WITHOUT_SUPPLIER}>Ohne Lieferant</SelectItem>
               </SelectContent>
             </Select>
 

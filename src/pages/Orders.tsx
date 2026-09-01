@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Plus, Search, MoreHorizontal, Truck, Package, Calendar, User } from "lucide-react";
 import { toast } from "sonner";
-import { format, isPast, isToday, addDays } from "date-fns";
+import { format, isPast, isToday, isBefore, addDays } from "date-fns";
 import { de } from "date-fns/locale";
 import { OrderDialog } from "@/components/orders/OrderDialog";
 import { notificationTemplates } from "@/lib/notifications";
@@ -30,13 +30,14 @@ import { notificationTemplates } from "@/lib/notifications";
 type Order = {
   id: string;
   order_id: string;
+  company_id: string | null;
   customer_name: string;
   customer_email: string | null;
   customer_phone: string | null;
   product_category: string;
   product_grain_size: string;
   product_subcategory: string;
-  product_name: string;
+  product_name: string | null;
   quantity_kg: number;
   production_deadline: string;
   delivery_deadline: string;
@@ -65,7 +66,7 @@ export default function Orders() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  const { data: orders, isLoading } = useQuery({
+  const { data: orders, isLoading, isError, error: ordersError } = useQuery({
     queryKey: ["orders"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -80,12 +81,16 @@ export default function Orders() {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, orderRef }: { id: string; status: string; orderRef: string }) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("orders")
         .update({ status })
-        .eq("id", id);
+        .eq("id", id)
+        .select("id");
 
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
       
       // Create notification for status change
       if (user?.id) {
@@ -108,8 +113,8 @@ export default function Orders() {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       toast.success("Status aktualisiert");
     },
-    onError: () => {
-      toast.error("Fehler beim Aktualisieren");
+    onError: (error: Error) => {
+      toast.error(error.message || "Fehler beim Aktualisieren");
     },
   });
 
@@ -117,13 +122,13 @@ export default function Orders() {
     (order) =>
       order.order_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.product_name.toLowerCase().includes(searchTerm.toLowerCase())
+      (order.product_name ?? "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getDeadlineStatus = (deadline: string) => {
     const date = new Date(deadline);
     if (isPast(date) && !isToday(date)) return "overdue";
-    if (isToday(date) || isPast(addDays(new Date(), 3))) return "urgent";
+    if (isToday(date) || isBefore(date, addDays(new Date(), 3))) return "urgent";
     return "ok";
   };
 
@@ -240,6 +245,13 @@ export default function Orders() {
                   Lädt...
                 </TableCell>
               </TableRow>
+            ) : isError ? (
+              <TableRow>
+                <TableCell colSpan={9} className="text-center py-8 text-destructive">
+                  Aufträge konnten nicht geladen werden:{" "}
+                  {(ordersError as Error)?.message || "Unbekannter Fehler"}
+                </TableCell>
+              </TableRow>
             ) : filteredOrders?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
@@ -264,7 +276,7 @@ export default function Orders() {
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{order.product_name}</p>
+                        <p className="font-medium">{order.product_name || "-"}</p>
                         <p className="text-xs text-muted-foreground">
                           {order.product_category}
                         </p>

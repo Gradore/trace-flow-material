@@ -31,7 +31,13 @@ $$;
 -- ---------------------------------------------------------------- 2. log_audit
 -- Two overloads with identical parameter names existed, so PostgREST could not
 -- resolve supabase.rpc('log_audit') and every call failed with PGRST203.
+-- The older overload is log_audit(_table_name, _record_id, _action, ...) and the
+-- newer one log_audit(_action, _table_name, _record_id, ...). Both have the
+-- signature (text, text, uuid, ...) resp. (text, uuid, text, ...); keeping the
+-- newer one matches src/hooks/useAuditLog.ts.
 DROP FUNCTION IF EXISTS public.log_audit(text, uuid, text, jsonb, jsonb, text[]);
+REVOKE ALL ON FUNCTION public.log_audit(text, text, uuid, jsonb, jsonb, text[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.log_audit(text, text, uuid, jsonb, jsonb, text[]) TO authenticated;
 
 -- ---------------------------------------------------------------- 3. audit trail
 CREATE OR REPLACE FUNCTION public.audit_row_change()
@@ -53,8 +59,8 @@ BEGIN
     v_old := NULL; v_new := to_jsonb(NEW); v_record := NEW.id;
   ELSE
     v_old := to_jsonb(OLD); v_new := to_jsonb(NEW); v_record := NEW.id;
-    SELECT array_agg(key) INTO v_changed
-    FROM jsonb_each(v_new) n
+    SELECT array_agg(n.key) INTO v_changed
+    FROM jsonb_each(v_new) AS n(key, value)
     WHERE n.value IS DISTINCT FROM (v_old -> n.key);
     -- nothing but updated_at changed: not worth an audit row
     IF v_changed IS NULL OR v_changed <@ ARRAY['updated_at'] THEN
@@ -170,6 +176,8 @@ BEGIN
     WHERE c.contype = 'f'
       AND n.nspname = 'public'
       AND t.relname IN ('material_flow_history','documents')
+      AND a.attname IN ('material_input_id','container_id','processing_step_id',
+                        'sample_id','output_material_id','delivery_note_id')
       AND c.confdeltype = 'a'   -- NO ACTION
   LOOP
     EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT %I', r.tbl, r.conname);
@@ -183,8 +191,6 @@ BEGIN
         WHEN 'sample_id'           THEN 'public.samples(id)'
         WHEN 'output_material_id'  THEN 'public.output_materials(id)'
         WHEN 'delivery_note_id'    THEN 'public.delivery_notes(id)'
-        WHEN 'created_by'          THEN 'public.profiles(id)'
-        WHEN 'uploaded_by'         THEN 'public.profiles(id)'
         ELSE NULL
       END);
   END LOOP;
@@ -193,15 +199,51 @@ EXCEPTION WHEN others THEN
 END $$;
 
 -- A sample must not block the deletion of the output material it belongs to.
-ALTER TABLE public.samples DROP CONSTRAINT IF EXISTS samples_output_material_id_fkey;
-ALTER TABLE public.samples ADD CONSTRAINT samples_output_material_id_fkey
-  FOREIGN KEY (output_material_id) REFERENCES public.output_materials(id) ON DELETE SET NULL;
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT c.conname
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    JOIN unnest(c.conkey) AS k(attnum) ON true
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+    WHERE c.contype = 'f' AND n.nspname = 'public'
+      AND t.relname = 'samples' AND a.attname = 'output_material_id'
+  LOOP
+    EXECUTE format('ALTER TABLE public.samples DROP CONSTRAINT %I', r.conname);
+  END LOOP;
+
+  ALTER TABLE public.samples ADD CONSTRAINT samples_output_material_id_fkey
+    FOREIGN KEY (output_material_id) REFERENCES public.output_materials(id) ON DELETE SET NULL;
+END $$;
 
 -- documents.uploaded_by / delivery_notes.created_by point at profiles.id, but
 -- the client only knows auth.uid(). Repoint them at the auth user so uploads
 -- and delivery notes can be saved at all.
-ALTER TABLE public.documents DROP CONSTRAINT IF EXISTS documents_uploaded_by_fkey;
-ALTER TABLE public.delivery_notes DROP CONSTRAINT IF EXISTS delivery_notes_created_by_fkey;
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT c.conname, t.relname AS tbl
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    JOIN unnest(c.conkey) AS k(attnum) ON true
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+    JOIN pg_class rt ON rt.oid = c.confrelid
+    WHERE c.contype = 'f' AND n.nspname = 'public'
+      AND rt.relname = 'profiles'
+      AND ((t.relname = 'documents'      AND a.attname = 'uploaded_by')
+        OR (t.relname = 'delivery_notes' AND a.attname = 'created_by')
+        OR (t.relname = 'material_flow_history' AND a.attname = 'created_by'))
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT %I', r.tbl, r.conname);
+  END LOOP;
+END $$;
 
 -- ---------------------------------------------------------------- 6. RLS
 -- "viewable by any authenticated user" leaked the whole operational database
@@ -288,9 +330,8 @@ ON public.batch_allocations FOR SELECT TO authenticated
 USING (public.is_internal_staff(auth.uid()));
 
 -- Notifications could be addressed to any user by any user.
-DROP POLICY IF EXISTS "Users can insert notifications" ON public.notifications;
-DROP POLICY IF EXISTS "Authenticated users can create notifications" ON public.notifications;
-DROP POLICY IF EXISTS "Notifications insertable by authenticated" ON public.notifications;
+DROP POLICY IF EXISTS "Authenticated can insert notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Notifications insertable for self or by staff" ON public.notifications;
 CREATE POLICY "Notifications insertable for self or by staff"
 ON public.notifications FOR INSERT TO authenticated
 WITH CHECK (
@@ -303,9 +344,11 @@ WITH CHECK (
 -- user, which made the table-level policies pointless.
 DROP POLICY IF EXISTS "Authenticated users can view documents" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated users can upload documents" ON storage.objects;
-DROP POLICY IF EXISTS "Users can delete own documents" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete their own documents" ON storage.objects;
+DROP POLICY IF EXISTS "Admins can delete any document" ON storage.objects;
 DROP POLICY IF EXISTS "Staff can read documents bucket" ON storage.objects;
 DROP POLICY IF EXISTS "Staff can write documents bucket" ON storage.objects;
+DROP POLICY IF EXISTS "Staff can update documents bucket" ON storage.objects;
 DROP POLICY IF EXISTS "Staff can delete documents bucket" ON storage.objects;
 
 CREATE POLICY "Staff can read documents bucket"

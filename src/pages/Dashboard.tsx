@@ -9,11 +9,18 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserRole } from "@/hooks/useUserRole";
+import { cn } from "@/lib/utils";
 import { isToday, startOfMonth, endOfMonth } from "date-fns";
+
+// Roles that RLS allows to read equipment / maintenance_records
+const MAINTENANCE_DATA_ROLES = ["admin", "betriebsleiter", "production", "intake"];
 
 export default function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const { user } = useAuth();
+  const { role } = useUserRole();
+  const canViewMaintenance = MAINTENANCE_DATA_ROLES.includes(role || "");
   
   const today = new Date();
   const monthStart = startOfMonth(today);
@@ -53,7 +60,7 @@ export default function Dashboard() {
   }, [user]);
 
   // Fetch containers count
-  const { data: containerStats } = useQuery({
+  const { data: containerStats, isError: containerStatsError } = useQuery({
     queryKey: ["dashboard-containers"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -69,7 +76,7 @@ export default function Dashboard() {
   });
 
   // Fetch material inputs (open intakes)
-  const { data: intakeStats } = useQuery({
+  const { data: intakeStats, isError: intakeStatsError } = useQuery({
     queryKey: ["dashboard-intakes"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -84,7 +91,7 @@ export default function Dashboard() {
   });
 
   // Fetch processing stats
-  const { data: processingStats } = useQuery({
+  const { data: processingStats, isError: processingStatsError } = useQuery({
     queryKey: ["dashboard-processing"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -100,7 +107,7 @@ export default function Dashboard() {
   });
 
   // Fetch samples (open)
-  const { data: sampleStats } = useQuery({
+  const { data: sampleStats, isError: sampleStatsError } = useQuery({
     queryKey: ["dashboard-samples"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -116,7 +123,7 @@ export default function Dashboard() {
   });
 
   // Fetch output materials (this month)
-  const { data: outputStats } = useQuery({
+  const { data: outputStats, isError: outputStatsError } = useQuery({
     queryKey: ["dashboard-outputs"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -136,7 +143,7 @@ export default function Dashboard() {
   });
 
   // Fetch delivery notes (this month)
-  const { data: deliveryStats } = useQuery({
+  const { data: deliveryStats, isError: deliveryStatsError } = useQuery({
     queryKey: ["dashboard-delivery"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -157,6 +164,14 @@ export default function Dashboard() {
   // Check for batches awaiting sample approval
   const awaitingApproval = sampleStats?.awaitingApproval || 0;
 
+  const hasLoadError =
+    containerStatsError ||
+    intakeStatsError ||
+    processingStatsError ||
+    sampleStatsError ||
+    outputStatsError ||
+    deliveryStatsError;
+
   return (
     <div className="space-y-4 md:space-y-6 animate-fade-in">
       {/* Onboarding Wizard for new admins */}
@@ -173,6 +188,17 @@ export default function Dashboard() {
         <h1 className="text-xl md:text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-sm md:text-base text-muted-foreground mt-1">Übersicht über alle Materialflüsse und Aktivitäten</p>
       </div>
+
+      {/* Load error */}
+      {hasLoadError && (
+        <div className="flex items-center gap-3 p-3 md:p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+          <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-destructive">Einige Kennzahlen konnten nicht geladen werden</p>
+            <p className="text-xs text-muted-foreground">Bitte laden Sie die Seite neu oder wenden Sie sich an einen Administrator.</p>
+          </div>
+        </div>
+      )}
 
       {/* Stats Grid - Responsive */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-4">
@@ -234,10 +260,10 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Stock & Maintenance Overview */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+      {/* Stock & Maintenance Overview - maintenance data is RLS-restricted to a few roles */}
+      <div className={cn("grid gap-4 md:gap-6", canViewMaintenance ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1")}>
         <StockOverviewCard />
-        <MaintenanceOverview />
+        {canViewMaintenance && <MaintenanceOverview />}
       </div>
 
       {/* Main Content Grid */}
