@@ -249,42 +249,50 @@ END $$;
 -- "viewable by any authenticated user" leaked the whole operational database
 -- to customer and supplier accounts.
 DROP POLICY IF EXISTS "Containers viewable by authenticated" ON public.containers;
+DROP POLICY IF EXISTS "Containers viewable by staff" ON public.containers;
 CREATE POLICY "Containers viewable by staff"
 ON public.containers FOR SELECT TO authenticated
 USING (public.is_internal_staff(auth.uid()));
 
 DROP POLICY IF EXISTS "Material inputs viewable by authenticated" ON public.material_inputs;
+DROP POLICY IF EXISTS "Material inputs viewable by staff" ON public.material_inputs;
 CREATE POLICY "Material inputs viewable by staff"
 ON public.material_inputs FOR SELECT TO authenticated
 USING (public.is_internal_staff(auth.uid()));
 
 DROP POLICY IF EXISTS "Processing viewable by authenticated" ON public.processing_steps;
+DROP POLICY IF EXISTS "Processing viewable by staff" ON public.processing_steps;
 CREATE POLICY "Processing viewable by staff"
 ON public.processing_steps FOR SELECT TO authenticated
 USING (public.is_internal_staff(auth.uid()));
 
 DROP POLICY IF EXISTS "Samples viewable by authenticated" ON public.samples;
+DROP POLICY IF EXISTS "Samples viewable by staff" ON public.samples;
 CREATE POLICY "Samples viewable by staff"
 ON public.samples FOR SELECT TO authenticated
 USING (public.is_internal_staff(auth.uid()));
 
 DROP POLICY IF EXISTS "Sample results viewable by authenticated" ON public.sample_results;
+DROP POLICY IF EXISTS "Sample results viewable by staff" ON public.sample_results;
 CREATE POLICY "Sample results viewable by staff"
 ON public.sample_results FOR SELECT TO authenticated
 USING (public.is_internal_staff(auth.uid()));
 
 DROP POLICY IF EXISTS "History viewable by authenticated" ON public.material_flow_history;
+DROP POLICY IF EXISTS "History viewable by staff" ON public.material_flow_history;
 CREATE POLICY "History viewable by staff"
 ON public.material_flow_history FOR SELECT TO authenticated
 USING (public.is_internal_staff(auth.uid()));
 
 DROP POLICY IF EXISTS "Documents viewable by authenticated" ON public.documents;
+DROP POLICY IF EXISTS "Documents viewable by staff" ON public.documents;
 CREATE POLICY "Documents viewable by staff"
 ON public.documents FOR SELECT TO authenticated
 USING (public.is_internal_staff(auth.uid()));
 
 -- Customers legitimately browse the available stock catalogue, but only that.
 DROP POLICY IF EXISTS "Outputs viewable by authenticated" ON public.output_materials;
+DROP POLICY IF EXISTS "Outputs viewable by staff or in stock" ON public.output_materials;
 CREATE POLICY "Outputs viewable by staff or in stock"
 ON public.output_materials FOR SELECT TO authenticated
 USING (
@@ -294,6 +302,7 @@ USING (
 
 -- A customer sees the delivery notes addressed to their own company.
 DROP POLICY IF EXISTS "Delivery notes viewable by authenticated" ON public.delivery_notes;
+DROP POLICY IF EXISTS "Delivery notes viewable by staff or own company" ON public.delivery_notes;
 CREATE POLICY "Delivery notes viewable by staff or own company"
 ON public.delivery_notes FOR SELECT TO authenticated
 USING (
@@ -325,6 +334,7 @@ USING (
 -- Policies created without TO authenticated are granted to PUBLIC, which
 -- includes the anon role - anyone holding the publishable key could read them.
 DROP POLICY IF EXISTS "Batch allocations viewable by authenticated" ON public.batch_allocations;
+DROP POLICY IF EXISTS "Batch allocations viewable by staff" ON public.batch_allocations;
 CREATE POLICY "Batch allocations viewable by staff"
 ON public.batch_allocations FOR SELECT TO authenticated
 USING (public.is_internal_staff(auth.uid()));
@@ -351,18 +361,22 @@ DROP POLICY IF EXISTS "Staff can write documents bucket" ON storage.objects;
 DROP POLICY IF EXISTS "Staff can update documents bucket" ON storage.objects;
 DROP POLICY IF EXISTS "Staff can delete documents bucket" ON storage.objects;
 
+DROP POLICY IF EXISTS "Staff can read documents bucket" ON storage.objects;
 CREATE POLICY "Staff can read documents bucket"
 ON storage.objects FOR SELECT TO authenticated
 USING (bucket_id = 'documents' AND public.is_internal_staff(auth.uid()));
 
+DROP POLICY IF EXISTS "Staff can write documents bucket" ON storage.objects;
 CREATE POLICY "Staff can write documents bucket"
 ON storage.objects FOR INSERT TO authenticated
 WITH CHECK (bucket_id = 'documents' AND public.is_internal_staff(auth.uid()));
 
+DROP POLICY IF EXISTS "Staff can update documents bucket" ON storage.objects;
 CREATE POLICY "Staff can update documents bucket"
 ON storage.objects FOR UPDATE TO authenticated
 USING (bucket_id = 'documents' AND public.is_internal_staff(auth.uid()));
 
+DROP POLICY IF EXISTS "Staff can delete documents bucket" ON storage.objects;
 CREATE POLICY "Staff can delete documents bucket"
 ON storage.objects FOR DELETE TO authenticated
 USING (
@@ -397,3 +411,63 @@ USING (
 -- limit it at the edge. Revoke from PUBLIC so the grant is explicit.
 REVOKE EXECUTE ON FUNCTION public.get_email_by_username(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_email_by_username(text) TO anon, authenticated;
+
+-- ---------------------------------------------------------------- 11. R&D data
+-- Recipes, datasheet analyses, sales leads and application profiles are
+-- internal engineering and sales data. `auth.role() = 'authenticated'` let any
+-- customer or supplier account read and write them through the API, even after
+-- the UI routes were closed.
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT tablename, policyname
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename IN ('applications','datasheet_analyses','manufacturer_matches',
+                        'order_recipe_matches','recipes')
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', r.policyname, r.tablename);
+  END LOOP;
+END $$;
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['applications','datasheet_analyses','manufacturer_matches',
+                           'order_recipe_matches','recipes'] LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+
+    EXECUTE format(
+      'CREATE POLICY "staff_select_%s" ON public.%I FOR SELECT TO authenticated
+       USING (public.is_internal_staff(auth.uid()))', t, t);
+    EXECUTE format(
+      'CREATE POLICY "staff_insert_%s" ON public.%I FOR INSERT TO authenticated
+       WITH CHECK (public.is_internal_staff(auth.uid()))', t, t);
+    EXECUTE format(
+      'CREATE POLICY "staff_update_%s" ON public.%I FOR UPDATE TO authenticated
+       USING (public.is_internal_staff(auth.uid()))
+       WITH CHECK (public.is_internal_staff(auth.uid()))', t, t);
+    EXECUTE format(
+      'CREATE POLICY "admin_delete_%s" ON public.%I FOR DELETE TO authenticated
+       USING (public.has_role(auth.uid(), ''admin''::app_role)
+              OR public.has_role(auth.uid(), ''betriebsleiter''::app_role))', t, t);
+  END LOOP;
+END $$;
+
+-- Uploading a document is a staff action, not something any account may do.
+DROP POLICY IF EXISTS "Documents insertable by authenticated" ON public.documents;
+DROP POLICY IF EXISTS "Documents insertable by staff" ON public.documents;
+CREATE POLICY "Documents insertable by staff"
+ON public.documents FOR INSERT TO authenticated
+WITH CHECK (public.is_internal_staff(auth.uid()));
+
+-- ---------------------------------------------------------------- 12. rejected intake
+-- Rejecting a sample is supposed to reject its batch and stop the running
+-- processing steps (SampleResultsDialog / Sampling), and the intake page counts
+-- and styles rejected batches. The CHECK constraint never allowed the value, so
+-- that UPDATE always failed and the rejection silently did not happen.
+ALTER TABLE public.material_inputs DROP CONSTRAINT IF EXISTS material_inputs_status_check;
+ALTER TABLE public.material_inputs ADD CONSTRAINT material_inputs_status_check
+  CHECK (status = ANY (ARRAY['received', 'in_processing', 'processed', 'rejected']));

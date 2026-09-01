@@ -31,6 +31,40 @@ async function assertLinked(
   }
 }
 
+/**
+ * The operational tables carry CHECK constraints with a fixed vocabulary.
+ * Project values have to be mapped onto it, not passed through.
+ *   material_inputs.material_type  gfk | pp | pa
+ *   material_inputs.status         received | in_processing | processed
+ *   output_materials.output_type   glass_fiber | resin_powder | pp_regrind | pa_regrind
+ *   output_materials.status        in_stock | reserved | shipped
+ *   output_materials.quality_grade A | B | C
+ *   samples.status                 pending | in_analysis | approved | rejected
+ */
+const OUTPUT_TYPE_BY_FRACTION: Record<string, string> = {
+  F1: "glass_fiber",
+  F2: "glass_fiber",
+  F3: "glass_fiber",
+  F4: "glass_fiber",
+  F5: "resin_powder", // Feinanteil / Fuller - overwhelmingly matrix, not fibre
+};
+
+/** Glass content decides the grade: >80 % A, >75 % B, fines C. */
+const QUALITY_GRADE_BY_FRACTION: Record<string, string> = {
+  F1: "A",
+  F2: "A",
+  F3: "B",
+  F4: "B",
+  F5: "C",
+};
+
+function stockStatusOf(fraction: OutputFraction): string {
+  if (fraction.status === "shipped") return "shipped";
+  if (fraction.released_for_product_test && fraction.status === "released") return "in_stock";
+  // produced, in analysis or blocked - present, but not freely available
+  return "reserved";
+}
+
 const COMPANY_TYPE_BY_CATEGORY: Record<string, string> = {
   machine_manufacturer: "supplier",
   material_supplier: "supplier",
@@ -107,7 +141,7 @@ export async function linkBatchToMaterialInput(
     .insert({
       input_id: inputId,
       supplier: supplierName || "Unbekannt",
-      material_type: "GFK",
+      material_type: "gfk",
       material_subtype: materialClass ? `${materialClass.id} — ${materialClass.label}` : batch.material_class,
       weight_kg: batch.weight_kg,
       received_at: batch.received_date ? new Date(batch.received_date).toISOString() : new Date().toISOString(),
@@ -142,10 +176,10 @@ export async function linkFractionToOutputMaterial(fraction: OutputFraction): Pr
     .insert({
       output_id: outputId,
       batch_id: fraction.fraction_code,
-      output_type: fraction.target_fraction_id ?? "Fraktion",
+      output_type: OUTPUT_TYPE_BY_FRACTION[fraction.target_fraction_id ?? ""] ?? "glass_fiber",
       weight_kg: fraction.weight_kg,
-      status: fraction.released_for_product_test ? "released" : "produced",
-      quality_grade: fraction.target_fraction_id,
+      status: stockStatusOf(fraction),
+      quality_grade: QUALITY_GRADE_BY_FRACTION[fraction.target_fraction_id ?? ""] ?? null,
       attributes: {
         source: "project_module",
         fraction_code: fraction.fraction_code,
@@ -185,7 +219,7 @@ export async function linkAnalysisToSample(
     .insert({
       sample_id: sampleCode,
       sampler_name: samplerName || "Projekt",
-      status: analysis.status === "completed" ? "analyzed" : "pending",
+      status: analysis.status === "completed" ? "approved" : "pending",
       sampled_at: analysis.sample_sent_date
         ? new Date(analysis.sample_sent_date).toISOString()
         : new Date().toISOString(),

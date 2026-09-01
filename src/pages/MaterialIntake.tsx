@@ -66,8 +66,8 @@ const statusConfig: Record<string, { label: string; class: string }> = {
   rejected: { label: "Abgelehnt", class: "status-badge-destructive" },
 };
 
-// Only these three values are accepted by the material_inputs_status_check
-// constraint in the database.
+// Values accepted by the material_inputs_status_check constraint. "rejected"
+// is set by the QA rejection flow, not chosen manually here.
 const statusOptions = [
   { value: "received", label: "Eingetroffen" },
   { value: "in_processing", label: "In Verarbeitung" },
