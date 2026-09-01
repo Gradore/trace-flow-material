@@ -314,7 +314,7 @@ export default function Maintenance() {
         </Card>
       ) : (
         <Tabs defaultValue="equipment" className="space-y-4">
-          <TabsList>
+          <TabsList className="max-w-full justify-start overflow-x-auto">
             <TabsTrigger value="equipment" className="gap-2">
               <Settings2 className="h-4 w-4" />
               Anlagen ({equipment.length})

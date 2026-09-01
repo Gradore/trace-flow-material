@@ -325,10 +325,10 @@ export default function RecipeMatching() {
         {/* ── LIST VIEW ── */}
         {activeView === "list" && (
           <>
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  <FlaskConical className="h-6 w-6 text-primary" />
+                  <FlaskConical className="h-6 w-6 text-primary shrink-0" />
                   Rezepturentwicklung
                 </h1>
                 <p className="text-sm text-muted-foreground mt-0.5">
@@ -341,7 +341,7 @@ export default function RecipeMatching() {
             </div>
 
             <Tabs defaultValue="recipes" className="space-y-4">
-              <TabsList>
+              <TabsList className="max-w-full justify-start overflow-x-auto">
                 <TabsTrigger value="recipes" className="gap-2">
                   <Beaker className="h-4 w-4" />
                   Rezepturen ({recipes?.length || 0})
@@ -504,7 +504,7 @@ export default function RecipeMatching() {
             </div>
 
             <Tabs defaultValue="overview" className="space-y-4">
-              <TabsList>
+              <TabsList className="max-w-full justify-start overflow-x-auto">
                 <TabsTrigger value="overview" className="gap-1.5">
                   <FileText className="w-3.5 h-3.5" /> Übersicht
                 </TabsTrigger>

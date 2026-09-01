@@ -169,12 +169,12 @@ export default function Documents() {
         ]}
       />
       
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dokumente</h1>
           <p className="text-muted-foreground mt-1">Alle Dokumente zentral verwalten</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
             <Sparkles className="h-4 w-4" />
             Massenupload mit KI

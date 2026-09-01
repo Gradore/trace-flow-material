@@ -144,7 +144,7 @@ export default function Users() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Benutzerverwaltung</h1>
           <p className="text-muted-foreground mt-1">Benutzer und Rollen verwalten</p>

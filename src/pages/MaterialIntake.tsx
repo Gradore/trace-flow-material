@@ -332,7 +332,7 @@ export default function MaterialIntake() {
         ]}
       />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Materialeingang</h1>
           <p className="text-muted-foreground mt-1">Erfassung und Verwaltung eingehender Materialien</p>

@@ -199,7 +199,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Einstellungen</h1>
           <p className="text-muted-foreground mt-1">Feldkonfiguration und Anpassungen</p>
@@ -221,7 +221,7 @@ export default function Settings() {
       </Alert>
 
       <Tabs defaultValue="intake" className="space-y-4">
-        <TabsList>
+        <TabsList className="max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="intake">Materialeingang</TabsTrigger>
           <TabsTrigger value="container">Container</TabsTrigger>
           <TabsTrigger value="processing">Verarbeitung</TabsTrigger>

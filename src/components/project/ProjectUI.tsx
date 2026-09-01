@@ -239,7 +239,8 @@ export function StatCard({
         )}
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground truncate">{label}</p>
-          <p className="text-xl font-bold leading-tight">{value}</p>
+          {/* div, not p: callers pass a Skeleton (a div) while loading */}
+          <div className="text-xl font-bold leading-tight">{value}</div>
           {hint && <p className="text-xs text-muted-foreground mt-0.5 truncate">{hint}</p>}
         </div>
       </CardContent>

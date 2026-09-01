@@ -364,7 +364,7 @@ export default function LogisticsPortal() {
       </div>
 
       <Tabs defaultValue="announcements">
-        <TabsList>
+        <TabsList className="max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="announcements">Materialanmeldungen</TabsTrigger>
           <TabsTrigger value="pickups">Abholungsanfragen</TabsTrigger>
           <TabsTrigger value="containers">Container-Übersicht</TabsTrigger>
