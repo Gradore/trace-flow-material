@@ -14,6 +14,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bell, Check, AlertTriangle, Info, CheckCircle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { de } from "date-fns/locale";
 
@@ -45,6 +46,7 @@ export function NotificationDropdown() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
 
   const { data: notifications } = useQuery({
@@ -93,32 +95,70 @@ export function NotificationDropdown() {
 
   const markAsReadMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      // .select() so an update filtered out by RLS (zero rows, no error) is
+      // reported instead of silently leaving the badge as it was.
+      const { data, error } = await supabase
         .from("notifications")
         .update({ read: true })
-        .eq("id", id);
+        .eq("id", id)
+        .select("id");
 
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications", user?.id] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Benachrichtigung konnte nicht aktualisiert werden",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
   const markAllAsReadMutation = useMutation({
     mutationFn: async () => {
-      if (!user?.id) return;
-      
-      const { error } = await supabase
+      if (!user?.id) throw new Error("Nicht angemeldet.");
+
+      const { data, error } = await supabase
         .from("notifications")
         .update({ read: true })
         .eq("user_id", user.id)
-        .eq("read", false);
+        .eq("read", false)
+        .select("id");
 
       if (error) throw error;
+
+      // An update filtered out by RLS returns zero rows and no error. Zero rows
+      // is also the legitimate answer when everything was already read (another
+      // tab, the 30 s refetch window), so only report a failure when unread
+      // rows are demonstrably still there afterwards.
+      if (!data || data.length === 0) {
+        const { count, error: countError } = await supabase
+          .from("notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("read", false);
+
+        if (countError) throw countError;
+        if ((count ?? 0) > 0) {
+          throw new Error("Keine Berechtigung: Die Benachrichtigungen wurden nicht geändert.");
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications", user?.id] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Benachrichtigungen konnten nicht aktualisiert werden",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -126,7 +166,9 @@ export function NotificationDropdown() {
     if (!notification.read) {
       markAsReadMutation.mutate(notification.id);
     }
-    if (notification.link) {
+    // Only follow in-app targets - the link column is free text and a
+    // protocol-relative value would leave the application.
+    if (notification.link && notification.link.startsWith("/") && !notification.link.startsWith("//")) {
       navigate(notification.link);
       setOpen(false);
     }

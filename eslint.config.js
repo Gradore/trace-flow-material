@@ -20,7 +20,18 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
-      "@typescript-eslint/no-unused-vars": "off",
+      // Warning, not error: unused code should surface in the lint output
+      // without breaking the build for the existing code base.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          args: "after-used",
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
 );

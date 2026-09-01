@@ -21,14 +21,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
-  Search, Tag, Download, Printer, 
-  Package, FileOutput, FileText, Loader2, QrCode 
+import {
+  Search, Tag, Download, Printer, AlertCircle,
+  Package, FileOutput, FileText, Loader2, QrCode
 } from "lucide-react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { toast } from "sonner";
-import { generateLabelPDF, downloadPDF } from "@/lib/pdf";
+import { generateLabelPDF, downloadPDF, printPDF } from "@/lib/pdf";
 import { buildContainerQRUrl, buildOutputMaterialQRUrl, buildDeliveryNoteQRUrl } from "@/lib/qrcode";
 
 type LabelType = "all" | "container" | "output" | "delivery";
@@ -40,15 +40,38 @@ interface LabelItem {
   description: string;
   createdAt: string;
   qrCode: string | null;
+  /** Fields printed on the label - kept separate from the display description */
+  labelHeading: string;
+  material?: string;
+  location?: string;
+  batch?: string;
+  partner?: string;
 }
+
+const containerTypeLabels: Record<string, string> = {
+  bigbag: "BigBag",
+  box: "Box",
+  cage: "Gitterbox",
+  container: "Container",
+};
+
+const outputTypeLabels: Record<string, string> = {
+  glass_fiber: "Recycelte Glasfasern",
+  resin_powder: "Harzpulver",
+  pp_regrind: "PP Regranulat",
+  pa_regrind: "PA Regranulat",
+};
 
 export default function LabelManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<LabelType>("all");
-  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [busyLabel, setBusyLabel] = useState<{ id: string; action: "download" | "print" } | null>(null);
 
   // Fetch containers
-  const { data: containers = [] } = useQuery({
+  const {
+    data: containers = [],
+    isError: containersError,
+  } = useQuery({
     queryKey: ["containers-labels"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -61,7 +84,10 @@ export default function LabelManagement() {
   });
 
   // Fetch output materials
-  const { data: outputs = [] } = useQuery({
+  const {
+    data: outputs = [],
+    isError: outputsError,
+  } = useQuery({
     queryKey: ["outputs-labels"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -74,7 +100,10 @@ export default function LabelManagement() {
   });
 
   // Fetch delivery notes
-  const { data: deliveryNotes = [] } = useQuery({
+  const {
+    data: deliveryNotes = [],
+    isError: deliveryNotesError,
+  } = useQuery({
     queryKey: ["delivery-notes-labels"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -86,32 +115,50 @@ export default function LabelManagement() {
     },
   });
 
+  const hasLoadError = containersError || outputsError || deliveryNotesError;
+
   // Combine all labels
   const allLabels: LabelItem[] = [
-    ...containers.map((c) => ({
-      id: c.id,
-      labelId: c.container_id,
-      type: "container" as LabelType,
-      description: `${c.type} - ${c.location || "Kein Standort"}`,
-      createdAt: c.created_at,
-      qrCode: c.qr_code,
-    })),
-    ...outputs.map((o) => ({
-      id: o.id,
-      labelId: o.output_id,
-      type: "output" as LabelType,
-      description: `${o.output_type} - Charge: ${o.batch_id}`,
-      createdAt: o.created_at,
-      qrCode: o.qr_code,
-    })),
-    ...deliveryNotes.map((d) => ({
-      id: d.id,
-      labelId: d.note_id,
-      type: "delivery" as LabelType,
-      description: `${d.type === "incoming" ? "Eingang" : "Ausgang"} - ${d.partner_name}`,
-      createdAt: d.created_at,
-      qrCode: d.qr_code,
-    })),
+    ...containers.map((c) => {
+      const typeLabel = containerTypeLabels[c.type] || c.type;
+      return {
+        id: c.id,
+        labelId: c.container_id,
+        type: "container" as LabelType,
+        description: `${typeLabel} - ${c.location || "Kein Standort"}`,
+        createdAt: c.created_at,
+        qrCode: c.qr_code,
+        labelHeading: typeLabel,
+        location: c.location || undefined,
+      };
+    }),
+    ...outputs.map((o) => {
+      const typeLabel = outputTypeLabels[o.output_type] || o.output_type;
+      return {
+        id: o.id,
+        labelId: o.output_id,
+        type: "output" as LabelType,
+        description: `${typeLabel} - Charge: ${o.batch_id}`,
+        createdAt: o.created_at,
+        qrCode: o.qr_code,
+        labelHeading: "Ausgangsmaterial",
+        material: typeLabel,
+        batch: o.batch_id,
+      };
+    }),
+    ...deliveryNotes.map((d) => {
+      const directionLabel = d.type === "incoming" ? "Eingang" : "Ausgang";
+      return {
+        id: d.id,
+        labelId: d.note_id,
+        type: "delivery" as LabelType,
+        description: `${directionLabel} - ${d.partner_name}`,
+        createdAt: d.created_at,
+        qrCode: d.qr_code,
+        labelHeading: `Lieferschein ${directionLabel}`,
+        partner: d.partner_name,
+      };
+    }),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const filteredLabels = allLabels.filter((label) => {
@@ -148,35 +195,56 @@ export default function LabelManagement() {
     }
   };
 
-  const handleDownloadLabel = async (label: LabelItem) => {
-    setGeneratingId(label.id);
+  /**
+   * Stored QR codes written before the /scan resolver existed point at detail
+   * routes that do not exist and would land on the 404 page when scanned.
+   */
+  const isResolvableQrUrl = (value: string | null): value is string => {
+    if (!value) return false;
     try {
-      let qrUrl = label.qrCode;
-      
-      // Generate QR URL if not present
-      if (!qrUrl) {
-        switch (label.type) {
-          case "container":
-            qrUrl = buildContainerQRUrl(label.labelId);
-            break;
-          case "output":
-            qrUrl = buildOutputMaterialQRUrl(label.labelId);
-            break;
-          case "delivery":
-            qrUrl = buildDeliveryNoteQRUrl(label.labelId);
-            break;
-        }
-      }
+      return new URL(value).pathname.replace(/\/+$/, "") === "/scan";
+    } catch {
+      return false;
+    }
+  };
 
-      const pdfBlob = await generateLabelPDF(
-        {
-          id: label.labelId,
-          type: label.description.split(" - ")[0],
-          location: label.description.split(" - ")[1] || "",
-          date: format(new Date(label.createdAt), "dd.MM.yyyy", { locale: de }),
-        },
-        qrUrl!
-      );
+  const buildLabelPDF = async (label: LabelItem): Promise<Blob> => {
+    let qrUrl = label.qrCode;
+
+    if (!isResolvableQrUrl(qrUrl)) {
+      switch (label.type) {
+        case "container":
+          qrUrl = buildContainerQRUrl(label.labelId);
+          break;
+        case "output":
+          qrUrl = buildOutputMaterialQRUrl(label.labelId);
+          break;
+        case "delivery":
+          qrUrl = buildDeliveryNoteQRUrl(label.labelId);
+          break;
+        default:
+          qrUrl = buildContainerQRUrl(label.labelId);
+      }
+    }
+
+    return generateLabelPDF(
+      {
+        id: label.labelId,
+        type: label.labelHeading,
+        material: label.material,
+        location: label.location,
+        batch: label.batch,
+        partner: label.partner,
+        date: format(new Date(label.createdAt), "dd.MM.yyyy", { locale: de }),
+      },
+      qrUrl
+    );
+  };
+
+  const handleDownloadLabel = async (label: LabelItem) => {
+    setBusyLabel({ id: label.id, action: "download" });
+    try {
+      const pdfBlob = await buildLabelPDF(label);
 
       downloadPDF(pdfBlob, `Etikett_${label.labelId}.pdf`);
 
@@ -185,7 +253,26 @@ export default function LabelManagement() {
       console.error("Error generating label:", error);
       toast.error("Etikett konnte nicht erstellt werden");
     } finally {
-      setGeneratingId(null);
+      setBusyLabel(null);
+    }
+  };
+
+  const handlePrintLabel = async (label: LabelItem) => {
+    setBusyLabel({ id: label.id, action: "print" });
+    try {
+      const pdfBlob = await buildLabelPDF(label);
+
+      if (!printPDF(pdfBlob)) {
+        toast.error("Druckfenster wurde blockiert. Bitte Popups für diese Seite erlauben.");
+        return;
+      }
+
+      toast.success("Etikett wird im Druckdialog geöffnet");
+    } catch (error) {
+      console.error("Error printing label:", error);
+      toast.error("Etikett konnte nicht gedruckt werden");
+    } finally {
+      setBusyLabel(null);
     }
   };
 
@@ -205,7 +292,7 @@ export default function LabelManagement() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Etiketten-Verwaltung</h1>
           <p className="text-muted-foreground mt-1">
-            {allLabels.length} Etiketten insgesamt
+            {hasLoadError ? "Etiketten konnten nicht geladen werden" : `${allLabels.length} Etiketten insgesamt`}
           </p>
         </div>
       </div>
@@ -217,7 +304,7 @@ export default function LabelManagement() {
             <div className="flex items-center gap-3">
               <Tag className="h-8 w-8 text-muted-foreground" />
               <div>
-                <p className="text-2xl font-bold">{allLabels.length}</p>
+                <p className="text-2xl font-bold">{hasLoadError ? "–" : allLabels.length}</p>
                 <p className="text-sm text-muted-foreground">Gesamt</p>
               </div>
             </div>
@@ -228,7 +315,7 @@ export default function LabelManagement() {
             <div className="flex items-center gap-3">
               <Package className="h-8 w-8 text-primary" />
               <div>
-                <p className="text-2xl font-bold">{containers.length}</p>
+                <p className="text-2xl font-bold">{containersError ? "–" : containers.length}</p>
                 <p className="text-sm text-muted-foreground">Container</p>
               </div>
             </div>
@@ -239,7 +326,7 @@ export default function LabelManagement() {
             <div className="flex items-center gap-3">
               <FileOutput className="h-8 w-8 text-success" />
               <div>
-                <p className="text-2xl font-bold">{outputs.length}</p>
+                <p className="text-2xl font-bold">{outputsError ? "–" : outputs.length}</p>
                 <p className="text-sm text-muted-foreground">Ausgangsmaterial</p>
               </div>
             </div>
@@ -250,7 +337,7 @@ export default function LabelManagement() {
             <div className="flex items-center gap-3">
               <FileText className="h-8 w-8 text-info" />
               <div>
-                <p className="text-2xl font-bold">{deliveryNotes.length}</p>
+                <p className="text-2xl font-bold">{deliveryNotesError ? "–" : deliveryNotes.length}</p>
                 <p className="text-sm text-muted-foreground">Lieferscheine</p>
               </div>
             </div>
@@ -285,7 +372,15 @@ export default function LabelManagement() {
       {/* Table */}
       <Card>
         <CardContent className="p-0">
-          {filteredLabels.length === 0 ? (
+          {hasLoadError ? (
+            <div className="text-center py-12">
+              <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+              <p className="text-lg font-medium text-foreground">Etiketten konnten nicht geladen werden</p>
+              <p className="text-muted-foreground">
+                Bitte laden Sie die Seite neu oder prüfen Sie Ihre Berechtigungen.
+              </p>
+            </div>
+          ) : filteredLabels.length === 0 ? (
             <div className="text-center py-12">
               <QrCode className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-lg font-medium text-foreground">Keine Etiketten gefunden</p>
@@ -321,19 +416,36 @@ export default function LabelManagement() {
                       {format(new Date(label.createdAt), "dd.MM.yyyy HH:mm", { locale: de })}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDownloadLabel(label)}
-                        disabled={generatingId === label.id}
-                      >
-                        {generatingId === label.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Download className="h-4 w-4" />
-                        )}
-                        <span className="sr-only">Herunterladen</span>
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDownloadLabel(label)}
+                          disabled={busyLabel?.id === label.id}
+                          title="Herunterladen"
+                        >
+                          {busyLabel?.id === label.id && busyLabel.action === "download" ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                          <span className="sr-only">Herunterladen</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handlePrintLabel(label)}
+                          disabled={busyLabel?.id === label.id}
+                          title="Drucken"
+                        >
+                          {busyLabel?.id === label.id && busyLabel.action === "print" ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Printer className="h-4 w-4" />
+                          )}
+                          <span className="sr-only">Drucken</span>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -54,7 +54,7 @@ interface EquipmentDetailsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   equipment: Equipment | null;
-  onAddMaintenance: () => void;
+  onAddMaintenance: (equipmentId: string) => void;
 }
 
 export function EquipmentDetailsDialog({ 
@@ -74,6 +74,26 @@ export function EquipmentDetailsDialog({
     status: "active",
     notes: "",
   });
+
+  // The `equipment` prop is a snapshot held by the parent page and is never refreshed,
+  // so the record is re-read here to show saved changes immediately.
+  const { data: equipmentDetail } = useQuery({
+    queryKey: ["equipment-detail", equipment?.id],
+    queryFn: async () => {
+      if (!equipment?.id) return null;
+      const { data, error } = await supabase
+        .from("equipment")
+        .select("*")
+        .eq("id", equipment.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as Equipment | null;
+    },
+    enabled: !!equipment?.id && open,
+  });
+
+  const currentEquipment = equipmentDetail ?? equipment;
 
   // Fetch maintenance records for this equipment
   const { data: maintenanceRecords = [] } = useQuery({
@@ -101,16 +121,35 @@ export function EquipmentDetailsDialog({
         model: equipment.model || "",
         location: equipment.location || "",
         status: equipment.status || "active",
-        notes: (equipment as any).notes || "",
+        notes: equipment.notes || "",
       });
     }
     setIsEditing(false);
-  }, [equipment, open]);
+    // Only re-sync when a different equipment record is opened, so a background
+    // refetch cannot discard the values the user is currently editing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equipment?.id, open]);
+
+  const handleStartEdit = () => {
+    if (currentEquipment) {
+      setFormData({
+        name: currentEquipment.name || "",
+        type: currentEquipment.type || "",
+        manufacturer: currentEquipment.manufacturer || "",
+        model: currentEquipment.model || "",
+        location: currentEquipment.location || "",
+        status: currentEquipment.status || "active",
+        notes: currentEquipment.notes || "",
+      });
+    }
+    setIsEditing(true);
+  };
 
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!equipment) return;
-      const { error } = await supabase
+      // An RLS-filtered update returns zero rows and no error - request the row back.
+      const { data, error } = await supabase
         .from("equipment")
         .update({
           name: formData.name,
@@ -121,12 +160,17 @@ export function EquipmentDetailsDialog({
           status: formData.status,
           notes: formData.notes || null,
         })
-        .eq("id", equipment.id);
+        .eq("id", equipment.id)
+        .select("id");
       
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["equipment"] });
+      queryClient.invalidateQueries({ queryKey: ["equipment-detail", equipment?.id] });
       toast.success("Anlage erfolgreich aktualisiert");
       setIsEditing(false);
     },
@@ -135,10 +179,9 @@ export function EquipmentDetailsDialog({
     },
   });
 
-  const pendingRecords = maintenanceRecords.filter(m => m.status === 'pending' || m.status === 'overdue');
   const hasMaintenancePlan = maintenanceRecords.some(m => m.interval_days && m.interval_days > 0);
 
-  if (!equipment) return null;
+  if (!equipment || !currentEquipment) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,7 +189,7 @@ export function EquipmentDetailsDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="h-5 w-5 text-primary" />
-            {equipment.name}
+            {currentEquipment.name}
           </DialogTitle>
         </DialogHeader>
 
@@ -156,7 +199,7 @@ export function EquipmentDetailsDialog({
             <CardHeader className="flex flex-row items-center justify-between py-3">
               <CardTitle className="text-sm font-medium">Anlagendetails</CardTitle>
               {!isEditing ? (
-                <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
+                <Button variant="ghost" size="sm" onClick={handleStartEdit}>
                   <Edit2 className="h-4 w-4 mr-1" />
                   Bearbeiten
                 </Button>
@@ -254,34 +297,34 @@ export function EquipmentDetailsDialog({
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Anlagen-ID</p>
-                    <p className="font-medium">{equipment.equipment_id}</p>
+                    <p className="font-medium">{currentEquipment.equipment_id}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Typ</p>
-                    <p className="font-medium">{equipment.type}</p>
+                    <p className="font-medium">{currentEquipment.type}</p>
                   </div>
-                  {equipment.manufacturer && (
+                  {currentEquipment.manufacturer && (
                     <div>
                       <p className="text-muted-foreground">Hersteller</p>
-                      <p className="font-medium">{equipment.manufacturer}</p>
+                      <p className="font-medium">{currentEquipment.manufacturer}</p>
                     </div>
                   )}
-                  {equipment.model && (
+                  {currentEquipment.model && (
                     <div>
                       <p className="text-muted-foreground">Modell</p>
-                      <p className="font-medium">{equipment.model}</p>
+                      <p className="font-medium">{currentEquipment.model}</p>
                     </div>
                   )}
-                  {equipment.location && (
+                  {currentEquipment.location && (
                     <div>
                       <p className="text-muted-foreground">Standort</p>
-                      <p className="font-medium">{equipment.location}</p>
+                      <p className="font-medium">{currentEquipment.location}</p>
                     </div>
                   )}
                   <div>
                     <p className="text-muted-foreground">Status</p>
-                    <Badge variant={equipment.status === 'active' ? 'secondary' : 'outline'}>
-                      {equipment.status === 'active' ? 'Aktiv' : equipment.status === 'maintenance' ? 'In Wartung' : 'Inaktiv'}
+                    <Badge variant={currentEquipment.status === 'active' ? 'secondary' : 'outline'}>
+                      {currentEquipment.status === 'active' ? 'Aktiv' : currentEquipment.status === 'maintenance' ? 'In Wartung' : 'Inaktiv'}
                     </Badge>
                   </div>
                 </div>
@@ -298,7 +341,7 @@ export function EquipmentDetailsDialog({
                   <Badge variant="secondary" className="ml-2">Aktiv</Badge>
                 )}
               </CardTitle>
-              <Button variant="outline" size="sm" onClick={onAddMaintenance}>
+              <Button variant="outline" size="sm" onClick={() => onAddMaintenance(equipment.id)}>
                 <Plus className="h-4 w-4 mr-1" />
                 Wartung hinzufügen
               </Button>

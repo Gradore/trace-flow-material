@@ -23,6 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { useMaterialFlowHistory } from "@/hooks/useMaterialFlowHistory";
+import { useUserRole } from "@/hooks/useUserRole";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 
@@ -60,6 +61,13 @@ export function CompleteProcessingDialog({
   
   const queryClient = useQueryClient();
   const { logEvent } = useMaterialFlowHistory();
+  const { role, isLoading: isRoleLoading } = useUserRole();
+
+  // Completing needs BOTH policies: samples INSERT (admin/production/qa) and
+  // processing_steps UPDATE (admin/production/betriebsleiter). Only the intersection
+  // can finish the flow - a qa user would otherwise write the three samples and then
+  // fail on the status update, leaving orphaned samples behind on every attempt.
+  const canCompleteProcessing = role === "admin" || role === "production";
 
   // Fetch pending/in_production orders for customer assignment
   const { data: orders = [] } = useQuery({
@@ -105,6 +113,26 @@ export function CompleteProcessingDialog({
 
   const handleComplete = async () => {
     if (!processingStep) return;
+
+    if (isRoleLoading) {
+      toast({
+        title: "Bitte warten",
+        description: "Berechtigungen werden noch geladen.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!canCompleteProcessing) {
+      toast({
+        title: "Keine Berechtigung",
+        description:
+          "Sie haben keine Berechtigung, eine Verarbeitung abzuschließen und Proben zu erstellen.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!samplerName.trim()) {
       toast({
         title: "Fehler",
@@ -134,32 +162,10 @@ export function CompleteProcessingDialog({
 
     setIsSubmitting(true);
     try {
-      // 1. Mark processing step as completed
-      const { error: stepError } = await supabase
-        .from("processing_steps")
-        .update({
-          status: "completed",
-          completed_at: new Date().toISOString(),
-          progress: 100,
-        })
-        .eq("id", processingStep.id);
+      // Samples are created BEFORE the status updates: a failing sample insert must not
+      // leave a processing step marked completed without its mandatory samples.
 
-      if (stepError) {
-        console.error("Error completing processing step:", stepError);
-        throw new Error("Verarbeitungsschritt konnte nicht abgeschlossen werden.");
-      }
-
-      // 2. Update material input status
-      const { error: materialError } = await supabase
-        .from("material_inputs")
-        .update({ status: "processed" })
-        .eq("id", processingStep.material_input_id);
-
-      if (materialError) {
-        console.warn("Could not update material input status:", materialError);
-      }
-
-      // 3. Create main sample
+      // 1. Create main sample
       const { data: sampleIdData, error: sampleIdError } = await supabase.rpc(
         "generate_unique_id",
         { prefix: "PRB" }
@@ -191,11 +197,18 @@ export function CompleteProcessingDialog({
       const selectedOutput = outputMaterials.find(o => o.id === actualOutputId);
       const dateStr = format(new Date(), "dd.MM.yyyy", { locale: de });
 
-      // 4. Create TWO retention samples if requested
+      // 2. Create TWO retention samples if requested
       if (createRetentionSamples) {
-        // 4a. Warehouse retention sample (Lager-Rückstellprobe)
-        const { data: warehouseIdData } = await supabase.rpc("generate_unique_id", { prefix: "RST" });
-        
+        // 2a. Warehouse retention sample (Lager-Rückstellprobe)
+        const { data: warehouseIdData, error: warehouseIdError } = await supabase.rpc(
+          "generate_unique_id",
+          { prefix: "RST" }
+        );
+        if (warehouseIdError) {
+          console.error("Error generating warehouse retention sample ID:", warehouseIdError);
+          throw new Error("ID für die Lager-Rückstellprobe konnte nicht generiert werden.");
+        }
+
         const warehouseNotes = [
           "Rückstellprobe für Lager",
           selectedOrder ? `Kunde: ${selectedOrder.customer_name}` : null,
@@ -205,7 +218,7 @@ export function CompleteProcessingDialog({
           `Lagerplatz: ${warehouseLocation}`,
         ].filter(Boolean).join(" | ");
 
-        await supabase.from("samples").insert({
+        const { error: warehouseError } = await supabase.from("samples").insert({
           sample_id: warehouseIdData,
           sampler_name: samplerName.trim(),
           material_input_id: processingStep.material_input_id,
@@ -219,9 +232,21 @@ export function CompleteProcessingDialog({
           notes: warehouseNotes,
         });
 
-        // 4b. Lab retention sample (Labor-Rückstellprobe für Beanstandungen)
-        const { data: labIdData } = await supabase.rpc("generate_unique_id", { prefix: "RST" });
-        
+        if (warehouseError) {
+          console.error("Error creating warehouse retention sample:", warehouseError);
+          throw new Error("Lager-Rückstellprobe konnte nicht erstellt werden.");
+        }
+
+        // 2b. Lab retention sample (Labor-Rückstellprobe für Beanstandungen)
+        const { data: labIdData, error: labIdError } = await supabase.rpc(
+          "generate_unique_id",
+          { prefix: "RST" }
+        );
+        if (labIdError) {
+          console.error("Error generating lab retention sample ID:", labIdError);
+          throw new Error("ID für die Labor-Rückstellprobe konnte nicht generiert werden.");
+        }
+
         const labNotes = [
           "Rückstellprobe für Labor bei Beanstandungen",
           selectedOrder ? `Kunde: ${selectedOrder.customer_name}` : null,
@@ -231,7 +256,7 @@ export function CompleteProcessingDialog({
           `Lagerplatz: ${labLocation}`,
         ].filter(Boolean).join(" | ");
 
-        await supabase.from("samples").insert({
+        const { error: labError } = await supabase.from("samples").insert({
           sample_id: labIdData,
           sampler_name: samplerName.trim(),
           material_input_id: processingStep.material_input_id,
@@ -244,6 +269,46 @@ export function CompleteProcessingDialog({
           output_material_id: actualOutputId,
           notes: labNotes,
         });
+
+        if (labError) {
+          console.error("Error creating lab retention sample:", labError);
+          throw new Error("Labor-Rückstellprobe konnte nicht erstellt werden.");
+        }
+      }
+
+      // 3. Mark processing step as completed
+      const { data: updatedStep, error: stepError } = await supabase
+        .from("processing_steps")
+        .update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          progress: 100,
+        })
+        .eq("id", processingStep.id)
+        .select("id");
+
+      if (stepError) {
+        console.error("Error completing processing step:", stepError);
+        throw new Error("Verarbeitungsschritt konnte nicht abgeschlossen werden.");
+      }
+      if (!updatedStep || updatedStep.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
+
+      // 4. Update material input status. An RLS-filtered update returns zero rows and no
+      // error, so the affected row is requested back - the step itself is already
+      // completed at this point, so this is reported as a warning instead of a failure.
+      const { data: updatedInput, error: materialError } = await supabase
+        .from("material_inputs")
+        .update({ status: "processed" })
+        .eq("id", processingStep.material_input_id)
+        .select("id");
+
+      const materialStatusUpdated =
+        !materialError && !!updatedInput && updatedInput.length > 0;
+
+      if (!materialStatusUpdated) {
+        console.warn("Could not update material input status:", materialError);
       }
 
       // 5. Log events (non-critical)
@@ -277,10 +342,19 @@ export function CompleteProcessingDialog({
           : `${processingStep.processing_id} wurde abgeschlossen. Probe wurde erstellt.`,
       });
 
+      if (!materialStatusUpdated) {
+        toast({
+          title: "Materialstatus nicht aktualisiert",
+          description:
+            "Der Materialeingang konnte nicht auf \"Verarbeitet\" gesetzt werden. Keine Berechtigung oder Datensatz nicht gefunden.",
+          variant: "destructive",
+        });
+      }
+
       queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
       queryClient.invalidateQueries({ queryKey: ["samples"] });
       queryClient.invalidateQueries({ queryKey: ["material-inputs"] });
-      
+
       onOpenChange(false);
     } catch (error: any) {
       console.error("CompleteProcessingDialog error:", error);
@@ -314,6 +388,13 @@ export function CompleteProcessingDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {!isRoleLoading && !canCompleteProcessing && (
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
+              Sie haben keine Berechtigung, eine Verarbeitung abzuschließen und Proben zu erstellen.
+              Diese Aktion ist Administratoren und der Produktion vorbehalten.
+            </div>
+          )}
+
           {/* Processing Info */}
           <div className="p-4 rounded-lg bg-secondary/30 border border-border space-y-2">
             <div className="flex justify-between">
@@ -451,7 +532,7 @@ export function CompleteProcessingDialog({
           </Button>
           <Button 
             onClick={handleComplete} 
-            disabled={isSubmitting || !samplerName.trim() || (createRetentionSamples && (!warehouseLocation.trim() || !labLocation.trim()))}
+            disabled={isSubmitting || isRoleLoading || !canCompleteProcessing || !samplerName.trim() || (createRetentionSamples && (!warehouseLocation.trim() || !labLocation.trim()))}
           >
             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             Abschließen & Proben erstellen

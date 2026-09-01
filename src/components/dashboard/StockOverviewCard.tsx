@@ -13,12 +13,12 @@ interface StockCategory {
 }
 
 export function StockOverviewCard() {
-  const { data: outputs = [], isLoading } = useQuery({
+  const { data: outputs = [], isLoading, isError } = useQuery({
     queryKey: ["stock-overview-detailed"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("output_materials")
-        .select("output_type, weight_kg, status, attributes, quality_grade")
+        .select("output_type, weight_kg, status, fiber_size")
         .eq("status", "in_stock");
       
       if (error) throw error;
@@ -45,7 +45,7 @@ export function StockOverviewCard() {
     });
   }
 
-  // Glass fibers - grouped by grain size and resin type
+  // Glass fibers - grouped by grain size
   const glassFiberMaterials = outputs.filter(o => 
     o.output_type === 'glass_fiber' || 
     o.output_type?.includes('glasfaser') ||
@@ -53,13 +53,10 @@ export function StockOverviewCard() {
   );
   const glassFiberWeight = glassFiberMaterials.reduce((sum, o) => sum + Number(o.weight_kg || 0), 0);
   
-  // Group by attributes (grain size, resin type)
+  // Group by the dedicated fiber_size column (grain size)
   const glassFiberByType: Record<string, number> = {};
   glassFiberMaterials.forEach(m => {
-    const attrs = m.attributes as Record<string, unknown> || {};
-    const grainSize = attrs.grain_size || attrs.koernung || 'Standard';
-    const resinType = attrs.resin_type || attrs.harztyp || '';
-    const key = resinType ? `${grainSize} - ${resinType}` : String(grainSize);
+    const key = m.fiber_size || 'Standard';
     glassFiberByType[key] = (glassFiberByType[key] || 0) + Number(m.weight_kg || 0);
   });
 
@@ -73,7 +70,7 @@ export function StockOverviewCard() {
     });
   }
 
-  // Resin matrix - grouped by grain size and type
+  // Resin matrix - grouped by grain size
   const resinMaterials = outputs.filter(o => 
     o.output_type === 'resin_powder' || 
     o.output_type === 'resin' ||
@@ -84,10 +81,7 @@ export function StockOverviewCard() {
   
   const resinByType: Record<string, number> = {};
   resinMaterials.forEach(m => {
-    const attrs = m.attributes as Record<string, unknown> || {};
-    const grainSize = attrs.grain_size || attrs.koernung || 'Standard';
-    const resinType = attrs.resin_type || attrs.harztyp || '';
-    const key = resinType ? `${grainSize} - ${resinType}` : String(grainSize);
+    const key = m.fiber_size || 'Standard';
     resinByType[key] = (resinByType[key] || 0) + Number(m.weight_kg || 0);
   });
 
@@ -141,6 +135,11 @@ export function StockOverviewCard() {
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : isError ? (
+          <div className="text-center py-8">
+            <Package className="h-8 w-8 text-destructive mx-auto mb-2" />
+            <p className="text-sm text-destructive">Lagerbestand konnte nicht geladen werden.</p>
           </div>
         ) : categories.length === 0 ? (
           <div className="text-center py-8">

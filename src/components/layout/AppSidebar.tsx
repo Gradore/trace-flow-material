@@ -1,114 +1,90 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Package,
-  Inbox,
-  Cog,
-  FlaskConical,
-  FileOutput,
-  FileText,
-  FolderOpen,
-  History,
-  Users,
-  QrCode,
-  ChevronLeft,
-  Settings,
-  User,
-  ClipboardList,
-  Building2,
-  Truck,
-  ShoppingCart,
-  Shield,
-  BarChart3,
-  Wrench,
-  FileCode,
-  ScrollText,
-  Sparkles,
-  Search,
-  SlidersHorizontal,
-  Upload,
-  Archive,
-  Beaker,
-  Tag,
-} from "lucide-react";
+import { ChevronDown, ChevronLeft, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ACCENT_STYLES, activePath, hasAccess, visibleGroups, type NavGroup } from "./navigation";
 import rekuflowLogo from "@/assets/rekuflow-logo.png";
-
-interface NavItem {
-  icon: typeof LayoutDashboard;
-  label: string;
-  path: string;
-  roles?: string[];
-  adminOnly?: boolean;
-}
-
-const navItems: NavItem[] = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: BarChart3, label: "Reporting", path: "/reporting", roles: ['admin', 'intake', 'production', 'qa'] }, // betriebsleiter excluded
-  { icon: ClipboardList, label: "Aufträge", path: "/orders", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa', 'customer'] },
-  { icon: Building2, label: "Firmen", path: "/companies", roles: ['admin', 'betriebsleiter', 'intake', 'logistics'] },
-  { icon: Package, label: "Container", path: "/containers", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa', 'logistics'] },
-  { icon: Inbox, label: "Materialeingang", path: "/intake", roles: ['admin', 'betriebsleiter', 'intake', 'production'] },
-  { icon: Cog, label: "Verarbeitung", path: "/processing", roles: ['admin', 'betriebsleiter', 'production'] },
-  { icon: Wrench, label: "Wartung", path: "/maintenance", roles: ['admin', 'betriebsleiter', 'production'] },
-  { icon: FlaskConical, label: "Beprobung", path: "/sampling", roles: ['admin', 'betriebsleiter', 'qa', 'production'] },
-  { icon: FileOutput, label: "Ausgangsmaterial", path: "/output", roles: ['admin', 'betriebsleiter', 'production', 'qa'] },
-  { icon: FileText, label: "Lieferscheine", path: "/delivery-notes", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'logistics'] },
-  { icon: FolderOpen, label: "Dokumente", path: "/documents", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
-  { icon: Archive, label: "Archiv", path: "/archive", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
-  { icon: Beaker, label: "Rückstellmuster", path: "/retention-samples", roles: ['admin', 'betriebsleiter', 'qa', 'production'] },
-  { icon: Tag, label: "Etiketten", path: "/labels", roles: ['admin', 'betriebsleiter', 'production', 'intake', 'qa'] },
-  { icon: History, label: "Rückverfolgung", path: "/traceability", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
-  { icon: Upload, label: "Datenblatt-Upload", path: "/datasheet-upload", roles: ['admin', 'intake', 'production', 'qa'] },
-  { icon: Sparkles, label: "KI Rezepturen", path: "/recipe-matching", roles: ['admin', 'production', 'qa', 'intake'] }, // betriebsleiter excluded
-  { icon: Search, label: "KI Vertrieb", path: "/sales-search", roles: ['admin', 'production', 'qa', 'intake'] }, // betriebsleiter excluded
-  { icon: Truck, label: "Logistik", path: "/logistics", roles: ['admin', 'betriebsleiter', 'logistics'] },
-  { icon: ShoppingCart, label: "Kunden-Portal", path: "/customer-portal", roles: ['customer'] },
-  { icon: Package, label: "Lieferanten-Portal", path: "/supplier-portal", roles: ['supplier'] },
-  { icon: Users, label: "Benutzer", path: "/users", roles: ['admin', 'betriebsleiter'] },
-  { icon: Shield, label: "Admin", path: "/admin/users", adminOnly: true },
-  { icon: ScrollText, label: "Audit-Log", path: "/audit-logs", roles: ['admin', 'betriebsleiter'] },
-  { icon: FileCode, label: "API-Docs", path: "/api-docs", roles: ['admin'] }, // betriebsleiter excluded
-  { icon: User, label: "Profil", path: "/profile" },
-  { icon: Settings, label: "Einstellungen", path: "/settings", roles: ['admin', 'betriebsleiter'] },
-  { icon: SlidersHorizontal, label: "Admin-Einstellungen", path: "/admin-settings", adminOnly: true },
-];
 
 interface AppSidebarProps {
   collapsed: boolean;
   onToggle: () => void;
 }
 
+const STORAGE_KEY = "rekuflow.sidebar.openGroups";
+
+function readOpenGroups(): string[] | null {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
   const location = useLocation();
   const { role, isLoading, isAdmin } = useUserRole();
 
-  const filteredNavItems = navItems.filter(item => {
-    if (item.adminOnly) return isAdmin;
-    if (item.roles) return role && item.roles.includes(role);
-    return true;
-  });
+  const groups = useMemo(() => visibleGroups(role, isAdmin), [role, isAdmin]);
+  const current = useMemo(() => activePath(location.pathname, role, isAdmin), [location.pathname, role, isAdmin]);
+
+  const groupOfCurrent = useMemo(
+    () => groups.find((g) => g.items.some((i) => i.path === current))?.id ?? null,
+    [groups, current],
+  );
+
+  const canScan = hasAccess("/scan", role, isAdmin);
+
+  const [openGroups, setOpenGroups] = useState<string[]>(() => readOpenGroups() ?? []);
+  const [restoredFromStorage] = useState<boolean>(() => readOpenGroups() !== null);
+
+  // The role is not known on the first render, so the role-gated groups that
+  // should start expanded are only known once it has loaded.
+  useEffect(() => {
+    if (isLoading || restoredFromStorage) return;
+    setOpenGroups((prev) => {
+      const defaults = NAV_DEFAULT_OPEN(groups);
+      const missing = defaults.filter((id) => !prev.includes(id));
+      return missing.length ? [...prev, ...missing] : prev;
+    });
+  }, [isLoading, restoredFromStorage, groups]);
+
+  // Keep the group that owns the active route expanded.
+  useEffect(() => {
+    if (groupOfCurrent && !openGroups.includes(groupOfCurrent)) {
+      setOpenGroups((prev) => [...prev, groupOfCurrent]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupOfCurrent]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(openGroups));
+    } catch {
+      /* storage unavailable - expansion state simply is not remembered */
+    }
+  }, [openGroups]);
+
+  const toggleGroup = (id: string) =>
+    setOpenGroups((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
 
   return (
     <aside
       className={cn(
         "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 flex-col hidden md:flex",
-        collapsed ? "w-16" : "w-64"
+        collapsed ? "w-16" : "w-64",
       )}
     >
       {/* Logo */}
       <div className="flex items-center gap-3 p-4 border-b border-sidebar-border h-16">
-        <img 
-          src={rekuflowLogo} 
-          alt="RekuFLOW Logo" 
-          className="h-10 w-10 object-contain shrink-0"
-        />
+        <img src={rekuflowLogo} alt="RekuFLOW Logo" className="h-10 w-10 object-contain shrink-0" />
         {!collapsed && (
           <div className="flex flex-col animate-fade-in overflow-hidden">
             <span className="font-bold text-sidebar-foreground text-lg truncate">RekuFLOW</span>
@@ -116,56 +92,31 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
         )}
       </div>
 
-      {/* Navigation */}
       <ScrollArea className="flex-1">
-        <nav className="p-2 space-y-1">
+        <nav className="p-2 space-y-1" aria-label="Hauptnavigation">
           {isLoading ? (
             <div className="space-y-2 p-1">
-              {[1, 2, 3, 4, 5].map(i => (
+              {[1, 2, 3, 4, 5, 6].map((i) => (
                 <Skeleton key={i} className="h-10 w-full" />
               ))}
             </div>
           ) : (
-            filteredNavItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              
-              const linkContent = (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors",
-                    isActive && "bg-primary/10 text-primary font-medium",
-                    collapsed && "justify-center px-2"
-                  )}
-                >
-                  <item.icon className="h-5 w-5 shrink-0" />
-                  {!collapsed && (
-                    <span className="animate-fade-in truncate">{item.label}</span>
-                  )}
-                </NavLink>
-              );
-
-              if (collapsed) {
-                return (
-                  <Tooltip key={item.path} delayDuration={0}>
-                    <TooltipTrigger asChild>
-                      {linkContent}
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="font-medium">
-                      {item.label}
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              }
-
-              return linkContent;
-            })
+            groups.map((group) => (
+              <SidebarGroup
+                key={group.id}
+                group={group}
+                collapsed={collapsed}
+                open={openGroups.includes(group.id)}
+                currentPath={current}
+                onToggle={() => toggleGroup(group.id)}
+              />
+            ))
           )}
         </nav>
       </ScrollArea>
 
-      {/* QR Scanner Quick Action */}
+      {/* QR Scanner quick action */}
+      {canScan && (
       <div className="p-2 border-t border-sidebar-border">
         {collapsed ? (
           <Tooltip delayDuration={0}>
@@ -177,9 +128,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                 <QrCode className="h-5 w-5" />
               </NavLink>
             </TooltipTrigger>
-            <TooltipContent side="right" className="font-medium">
-              QR Scannen
-            </TooltipContent>
+            <TooltipContent side="right" className="font-medium">QR Scannen</TooltipContent>
           </Tooltip>
         ) : (
           <NavLink
@@ -191,8 +140,8 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
           </NavLink>
         )}
       </div>
+      )}
 
-      {/* Collapse Button */}
       <div className="p-2 border-t border-sidebar-border">
         <Button
           variant="ghost"
@@ -200,7 +149,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
           onClick={onToggle}
           className={cn(
             "w-full text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent",
-            collapsed && "justify-center"
+            collapsed && "justify-center",
           )}
         >
           <ChevronLeft className={cn("h-5 w-5 transition-transform", collapsed && "rotate-180")} />
@@ -208,5 +157,102 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
         </Button>
       </div>
     </aside>
+  );
+}
+
+function NAV_DEFAULT_OPEN(groups: NavGroup[]): string[] {
+  return groups.filter((g) => g.defaultOpen).map((g) => g.id);
+}
+
+interface SidebarGroupProps {
+  group: NavGroup;
+  collapsed: boolean;
+  open: boolean;
+  currentPath: string | null;
+  onToggle: () => void;
+}
+
+function SidebarGroup({ group, collapsed, open, currentPath, onToggle }: SidebarGroupProps) {
+  const accent = ACCENT_STYLES[group.accent];
+  const containsActive = group.items.some((item) => item.path === currentPath);
+
+  // Collapsed rail: no group headers, just colour-coded icons with tooltips.
+  if (collapsed) {
+    return (
+      <div className="space-y-1 py-1 first:pt-0">
+        <div className="mx-auto h-px w-6 bg-sidebar-border" aria-hidden />
+        {group.items.map((item) => {
+          const isActive = item.path === currentPath;
+          return (
+            <Tooltip key={item.path} delayDuration={0}>
+              <TooltipTrigger asChild>
+                <NavLink
+                  to={item.path}
+                  className={cn(
+                    "group relative flex items-center justify-center px-2 py-2.5 rounded-lg transition-colors",
+                    isActive ? cn(accent.activeBg, accent.activeText) : "hover:bg-sidebar-accent",
+                  )}
+                >
+                  {isActive && (
+                    <span className={cn("absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full", accent.bar)} />
+                  )}
+                  <item.icon className={cn("h-5 w-5 shrink-0", isActive ? accent.iconActive : accent.icon)} />
+                </NavLink>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="font-medium">
+                <span className="text-muted-foreground">{group.label} · </span>
+                {item.label}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="pb-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={cn(
+          "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors",
+          "hover:bg-sidebar-accent",
+          accent.groupLabel,
+        )}
+      >
+        <group.icon className="h-4 w-4 shrink-0" />
+        <span className="flex-1 text-left truncate">{group.label}</span>
+        {!open && containsActive && <span className={cn("h-1.5 w-1.5 rounded-full", accent.dot)} aria-hidden />}
+        <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", !open && "-rotate-90")} />
+      </button>
+
+      {open && (
+        <div className="mt-1 space-y-0.5 pl-3 border-l border-sidebar-border ml-4">
+          {group.items.map((item) => {
+            const isActive = item.path === currentPath;
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={cn(
+                  "group relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                  isActive
+                    ? cn(accent.activeBg, accent.activeText, "font-medium")
+                    : cn("text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground", accent.hoverText),
+                )}
+              >
+                {isActive && (
+                  <span className={cn("absolute -left-3 top-1 bottom-1 w-0.5 rounded-full", accent.bar)} aria-hidden />
+                )}
+                <item.icon className={cn("h-4 w-4 shrink-0", isActive ? accent.iconActive : accent.icon)} />
+                <span className="truncate">{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

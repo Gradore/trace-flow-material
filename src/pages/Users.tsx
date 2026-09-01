@@ -40,6 +40,12 @@ const roleConfig: Record<string, { label: string; class: string; icon: typeof Sh
   logistics: { label: "Logistik", class: "bg-cyan-500/10 text-cyan-600 border-cyan-500/20", icon: UserCheck },
 };
 
+const unknownRole = {
+  label: "Unbekannt",
+  class: "bg-muted text-muted-foreground border-border",
+  icon: UserCheck,
+};
+
 export default function Users() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
@@ -52,8 +58,8 @@ export default function Users() {
     id: string;
     user_id: string;
     name: string;
-    email: string;
-    role: string;
+    email: string | null;
+    role: string | null;
   } | null>(null);
   const { user: currentUser } = useAuth();
 
@@ -66,7 +72,7 @@ export default function Users() {
     checkAdminStatus();
   }, [currentUser]);
 
-  const { data: users = [], isLoading, refetch } = useQuery({
+  const { data: users = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["profiles-with-roles"],
     queryFn: async () => {
       const { data: profiles, error: profilesError } = await supabase
@@ -78,18 +84,22 @@ export default function Users() {
       const { data: roles, error: rolesError } = await supabase.from("user_roles").select("*");
       if (rolesError) throw rolesError;
 
+      // No fallback role: a missing row means the role could not be read,
+      // not that the user is a customer.
       return (profiles || []).map(profile => ({
         ...profile,
-        role: roles?.find(r => r.user_id === profile.user_id)?.role || 'customer',
+        role: (roles?.find(r => r.user_id === profile.user_id)?.role as string) || null,
       }));
     },
   });
 
   const filteredUsers = users.filter(
-    (u) => u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.email.toLowerCase().includes(searchTerm.toLowerCase())
+    (u) =>
+      (u.name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (u.email ?? "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getInitials = (name: string) => name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+  const getInitials = (name: string) => (name ?? "").split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 
   const handleUserClick = (user: typeof selectedUser) => {
     if (!isAdmin) return;
@@ -107,7 +117,6 @@ export default function Users() {
     if (!deletingUser) return;
     setIsDeleting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
       const res = await supabase.functions.invoke("admin-delete-user", {
         body: { user_id: deletingUser.user_id },
       });
@@ -128,13 +137,14 @@ export default function Users() {
   };
 
   const roleCounts = users.reduce((acc, u) => {
+    if (!u.role) return acc;
     acc[u.role] = (acc[u.role] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Benutzerverwaltung</h1>
           <p className="text-muted-foreground mt-1">Benutzer und Rollen verwalten</p>
@@ -179,6 +189,16 @@ export default function Users() {
           <div className="flex items-center justify-center p-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
+        ) : isError ? (
+          <div className="p-8 text-center">
+            <p className="font-medium text-destructive">Benutzer konnten nicht geladen werden</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Möglicherweise fehlt die Berechtigung. Bitte laden Sie die Seite neu.
+            </p>
+            <Button variant="outline" className="mt-4" onClick={() => refetch()}>
+              Erneut versuchen
+            </Button>
+          </div>
         ) : (
           <Table>
             <TableHeader>
@@ -197,7 +217,7 @@ export default function Users() {
                 </TableRow>
               ) : (
                 filteredUsers.map((user) => {
-                  const role = roleConfig[user.role] || roleConfig.customer;
+                  const role = (user.role && roleConfig[user.role]) || unknownRole;
                   const isSelf = user.user_id === currentUser?.id;
                   return (
                     <TableRow 
@@ -219,7 +239,7 @@ export default function Users() {
                       <TableCell>
                         <div className="flex items-center gap-1.5 text-muted-foreground">
                           <Mail className="h-3.5 w-3.5" />
-                          {user.email}
+                          {user.email || "-"}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -250,7 +270,13 @@ export default function Users() {
       </div>
 
       <InviteUserDialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen} onSuccess={() => refetch()} />
-      <UserPermissionsDialog open={permissionsDialogOpen} onOpenChange={setPermissionsDialogOpen} user={selectedUser} onSuccess={() => refetch()} />
+      <UserPermissionsDialog
+        open={permissionsDialogOpen}
+        onOpenChange={setPermissionsDialogOpen}
+        user={selectedUser}
+        isSelf={!!selectedUser && selectedUser.user_id === currentUser?.id}
+        onSuccess={() => refetch()}
+      />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

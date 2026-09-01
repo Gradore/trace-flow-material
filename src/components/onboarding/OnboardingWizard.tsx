@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Building2, Cog, ClipboardList, ChevronRight, ChevronLeft, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {

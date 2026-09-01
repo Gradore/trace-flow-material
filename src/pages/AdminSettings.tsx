@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings, Users, Shield, Bell, Mail, Database, Save, Loader2, RefreshCw } from "lucide-react";
+import { Settings, Users, Shield, Bell, Database, Save, Loader2, RefreshCw, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Navigate } from "react-router-dom";
@@ -79,12 +80,25 @@ const defaultSettings: AdminSettingsConfig = {
   maintenanceMessage: "Das System wird gewartet. Bitte versuche es später erneut.",
 };
 
+const ADMIN_SETTINGS_STORAGE_KEY = "admin_settings";
+
+/**
+ * A corrupt localStorage entry must not take the whole page down, so the read
+ * always falls back to the defaults.
+ */
+const loadSettings = (): AdminSettingsConfig => {
+  try {
+    const saved = localStorage.getItem(ADMIN_SETTINGS_STORAGE_KEY);
+    return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+  } catch (error) {
+    console.error("Invalid admin settings in localStorage:", error);
+    return defaultSettings;
+  }
+};
+
 export default function AdminSettings() {
   const { isAdmin, isLoading: roleLoading } = useUserRole();
-  const [settings, setSettings] = useState<AdminSettingsConfig>(() => {
-    const saved = localStorage.getItem("admin_settings");
-    return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
-  });
+  const [settings, setSettings] = useState<AdminSettingsConfig>(loadSettings);
   const [isSaving, setIsSaving] = useState(false);
 
   if (roleLoading) {
@@ -106,9 +120,12 @@ export default function AdminSettings() {
   const saveSettings = async () => {
     setIsSaving(true);
     try {
-      localStorage.setItem("admin_settings", JSON.stringify(settings));
-      toast({ title: "Einstellungen gespeichert", description: "Alle Änderungen wurden übernommen." });
-    } catch (error) {
+      localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+      toast({
+        title: "Einstellungen lokal gespeichert",
+        description: "Die Werte gelten nur in diesem Browser.",
+      });
+    } catch {
       toast({ title: "Fehler beim Speichern", variant: "destructive" });
     } finally {
       setIsSaving(false);
@@ -117,17 +134,24 @@ export default function AdminSettings() {
 
   const resetToDefaults = () => {
     setSettings(defaultSettings);
+    try {
+      // Without clearing the stored copy the next reload brings the old values
+      // back, although the toast promised a reset.
+      localStorage.removeItem(ADMIN_SETTINGS_STORAGE_KEY);
+    } catch (error) {
+      console.error("Could not clear admin settings:", error);
+    }
     toast({ title: "Zurückgesetzt", description: "Alle Einstellungen wurden auf Standardwerte zurückgesetzt." });
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Admin-Einstellungen</h1>
-          <p className="text-muted-foreground mt-1">Systemweite Konfiguration für alle Mitarbeiter</p>
+          <p className="text-muted-foreground mt-1">Konfigurationsvorgaben – lokal in diesem Browser gespeichert</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={resetToDefaults}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Zurücksetzen
@@ -138,6 +162,17 @@ export default function AdminSettings() {
           </Button>
         </div>
       </div>
+
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertTitle>Nur lokal gespeichert</AlertTitle>
+        <AlertDescription>
+          Diese Werte werden ausschließlich in diesem Browser abgelegt. Sie werden noch nicht systemweit
+          durchgesetzt: Registrierung, Passwortprüfung, Benachrichtigungen, Wartungsmodus und IP-Beschränkung
+          verhalten sich unabhängig davon. Für eine systemweite Wirkung müssen die Einstellungen in der
+          Datenbank hinterlegt und dort ausgewertet werden.
+        </AlertDescription>
+      </Alert>
 
       <Tabs defaultValue="general" className="space-y-4">
         <TabsList className="flex-wrap h-auto gap-1">

@@ -21,7 +21,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { de } from "date-fns/locale";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -103,7 +103,9 @@ export function AnnouncementDialog({
         container_type: data.container_type,
         container_count: parseInt(data.container_count),
         waste_code: data.waste_code || null,
-        preferred_date: data.preferred_date?.toISOString().split("T")[0] || null,
+        // format() and not toISOString(): the calendar hands us local midnight,
+        // which toISOString() shifts to the previous day in any positive offset.
+        preferred_date: data.preferred_date ? format(data.preferred_date, "yyyy-MM-dd") : null,
         preferred_time_slot: data.preferred_time_slot || null,
         notes: data.notes || null,
       });
@@ -279,7 +281,7 @@ export function AnnouncementDialog({
                     mode="single"
                     selected={formData.preferred_date}
                     onSelect={(date) => setFormData({ ...formData, preferred_date: date })}
-                    disabled={(date) => date < new Date()}
+                    disabled={(date) => date < startOfDay(new Date())}
                     locale={de}
                   />
                 </PopoverContent>

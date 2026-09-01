@@ -36,59 +36,41 @@ export async function generateQRCodeDataURL(
 }
 
 /**
- * Generate a QR code as SVG string
+ * Build the URL that a printed QR code points at.
+ *
+ * There are no detail routes such as /containers/:id in the app, so encoding
+ * one would send every scan to the 404 page. The scanner page at /scan resolves
+ * a code passed as a query parameter and shows the record.
  */
-export async function generateQRCodeSVG(
-  data: string,
-  options: QRCodeOptions = {}
-): Promise<string> {
-  const defaultOptions = {
-    width: 200,
-    margin: 2,
-    color: {
-      dark: '#000000',
-      light: '#ffffff',
-    },
-    ...options,
-  };
-
-  try {
-    const svg = await QRCode.toString(data, { ...defaultOptions, type: 'svg' });
-    return svg;
-  } catch (error) {
-    console.error('Error generating QR code SVG:', error);
-    throw error;
-  }
+function buildScanUrl(code: string): string {
+  const baseUrl = window.location.origin;
+  return `${baseUrl}/scan?code=${encodeURIComponent(code)}`;
 }
 
 /**
  * Build a QR code URL for a container
  */
 export function buildContainerQRUrl(containerId: string): string {
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/containers/${containerId}`;
+  return buildScanUrl(containerId);
 }
 
 /**
  * Build a QR code URL for a material input
  */
 export function buildMaterialInputQRUrl(inputId: string): string {
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/intake/${inputId}`;
+  return buildScanUrl(inputId);
 }
 
 /**
  * Build a QR code URL for an output material
  */
 export function buildOutputMaterialQRUrl(outputId: string): string {
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/output/${outputId}`;
+  return buildScanUrl(outputId);
 }
 
 /**
  * Build a QR code URL for a batch/delivery note
  */
 export function buildDeliveryNoteQRUrl(noteId: string): string {
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/delivery-notes/${noteId}`;
+  return buildScanUrl(noteId);
 }

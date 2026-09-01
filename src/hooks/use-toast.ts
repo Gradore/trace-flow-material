@@ -12,6 +12,7 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement;
 };
 
+// Only used as a type source for ActionType below.
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
   UPDATE_TOAST: "UPDATE_TOAST",

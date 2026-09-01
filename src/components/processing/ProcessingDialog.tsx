@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { Combobox } from "@/components/ui/combobox";
 import { Settings, ArrowRight, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
@@ -188,13 +188,17 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
         throw new Error(`Verarbeitungsschritte konnten nicht erstellt werden: ${stepsError.message}`);
       }
 
-      // Update material input status
-      const { error: updateError } = await supabase
+      // Update material input status. An RLS-filtered update returns zero rows and no
+      // error, so the affected row is requested back instead of assuming success.
+      const { data: updatedInput, error: updateError } = await supabase
         .from('material_inputs')
         .update({ status: 'in_processing' })
-        .eq('id', formData.intake);
+        .eq('id', formData.intake)
+        .select('id');
 
-      if (updateError) {
+      const materialStatusUpdated = !updateError && !!updatedInput && updatedInput.length > 0;
+
+      if (!materialStatusUpdated) {
         console.error('Error updating material input status:', updateError);
         // Don't throw here - the processing steps were created successfully
         console.warn('Material input status could not be updated, but processing was created');
@@ -223,6 +227,15 @@ export function ProcessingDialog({ open, onOpenChange }: ProcessingDialogProps) 
         title: "Verarbeitung gestartet",
         description: `${processingId} wurde erfolgreich erstellt.`,
       });
+
+      if (!materialStatusUpdated) {
+        toast({
+          title: "Materialstatus nicht aktualisiert",
+          description:
+            'Der Materialeingang konnte nicht auf "In Verarbeitung" gesetzt werden. Keine Berechtigung oder Datensatz nicht gefunden.',
+          variant: "destructive",
+        });
+      }
 
       queryClient.invalidateQueries({ queryKey: ['processing-steps'] });
       queryClient.invalidateQueries({ queryKey: ['material-inputs'] });

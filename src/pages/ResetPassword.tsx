@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Recycle, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Recycle, Loader2, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 
@@ -30,40 +31,39 @@ export default function ResetPassword() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check if we have a valid recovery session
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      // Check if this is a recovery session (user came from email link)
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // Listen first: the recovery token in the URL hash is processed
+    // asynchronously by the SDK and arrives as an auth state change.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        setIsValidSession(true);
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setIsValidSession(true);
-      } else {
-        // Listen for auth state changes (recovery token processing)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-          if (event === 'PASSWORD_RECOVERY' && session) {
-            setIsValidSession(true);
-          } else if (event === 'SIGNED_IN' && session) {
-            setIsValidSession(true);
-          }
-        });
-
-        // Give it a moment to process the URL hash
-        setTimeout(() => {
-          if (isValidSession === null) {
-            setIsValidSession(false);
-          }
-        }, 2000);
-
-        return () => subscription.unsubscribe();
+        return;
       }
-    };
 
-    checkSession();
+      // Give it a moment to process the URL hash. The functional setter reads
+      // the current value instead of the one captured when the timer was set.
+      fallbackTimer = setTimeout(() => {
+        setIsValidSession((current) => (current === null ? false : current));
+      }, 2000);
+    });
+
+    return () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
+    setResetError(false);
 
     const validation = passwordSchema.safeParse({ password, confirmPassword });
     if (!validation.success) {
@@ -101,10 +101,16 @@ export default function ResetPassword() {
       description: "Ihr Passwort wurde erfolgreich geändert.",
     });
 
-    // Sign out and redirect to login after a short delay
+    // Sign out and redirect to login after a short delay. A failing signOut
+    // must not swallow the redirect, otherwise the success card is a dead end.
     setTimeout(async () => {
-      await supabase.auth.signOut();
-      navigate("/auth");
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutError) {
+        console.error("Sign out after password reset failed:", signOutError);
+      } finally {
+        navigate("/auth");
+      }
     }, 2000);
   };
 
@@ -184,7 +190,7 @@ export default function ResetPassword() {
             <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
               <Recycle className="h-6 w-6 text-primary" />
             </div>
-            <span className="text-2xl font-bold">RecyTrack</span>
+            <span className="text-2xl font-bold">RekuFLOW</span>
           </div>
           <CardTitle>Neues Passwort festlegen</CardTitle>
           <CardDescription>
@@ -192,6 +198,15 @@ export default function ResetPassword() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {resetError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                Das Passwort konnte nicht geändert werden. Bitte versuchen Sie es erneut oder
+                fordern Sie einen neuen Link zum Zurücksetzen an.
+              </AlertDescription>
+            </Alert>
+          )}
           <form onSubmit={handleResetPassword} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="password">Neues Passwort</Label>

@@ -28,16 +28,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { 
-  Plus, Archive, Search, Filter, Loader2, 
+  Plus, Archive, Search, Filter, Loader2, AlertCircle,
   Package, Calendar, MapPin, Beaker, Warehouse 
 } from "lucide-react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 interface RetentionSample {
   id: string;
@@ -70,11 +70,13 @@ interface RetentionSample {
 export default function RetentionSamples() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [purposeFilter, setPurposeFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const queryClient = useQueryClient();
 
   const [formData, setFormData] = useState({
     customerId: undefined as string | undefined,
-    customerName: "",
     batchId: undefined as string | undefined,
     materialType: "",
     storageLocationWarehouse: "",
@@ -82,7 +84,7 @@ export default function RetentionSamples() {
   });
 
   // Fetch retention samples
-  const { data: retentionSamples = [], isLoading } = useQuery({
+  const { data: retentionSamples = [], isLoading, isError, error: loadError, refetch } = useQuery({
     queryKey: ["retention-samples"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -90,7 +92,7 @@ export default function RetentionSamples() {
         .select(`
           *,
           material_inputs (input_id, material_type),
-          output_materials (output_id, batch_id, output_type),
+          output_materials!samples_output_material_id_fkey (output_id, batch_id, output_type),
           orders:customer_order_id (order_id, customer_name)
         `)
         .eq("is_retention_sample", true)
@@ -131,6 +133,13 @@ export default function RetentionSamples() {
     enabled: dialogOpen,
   });
 
+  // Removes an already created warehouse sample when the lab sample fails.
+  // Returns false when RLS filters the delete out (nothing was removed).
+  const rollbackWarehouseSample = async (id: string) => {
+    const { data } = await supabase.from("samples").delete().eq("id", id).select("id");
+    return !!data && data.length > 0;
+  };
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!formData.batchId || !formData.storageLocationWarehouse || !formData.storageLocationLab) {
@@ -140,42 +149,73 @@ export default function RetentionSamples() {
       const now = new Date().toISOString();
       const selectedOutput = outputMaterials.find(o => o.id === formData.batchId);
       const selectedOrder = orders.find(o => o.id === formData.customerId);
+      const batchLabel = selectedOutput?.batch_id || formData.batchId;
+      const customerLabel = selectedOrder?.customer_name || "-";
+      const materialLabel = formData.materialType.trim();
+      const materialSuffix = materialLabel ? `, Material: ${materialLabel}` : "";
 
-      // Generate two sample IDs
-      const { data: warehouseId } = await supabase.rpc("generate_unique_id", { prefix: "RST" });
-      const { data: labId } = await supabase.rpc("generate_unique_id", { prefix: "RST" });
+      // generate_unique_id derives the next number from the already stored rows,
+      // so the second ID must be requested only after the first row is committed.
+      const { data: warehouseId, error: warehouseIdError } = await supabase.rpc("generate_unique_id", { prefix: "RST" });
+      if (warehouseIdError || !warehouseId) {
+        throw new Error("Muster-ID konnte nicht generiert werden.");
+      }
 
       // Create warehouse retention sample
-      const { error: warehouseError } = await supabase.from("samples").insert({
-        sample_id: warehouseId,
-        sampled_at: now,
-        sampler_name: "System",
-        status: "approved",
-        is_retention_sample: true,
-        retention_purpose: "warehouse",
-        storage_location: formData.storageLocationWarehouse,
-        output_material_id: formData.batchId || null,
-        customer_order_id: formData.customerId || null,
-        notes: `Rückstellmuster für Lagerverbleib. Charge: ${selectedOutput?.batch_id || formData.batchId}, Kunde: ${selectedOrder?.customer_name || formData.customerName || '-'}`,
-      });
-      
+      const { data: warehouseRows, error: warehouseError } = await supabase
+        .from("samples")
+        .insert({
+          sample_id: warehouseId,
+          sampled_at: now,
+          sampler_name: "System",
+          status: "approved",
+          is_retention_sample: true,
+          retention_purpose: "warehouse",
+          storage_location: formData.storageLocationWarehouse,
+          output_material_id: formData.batchId || null,
+          customer_order_id: formData.customerId || null,
+          notes: `Rückstellmuster für Lagerverbleib. Charge: ${batchLabel}, Kunde: ${customerLabel}${materialSuffix}`,
+        })
+        .select("id");
+
       if (warehouseError) throw warehouseError;
+      if (!warehouseRows || warehouseRows.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
+
+      const { data: labId, error: labIdError } = await supabase.rpc("generate_unique_id", { prefix: "RST" });
+      if (labIdError || !labId) {
+        await rollbackWarehouseSample(warehouseRows[0].id);
+        throw new Error("Muster-ID für das Labormuster konnte nicht generiert werden.");
+      }
 
       // Create lab retention sample
-      const { error: labError } = await supabase.from("samples").insert({
-        sample_id: labId,
-        sampled_at: now,
-        sampler_name: "System",
-        status: "approved",
-        is_retention_sample: true,
-        retention_purpose: "lab_complaint",
-        storage_location: formData.storageLocationLab,
-        output_material_id: formData.batchId || null,
-        customer_order_id: formData.customerId || null,
-        notes: `Rückstellmuster für Laborprüfung bei Beanstandung. Charge: ${selectedOutput?.batch_id || formData.batchId}, Kunde: ${selectedOrder?.customer_name || formData.customerName || '-'}`,
-      });
-      
-      if (labError) throw labError;
+      const { data: labRows, error: labError } = await supabase
+        .from("samples")
+        .insert({
+          sample_id: labId,
+          sampled_at: now,
+          sampler_name: "System",
+          status: "approved",
+          is_retention_sample: true,
+          retention_purpose: "lab_complaint",
+          storage_location: formData.storageLocationLab,
+          output_material_id: formData.batchId || null,
+          customer_order_id: formData.customerId || null,
+          notes: `Rückstellmuster für Laborprüfung bei Beanstandung. Charge: ${batchLabel}, Kunde: ${customerLabel}${materialSuffix}`,
+        })
+        .select("id");
+
+      if (labError || !labRows || labRows.length === 0) {
+        // Never leave half a pair behind
+        const rolledBack = await rollbackWarehouseSample(warehouseRows[0].id);
+        const reason = labError?.message || "Keine Berechtigung oder Datensatz nicht gefunden.";
+        throw new Error(
+          rolledBack
+            ? `Labormuster konnte nicht angelegt werden: ${reason}`
+            : `Labormuster konnte nicht angelegt werden: ${reason} Das Lagermuster ${warehouseId} wurde bereits angelegt und muss manuell entfernt werden.`
+        );
+      }
 
       return { warehouseId, labId };
     },
@@ -185,7 +225,6 @@ export default function RetentionSamples() {
       setDialogOpen(false);
       setFormData({
         customerId: undefined,
-        customerName: "",
         batchId: undefined,
         materialType: "",
         storageLocationWarehouse: "",
@@ -197,17 +236,27 @@ export default function RetentionSamples() {
     },
   });
 
-  const filteredSamples = retentionSamples.filter(
-    (s) =>
-      s.sample_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.storage_location || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.orders?.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.output_materials?.batch_id || "").toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredSamples = retentionSamples.filter((s) => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch =
+      s.sample_id.toLowerCase().includes(term) ||
+      (s.storage_location || "").toLowerCase().includes(term) ||
+      (s.orders?.customer_name || "").toLowerCase().includes(term) ||
+      (s.output_materials?.batch_id || "").toLowerCase().includes(term);
+    const matchesPurpose = purposeFilter === "all" || s.retention_purpose === purposeFilter;
+    const sampledAt = new Date(s.sampled_at);
+    const matchesFrom = !dateFrom || sampledAt >= new Date(`${dateFrom}T00:00:00`);
+    const matchesTo = !dateTo || sampledAt <= new Date(`${dateTo}T23:59:59`);
+    return matchesSearch && matchesPurpose && matchesFrom && matchesTo;
+  });
 
-  // Group samples by output_material_id for paired display
-  const warehouseSamples = filteredSamples.filter(s => s.retention_purpose === "warehouse");
-  const labSamples = filteredSamples.filter(s => s.retention_purpose === "lab_complaint");
+  const activeFilterCount =
+    (purposeFilter !== "all" ? 1 : 0) + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0);
+
+  // KPI tiles describe the whole stock, so they must not follow search/filter
+  // (the "Gesamt" and "Chargen" tiles below count retentionSamples as well).
+  const warehouseSamples = retentionSamples.filter(s => s.retention_purpose === "warehouse");
+  const labSamples = retentionSamples.filter(s => s.retention_purpose === "lab_complaint");
 
   const getPurposeBadge = (purpose: string | null) => {
     if (purpose === "warehouse") {
@@ -266,7 +315,7 @@ export default function RetentionSamples() {
             <div className="flex items-center gap-3">
               <Archive className="h-8 w-8 text-primary" />
               <div>
-                <p className="text-2xl font-bold">{retentionSamples.length}</p>
+                <p className="text-2xl font-bold">{isError ? "–" : retentionSamples.length}</p>
                 <p className="text-sm text-muted-foreground">Gesamt</p>
               </div>
             </div>
@@ -277,7 +326,7 @@ export default function RetentionSamples() {
             <div className="flex items-center gap-3">
               <Warehouse className="h-8 w-8 text-primary" />
               <div>
-                <p className="text-2xl font-bold">{warehouseSamples.length}</p>
+                <p className="text-2xl font-bold">{isError ? "–" : warehouseSamples.length}</p>
                 <p className="text-sm text-muted-foreground">Lager</p>
               </div>
             </div>
@@ -288,7 +337,7 @@ export default function RetentionSamples() {
             <div className="flex items-center gap-3">
               <Beaker className="h-8 w-8 text-info" />
               <div>
-                <p className="text-2xl font-bold">{labSamples.length}</p>
+                <p className="text-2xl font-bold">{isError ? "–" : labSamples.length}</p>
                 <p className="text-sm text-muted-foreground">Labor</p>
               </div>
             </div>
@@ -299,7 +348,7 @@ export default function RetentionSamples() {
             <div className="flex items-center gap-3">
               <Package className="h-8 w-8 text-success" />
               <div>
-                <p className="text-2xl font-bold">{Math.floor(retentionSamples.length / 2)}</p>
+                <p className="text-2xl font-bold">{isError ? "–" : Math.floor(retentionSamples.length / 2)}</p>
                 <p className="text-sm text-muted-foreground">Chargen</p>
               </div>
             </div>
@@ -318,10 +367,67 @@ export default function RetentionSamples() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button variant="outline">
-          <Filter className="h-4 w-4" />
-          Filter
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline">
+              <Filter className="h-4 w-4" />
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 space-y-4 bg-popover">
+            <div className="space-y-2">
+              <Label>Zweck</Label>
+              <Select value={purposeFilter} onValueChange={setPurposeFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Alle Zwecke" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">Alle Zwecke</SelectItem>
+                  <SelectItem value="warehouse">Lager</SelectItem>
+                  <SelectItem value="lab_complaint">Labor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label htmlFor="dateFrom">Von</Label>
+                <Input
+                  id="dateFrom"
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dateTo">Bis</Label>
+                <Input
+                  id="dateTo"
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              disabled={activeFilterCount === 0}
+              onClick={() => {
+                setPurposeFilter("all");
+                setDateFrom("");
+                setDateTo("");
+              }}
+            >
+              Filter zurücksetzen
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Table */}
@@ -330,6 +436,17 @@ export default function RetentionSamples() {
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : isError ? (
+            <div className="text-center py-12">
+              <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+              <p className="text-lg font-medium text-foreground">Rückstellmuster konnten nicht geladen werden</p>
+              <p className="text-muted-foreground">
+                {(loadError as Error)?.message || "Bitte versuchen Sie es erneut."}
+              </p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
+                Erneut laden
+              </Button>
             </div>
           ) : filteredSamples.length === 0 ? (
             <div className="text-center py-12">

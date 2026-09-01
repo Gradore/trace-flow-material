@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
-import { QrCode, Camera, Package, FileText, History, Plus, AlertCircle, X, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { QrCode, Camera, Package, FileText, History, AlertCircle, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useQRScanner, parseRekuFLOWQRCode } from "@/hooks/useQRScanner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -14,14 +14,81 @@ interface ScannedData {
   data: Record<string, string>;
 }
 
+const typeLabels: Record<string, string> = {
+  containers: "Container",
+  intake: "Materialeingang",
+  processing: "Verarbeitung",
+  sampling: "Probe",
+  output: "Ausgangsmaterial",
+  delivery: "Lieferschein",
+};
+
+const processingStatusLabels: Record<string, string> = {
+  pending: "Wartend",
+  running: "Läuft",
+  paused: "Pausiert",
+  completed: "Abgeschlossen",
+  sample_required: "Probe erforderlich",
+};
+
+const containerTypeLabels: Record<string, string> = {
+  bigbag: "BigBag",
+  box: "Box",
+  cage: "Gitterbox",
+  container: "Container",
+};
+
+const outputTypeLabels: Record<string, string> = {
+  glass_fiber: "Recycelte Glasfasern",
+  resin_powder: "Harzpulver",
+  pp_regrind: "PP Regranulat",
+  pa_regrind: "PA Regranulat",
+};
+
+const stepTypeLabels: Record<string, string> = {
+  shredding: "Schreddern",
+  sorting: "Sortieren",
+  milling: "Mahlen",
+  separation: "Faser/Harz-Trennung",
+};
+
+const sampleStatusLabels: Record<string, string> = {
+  pending: "Ausstehend",
+  in_analysis: "In Analyse",
+  approved: "Freigegeben",
+  rejected: "Abgelehnt",
+};
+
+// Only list routes exist - there are no detail routes such as /containers/:id.
+// /containers, /intake and /delivery-notes accept ?id=<uuid|Kennung> and open
+// the matching record in its details dialog; the other lists ignore the param,
+// so it is not appended there.
+const routeMap: Record<string, { path: string; deepLink?: boolean }> = {
+  containers: { path: "/containers", deepLink: true },
+  intake: { path: "/intake", deepLink: true },
+  processing: { path: "/processing" },
+  sampling: { path: "/sampling" },
+  output: { path: "/output" },
+  delivery: { path: "/delivery-notes", deepLink: true },
+};
+
 export default function QRScanner() {
   const [manualCode, setManualCode] = useState("");
   const [scannedResult, setScannedResult] = useState<ScannedData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialCodeHandled = useRef(false);
+  const lastScannedCode = useRef<string | null>(null);
 
   const { isScanning, error, startScanning, stopScanning } = useQRScanner({
     onScanSuccess: (result) => {
+      // html5-qrcode reports every decoded frame (~10/s) - resolve a code once
+      // and switch the camera off instead of hammering the database.
+      if (lastScannedCode.current === result) return;
+      lastScannedCode.current = result;
+
+      void stopScanning();
       handleScanResult(result);
     },
   });
@@ -46,16 +113,18 @@ export default function QRScanner() {
 
       switch (parsed.type) {
         case 'containers': {
-          const { data: container } = await supabase
+          const { data: container, error: containerError } = await supabase
             .from('containers')
             .select('*')
             .eq('container_id', parsed.id)
             .maybeSingle();
 
+          if (containerError) throw containerError;
+
           if (container) {
             dbId = container.id;
             data = {
-              Typ: container.type,
+              Typ: containerTypeLabels[container.type] || container.type,
               Status: container.status === 'empty' ? 'Leer' : container.status === 'in_use' ? 'In Verwendung' : 'Voll',
               Standort: container.location || '-',
               Gewicht: container.weight_kg ? `${container.weight_kg} kg` : '-',
@@ -65,11 +134,13 @@ export default function QRScanner() {
           break;
         }
         case 'intake': {
-          const { data: intake } = await supabase
+          const { data: intake, error: intakeError } = await supabase
             .from('material_inputs')
             .select('*')
             .eq('input_id', parsed.id)
             .maybeSingle();
+
+          if (intakeError) throw intakeError;
 
           if (intake) {
             dbId = intake.id;
@@ -83,17 +154,65 @@ export default function QRScanner() {
           }
           break;
         }
+        case 'processing': {
+          const { data: step, error: stepError } = await supabase
+            .from('processing_steps')
+            .select('*')
+            .eq('processing_id', parsed.id)
+            .maybeSingle();
+
+          if (stepError) throw stepError;
+
+          if (step) {
+            dbId = step.id;
+            data = {
+              Schritt: stepTypeLabels[step.step_type] || step.step_type,
+              Status: processingStatusLabels[step.status] || step.status,
+              Fortschritt: `${step.progress ?? 0} %`,
+              Gestartet: step.started_at
+                ? new Date(step.started_at).toLocaleString('de-DE')
+                : '-',
+              Abgeschlossen: step.completed_at
+                ? new Date(step.completed_at).toLocaleString('de-DE')
+                : '-',
+            };
+          }
+          break;
+        }
+        case 'sampling': {
+          const { data: sample, error: sampleError } = await supabase
+            .from('samples')
+            .select('*')
+            .eq('sample_id', parsed.id)
+            .maybeSingle();
+
+          if (sampleError) throw sampleError;
+
+          if (sample) {
+            dbId = sample.id;
+            data = {
+              Art: sample.is_retention_sample ? 'Rückstellprobe' : 'Probe',
+              Status: sampleStatusLabels[sample.status] || sample.status,
+              Probenehmer: sample.sampler_name,
+              Entnommen: new Date(sample.sampled_at).toLocaleString('de-DE'),
+              Lagerort: sample.storage_location || '-',
+            };
+          }
+          break;
+        }
         case 'output': {
-          const { data: output } = await supabase
+          const { data: output, error: outputError } = await supabase
             .from('output_materials')
             .select('*')
             .eq('output_id', parsed.id)
             .maybeSingle();
 
+          if (outputError) throw outputError;
+
           if (output) {
             dbId = output.id;
             data = {
-              Typ: output.output_type,
+              Typ: outputTypeLabels[output.output_type] || output.output_type,
               Charge: output.batch_id,
               Gewicht: `${output.weight_kg} kg`,
               Qualität: output.quality_grade || '-',
@@ -103,11 +222,13 @@ export default function QRScanner() {
           break;
         }
         case 'delivery': {
-          const { data: note } = await supabase
+          const { data: note, error: noteError } = await supabase
             .from('delivery_notes')
             .select('*')
             .eq('note_id', parsed.id)
             .maybeSingle();
+
+          if (noteError) throw noteError;
 
           if (note) {
             dbId = note.id;
@@ -151,48 +272,58 @@ export default function QRScanner() {
   };
 
   const handleManualSearch = () => {
-    if (!manualCode.trim()) return;
-    
-    // Try to determine type from ID prefix
-    let fullUrl = manualCode;
-    if (manualCode.startsWith('BB-') || manualCode.startsWith('IBC-') || manualCode.startsWith('SB-')) {
-      fullUrl = `containers/${manualCode}`;
-    } else if (manualCode.startsWith('ME-')) {
-      fullUrl = `intake/${manualCode}`;
-    } else if (manualCode.startsWith('OUT-')) {
-      fullUrl = `output/${manualCode}`;
-    } else if (manualCode.startsWith('LS-')) {
-      fullUrl = `delivery/${manualCode}`;
-    }
-    
-    handleScanResult(fullUrl);
+    const code = manualCode.trim();
+    if (!code) return;
+
+    // parseRekuFLOWQRCode derives the record type from the ID prefix
+    handleScanResult(code);
   };
 
   const handleStartCamera = async () => {
     if (isScanning) {
       await stopScanning();
     } else {
+      // Allow re-scanning the same label in a new session
+      lastScannedCode.current = null;
       await startScanning("qr-reader");
     }
   };
 
   const handleNavigateToDetails = () => {
     if (!scannedResult) return;
-    
-    const routeMap: Record<string, string> = {
-      containers: '/containers',
-      intake: '/material-intake',
-      output: '/output-materials',
-      delivery: '/delivery-notes',
-    };
 
-    navigate(routeMap[scannedResult.type] || '/');
+    const target = routeMap[scannedResult.type];
+    if (!target) {
+      navigate('/');
+      return;
+    }
+
+    const recordId = scannedResult.dbId ?? scannedResult.id;
+    navigate(
+      target.deepLink ? `${target.path}?id=${encodeURIComponent(recordId)}` : target.path
+    );
+  };
+
+  const handleNavigateToList = () => {
+    if (!scannedResult) return;
+
+    navigate(routeMap[scannedResult.type]?.path || '/');
   };
 
   const handleNavigateToTraceability = () => {
     if (!scannedResult) return;
-    navigate(`/traceability?search=${scannedResult.id}`);
+    navigate(`/traceability?search=${encodeURIComponent(scannedResult.id)}`);
   };
+
+  // Resolve a code passed by a printed QR code (/scan?code=...)
+  useEffect(() => {
+    const code = searchParams.get('code');
+    if (!code || initialCodeHandled.current) return;
+
+    initialCodeHandled.current = true;
+    setManualCode(code);
+    handleScanResult(code);
+  }, [searchParams]);
 
   useEffect(() => {
     return () => {
@@ -214,16 +345,17 @@ export default function QRScanner() {
           <h2 className="text-lg font-semibold text-foreground mb-4">QR-Code scannen</h2>
           
           <div className="relative aspect-square max-w-md mx-auto rounded-xl bg-secondary/30 border-2 border-dashed border-border overflow-hidden">
-            <div id="qr-reader" className="w-full h-full">
-              {!isScanning && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <QrCode className="h-24 w-24 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground mt-4">
-                    Kamera starten um QR-Code zu scannen
-                  </p>
-                </div>
-              )}
-            </div>
+            {/* html5-qrcode wipes this element's content - keep it free of React children */}
+            <div id="qr-reader" className="w-full h-full" />
+
+            {!isScanning && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <QrCode className="h-24 w-24 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground mt-4">
+                  Kamera starten um QR-Code zu scannen
+                </p>
+              </div>
+            )}
 
             {isScanning && (
               <>
@@ -292,11 +424,8 @@ export default function QRScanner() {
                 <Package className="h-8 w-8 text-primary" />
                 <div>
                   <p className="font-mono font-bold text-lg">{scannedResult.id}</p>
-                  <p className="text-sm text-muted-foreground capitalize">
-                    {scannedResult.type === 'containers' ? 'Container' : 
-                     scannedResult.type === 'intake' ? 'Materialeingang' :
-                     scannedResult.type === 'output' ? 'Ausgangsmaterial' :
-                     scannedResult.type === 'delivery' ? 'Lieferschein' : scannedResult.type}
+                  <p className="text-sm text-muted-foreground">
+                    {typeLabels[scannedResult.type] || scannedResult.type}
                   </p>
                 </div>
               </div>
@@ -321,7 +450,7 @@ export default function QRScanner() {
                 </Button>
               </div>
 
-              <Button className="w-full mt-2" onClick={handleNavigateToDetails}>
+              <Button className="w-full mt-2" onClick={handleNavigateToList}>
                 Zur Übersicht
               </Button>
             </div>
@@ -343,15 +472,23 @@ export default function QRScanner() {
         <h3 className="text-lg font-semibold text-foreground mb-4">Unterstützte Codes</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="p-3 rounded-lg bg-secondary/30">
-            <p className="font-mono text-sm font-medium">BB-XXXX-XXXX</p>
-            <p className="text-xs text-muted-foreground mt-1">BigBag Container</p>
+            <p className="font-mono text-sm font-medium">BB/BX/GX/CT-XXXX-XXXX</p>
+            <p className="text-xs text-muted-foreground mt-1">Container</p>
           </div>
           <div className="p-3 rounded-lg bg-secondary/30">
             <p className="font-mono text-sm font-medium">ME-XXXX-XXXX</p>
             <p className="text-xs text-muted-foreground mt-1">Materialeingang</p>
           </div>
           <div className="p-3 rounded-lg bg-secondary/30">
-            <p className="font-mono text-sm font-medium">OUT-XXXX-XXXX</p>
+            <p className="font-mono text-sm font-medium">VRB-XXXX-XXXX</p>
+            <p className="text-xs text-muted-foreground mt-1">Verarbeitung</p>
+          </div>
+          <div className="p-3 rounded-lg bg-secondary/30">
+            <p className="font-mono text-sm font-medium">PRB/RST-XXXX-XXXX</p>
+            <p className="text-xs text-muted-foreground mt-1">Probe / Rückstellprobe</p>
+          </div>
+          <div className="p-3 rounded-lg bg-secondary/30">
+            <p className="font-mono text-sm font-medium">OUT/AUS-XXXX-XXXX</p>
             <p className="text-xs text-muted-foreground mt-1">Ausgangsmaterial</p>
           </div>
           <div className="p-3 rounded-lg bg-secondary/30">

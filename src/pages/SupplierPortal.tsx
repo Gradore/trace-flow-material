@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Package, Truck, Plus, Calendar, Clock } from "lucide-react";
+import { Package, Truck, Calendar, Clock, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { AnnouncementDialog } from "@/components/portal/AnnouncementDialog";
@@ -24,17 +23,21 @@ export default function SupplierPortal() {
   const { user } = useAuth();
   const [announcementDialogOpen, setAnnouncementDialogOpen] = useState(false);
   const [pickupDialogOpen, setPickupDialogOpen] = useState(false);
-  const queryClient = useQueryClient();
 
   // Get supplier's company
-  const { data: myContact } = useQuery({
+  const {
+    data: myContact,
+    isLoading: contactLoading,
+    isError: contactError,
+  } = useQuery({
     queryKey: ["my-contact", user?.id],
     queryFn: async () => {
+      // maybeSingle: a missing contact row is a valid "not linked yet" state, not an error
       const { data, error } = await supabase
         .from("contacts")
         .select("*, company:companies(*)")
         .eq("user_id", user?.id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -42,7 +45,11 @@ export default function SupplierPortal() {
   });
 
   // Get announcements
-  const { data: announcements, isLoading: announcementsLoading } = useQuery({
+  const {
+    data: announcements,
+    isLoading: announcementsLoading,
+    isError: announcementsError,
+  } = useQuery({
     queryKey: ["my-announcements", myContact?.company_id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -57,12 +64,16 @@ export default function SupplierPortal() {
   });
 
   // Get pickup requests
-  const { data: pickupRequests, isLoading: pickupsLoading } = useQuery({
+  const {
+    data: pickupRequests,
+    isLoading: pickupsLoading,
+    isError: pickupsError,
+  } = useQuery({
     queryKey: ["my-pickup-requests", myContact?.company_id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("pickup_requests")
-        .select("*, container:containers(*)")
+        .select("*")
         .eq("company_id", myContact?.company_id)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -100,6 +111,30 @@ export default function SupplierPortal() {
     };
     return labels[slot] || slot;
   };
+
+  // Only decide about access once the contact query has settled
+  if (contactLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (contactError) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle>Daten konnten nicht geladen werden</CardTitle>
+            <CardDescription>
+              Ihre Firmenzuordnung konnte nicht abgerufen werden. Bitte laden Sie die Seite neu.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
   if (!myContact) {
     return (
@@ -168,6 +203,10 @@ export default function SupplierPortal() {
             <CardContent>
               {announcementsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Lädt...</div>
+              ) : announcementsError ? (
+                <div className="text-center py-8 text-destructive">
+                  Anmeldungen konnten nicht geladen werden.
+                </div>
               ) : announcements?.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Keine Anmeldungen vorhanden
@@ -251,6 +290,10 @@ export default function SupplierPortal() {
             <CardContent>
               {pickupsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Lädt...</div>
+              ) : pickupsError ? (
+                <div className="text-center py-8 text-destructive">
+                  Abholungsanfragen konnten nicht geladen werden.
+                </div>
               ) : pickupRequests?.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Keine Abholungsanfragen vorhanden
@@ -262,7 +305,7 @@ export default function SupplierPortal() {
                       <TableRow>
                         <TableHead>ID</TableHead>
                         <TableHead>Material</TableHead>
-                        <TableHead>Container</TableHead>
+                        <TableHead>Gewicht</TableHead>
                         <TableHead>Wunschtermin</TableHead>
                         <TableHead>Bestätigt</TableHead>
                         <TableHead>Status</TableHead>
@@ -273,7 +316,9 @@ export default function SupplierPortal() {
                         <TableRow key={p.id}>
                           <TableCell className="font-mono text-sm">{p.request_id}</TableCell>
                           <TableCell>{p.material_description}</TableCell>
-                          <TableCell>{p.container?.container_id || "-"}</TableCell>
+                          <TableCell>
+                            {p.weight_kg ? `${Number(p.weight_kg).toLocaleString("de-DE")} kg` : "-"}
+                          </TableCell>
                           <TableCell>
                             {p.preferred_date && (
                               <div className="flex items-center gap-1">

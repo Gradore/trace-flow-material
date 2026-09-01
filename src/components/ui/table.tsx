@@ -4,7 +4,9 @@ import { cn } from "@/lib/utils";
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
+    // min-w-0 lets the scroll container actually shrink: a flex/grid child
+    // defaults to min-width:auto and would otherwise size to the widest row.
+    <div className="relative w-full min-w-0 overflow-auto">
       <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
     </div>
   ),

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { User, Mail, Lock, Save, Loader2, Download, FileJson } from "lucide-react";
+import { User, Mail, Lock, Save, Loader2, Download, FileJson, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -18,12 +19,11 @@ export default function Profile() {
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [name, setName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isExporting, setIsExporting] = useState(false);
 
-  const { data: profile, refetch } = useQuery({
+  const { data: profile, refetch, isError, error: profileError } = useQuery({
     queryKey: ["profile", user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -54,12 +54,23 @@ export default function Profile() {
     
     setIsUpdatingProfile(true);
     try {
-      const { error } = await supabase
+      // Without .select() an update filtered out by RLS returns zero rows and
+      // no error, which would be reported to the user as success.
+      const { data, error } = await supabase
         .from("profiles")
         .update({ name: name.trim() })
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .select();
       
       if (error) throw error;
+      if (!data || data.length === 0) {
+        toast({
+          title: "Profil nicht gespeichert",
+          description: "Keine Berechtigung oder Datensatz nicht gefunden.",
+          variant: "destructive",
+        });
+        return;
+      }
       
       toast({ title: "Profil aktualisiert" });
       refetch();
@@ -84,10 +95,22 @@ export default function Profile() {
       
       // Also update the profile table
       if (user) {
-        await supabase
+        const { data: updated, error: profileUpdateError } = await supabase
           .from("profiles")
           .update({ email: newEmail.trim() })
-          .eq("user_id", user.id);
+          .eq("user_id", user.id)
+          .select();
+
+        if (profileUpdateError || !updated || updated.length === 0) {
+          console.error("Profile e-mail update failed:", profileUpdateError);
+          toast({
+            title: "Profil nicht aktualisiert",
+            description: "Die Bestätigungs-E-Mail wurde versendet, im Profil konnte die Adresse aber nicht gespeichert werden.",
+            variant: "destructive",
+          });
+          setNewEmail("");
+          return;
+        }
       }
       
       toast({ 
@@ -120,7 +143,6 @@ export default function Profile() {
       if (error) throw error;
       
       toast({ title: "Passwort geändert" });
-      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (error: any) {
@@ -143,7 +165,10 @@ export default function Profile() {
       });
 
       if (error) throw error;
-      if (!data.success) throw new Error(data.error);
+      // An empty/failed body must not blow up with "cannot read success of null".
+      if (!data?.success) {
+        throw new Error(data?.error || "Der Export konnte nicht erstellt werden.");
+      }
 
       // Download the JSON file
       const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
@@ -169,6 +194,16 @@ export default function Profile() {
         <p className="text-muted-foreground mt-1">Persönliche Einstellungen verwalten</p>
       </div>
 
+      {isError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Profil konnte nicht geladen werden</AlertTitle>
+          <AlertDescription>
+            {profileError instanceof Error ? profileError.message : "Unbekannter Fehler."}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -185,7 +220,9 @@ export default function Profile() {
               </AvatarFallback>
             </Avatar>
             <div>
-              <p className="font-medium text-foreground">{profile?.name || "Laden..."}</p>
+              <p className="font-medium text-foreground">
+                {profile?.name || (isError ? "Nicht verfügbar" : "Laden...")}
+              </p>
               <p className="text-sm text-muted-foreground">{profile?.email}</p>
             </div>
           </div>

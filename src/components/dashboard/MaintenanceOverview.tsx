@@ -4,10 +4,12 @@ import { Loader2, Wrench, AlertTriangle, CheckCircle2, Clock, Calendar } from "l
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { format, isPast, isToday, addDays } from "date-fns";
+import { format, isPast, addDays } from "date-fns";
 import { de } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
+import { useUserRole } from "@/hooks/useUserRole";
+import { hasAccess } from "@/components/layout/navigation";
 
 interface Equipment {
   id: string;
@@ -31,8 +33,15 @@ interface MaintenanceRecord {
 }
 
 export function MaintenanceOverview() {
-  const { data: equipment = [], isLoading: loadingEquipment } = useQuery({
-    queryKey: ["equipment-list"],
+  const { role, isAdmin } = useUserRole();
+  // Derived from the nav definition, so the link can never offer a page the
+  // route guard would reject.
+  const canOpenMaintenancePage = hasAccess("/maintenance", role, isAdmin);
+
+  const { data: equipment = [], isLoading: loadingEquipment, isError: equipmentError } = useQuery({
+    // Same key as the Maintenance page, so the equipment dialogs'
+    // invalidateQueries({ queryKey: ["equipment"] }) also refreshes this widget.
+    queryKey: ["equipment"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("equipment")
@@ -44,7 +53,7 @@ export function MaintenanceOverview() {
     },
   });
 
-  const { data: maintenanceRecords = [], isLoading: loadingMaintenance } = useQuery({
+  const { data: maintenanceRecords = [], isLoading: loadingMaintenance, isError: maintenanceError } = useQuery({
     queryKey: ["maintenance-overview"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -59,13 +68,15 @@ export function MaintenanceOverview() {
   });
 
   const isLoading = loadingEquipment || loadingMaintenance;
+  const isError = equipmentError || maintenanceError;
 
   // Identify overdue or upcoming maintenance
   const now = new Date();
   const upcomingMaintenance = maintenanceRecords.filter(m => {
     if (!m.next_due_date) return false;
     const dueDate = new Date(m.next_due_date);
-    return dueDate <= addDays(now, 7); // Due within 7 days
+    // Due within the next 7 days - already overdue records are counted separately
+    return dueDate > now && dueDate <= addDays(now, 7);
   });
 
   const overdueMaintenance = maintenanceRecords.filter(m => {
@@ -86,17 +97,24 @@ export function MaintenanceOverview() {
             <Wrench className="h-5 w-5 text-primary" />
             Wartungsübersicht
           </CardTitle>
-          <Link to="/maintenance">
-            <Button variant="ghost" size="sm" className="text-xs">
-              Alle anzeigen
-            </Button>
-          </Link>
+          {canOpenMaintenancePage && (
+            <Link to="/maintenance">
+              <Button variant="ghost" size="sm" className="text-xs">
+                Alle anzeigen
+              </Button>
+            </Link>
+          )}
         </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : isError ? (
+          <div className="text-center py-8">
+            <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" />
+            <p className="text-sm text-destructive">Wartungsdaten konnten nicht geladen werden.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -203,10 +221,7 @@ export function MaintenanceOverview() {
                         <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <span className="truncate">{m.title}</span>
                       </div>
-                      <Badge 
-                        variant={isPast(new Date(m.next_due_date!)) ? "destructive" : "secondary"}
-                        className="shrink-0 text-xs"
-                      >
+                      <Badge variant="secondary" className="shrink-0 text-xs">
                         {format(new Date(m.next_due_date!), "dd.MM.", { locale: de })}
                       </Badge>
                     </div>

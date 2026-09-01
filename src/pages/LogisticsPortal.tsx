@@ -20,16 +20,132 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Package, Truck, MapPin, Calendar, Check, X } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
+import { Package, Truck, MapPin, Calendar as CalendarIcon, Check, X } from "lucide-react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { toast } from "sonner";
+
+const TIME_SLOTS = [
+  { value: "morning", label: "Vormittag (8-12 Uhr)" },
+  { value: "afternoon", label: "Nachmittag (12-17 Uhr)" },
+  { value: "flexible", label: "Flexibel" },
+];
+
+// Same vocabulary as the containers CHECK constraint / src/pages/Containers.tsx
+const CONTAINER_STATUS_LABELS: Record<string, string> = {
+  empty: "Leer",
+  filling: "Befüllung",
+  full: "Voll",
+  in_processing: "In Verarbeitung",
+  processed: "Verarbeitet",
+};
+
+const CONTAINER_TYPE_LABELS: Record<string, string> = {
+  bigbag: "BigBag",
+  box: "Box",
+  cage: "Gitterbox",
+  container: "Container",
+};
+
+const RLS_BLOCKED_MESSAGE = "Keine Berechtigung oder Datensatz nicht gefunden.";
+
+type CompanyAddress = {
+  address?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+} | null;
+
+const formatCompanyAddress = (company: CompanyAddress) => {
+  if (!company) return "";
+  const city = [company.postal_code, company.city].filter(Boolean).join(" ");
+  return [company.address, city].filter(Boolean).join(", ");
+};
+
+/**
+ * Confirmation control: logistics confirms a request and fixes the appointment
+ * in the same step, so the supplier portal can show the agreed date.
+ */
+function ConfirmAppointmentPopover({
+  preferredDate,
+  preferredTimeSlot,
+  withTimeSlot,
+  disabled,
+  onConfirm,
+}: {
+  preferredDate: string | null;
+  preferredTimeSlot?: string | null;
+  withTimeSlot: boolean;
+  disabled: boolean;
+  onConfirm: (values: { confirmedDate: string; confirmedTimeSlot: string | null }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState<Date | undefined>(
+    preferredDate ? new Date(preferredDate) : new Date()
+  );
+  const [timeSlot, setTimeSlot] = useState(preferredTimeSlot || "flexible");
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button size="sm" variant="outline">
+          <Check className="h-4 w-4 mr-1" />
+          Bestätigen
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-3 space-y-3" align="end">
+        <div className="space-y-2">
+          <Label className="text-sm">Bestätigter Termin</Label>
+          <Calendar mode="single" selected={date} onSelect={setDate} locale={de} />
+        </div>
+        {withTimeSlot && (
+          <div className="space-y-2">
+            <Label className="text-sm">Zeitfenster</Label>
+            <Select value={timeSlot} onValueChange={setTimeSlot}>
+              <SelectTrigger>
+                <SelectValue placeholder="Auswählen..." />
+              </SelectTrigger>
+              <SelectContent>
+                {TIME_SLOTS.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <Button
+          size="sm"
+          className="w-full"
+          disabled={!date || disabled}
+          onClick={() => {
+            if (!date) return;
+            onConfirm({
+              confirmedDate: format(date, "yyyy-MM-dd"),
+              confirmedTimeSlot: withTimeSlot ? timeSlot : null,
+            });
+            setOpen(false);
+          }}
+        >
+          Termin bestätigen
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function LogisticsPortal() {
   const queryClient = useQueryClient();
 
   // Get pending announcements with contract info
-  const { data: announcements, isLoading: announcementsLoading } = useQuery({
+  const {
+    data: announcements,
+    isLoading: announcementsLoading,
+    isError: announcementsError,
+  } = useQuery({
     queryKey: ["logistics-announcements"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -43,7 +159,11 @@ export default function LogisticsPortal() {
   });
 
   // Get pending pickup requests with payment info
-  const { data: pickups, isLoading: pickupsLoading } = useQuery({
+  const {
+    data: pickups,
+    isLoading: pickupsLoading,
+    isError: pickupsError,
+  } = useQuery({
     queryKey: ["logistics-pickups"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -85,7 +205,11 @@ export default function LogisticsPortal() {
   };
 
   // Get containers with materials
-  const { data: containers, isLoading: containersLoading } = useQuery({
+  const {
+    data: containers,
+    isLoading: containersLoading,
+    isError: containersError,
+  } = useQuery({
     queryKey: ["logistics-containers"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -99,12 +223,33 @@ export default function LogisticsPortal() {
   });
 
   const updateAnnouncementMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase
+    mutationFn: async ({
+      id,
+      status,
+      confirmedDate,
+      confirmedTimeSlot,
+    }: {
+      id: string;
+      status: string;
+      confirmedDate?: string | null;
+      confirmedTimeSlot?: string | null;
+    }) => {
+      const payload: {
+        status: string;
+        confirmed_date?: string | null;
+        confirmed_time_slot?: string | null;
+      } = { status };
+      if (confirmedDate !== undefined) payload.confirmed_date = confirmedDate;
+      if (confirmedTimeSlot !== undefined) payload.confirmed_time_slot = confirmedTimeSlot;
+
+      // .select() so an update filtered out by RLS (zero rows, no error) is not reported as success
+      const { data, error } = await supabase
         .from("material_announcements")
-        .update({ status })
-        .eq("id", id);
+        .update(payload)
+        .eq("id", id)
+        .select("id");
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error(RLS_BLOCKED_MESSAGE);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["logistics-announcements"] });
@@ -116,12 +261,26 @@ export default function LogisticsPortal() {
   });
 
   const updatePickupMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase
+    mutationFn: async ({
+      id,
+      status,
+      confirmedDate,
+    }: {
+      id: string;
+      status: string;
+      confirmedDate?: string | null;
+    }) => {
+      const payload: { status: string; confirmed_date?: string | null } = { status };
+      if (confirmedDate !== undefined) payload.confirmed_date = confirmedDate;
+
+      // .select() so an update filtered out by RLS (zero rows, no error) is not reported as success
+      const { data, error } = await supabase
         .from("pickup_requests")
-        .update({ status })
-        .eq("id", id);
+        .update(payload)
+        .eq("id", id)
+        .select("id");
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error(RLS_BLOCKED_MESSAGE);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["logistics-pickups"] });
@@ -205,7 +364,7 @@ export default function LogisticsPortal() {
       </div>
 
       <Tabs defaultValue="announcements">
-        <TabsList>
+        <TabsList className="max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="announcements">Materialanmeldungen</TabsTrigger>
           <TabsTrigger value="pickups">Abholungsanfragen</TabsTrigger>
           <TabsTrigger value="containers">Container-Übersicht</TabsTrigger>
@@ -222,6 +381,10 @@ export default function LogisticsPortal() {
             <CardContent>
               {announcementsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Lädt...</div>
+              ) : announcementsError ? (
+                <div className="text-center py-8 text-destructive">
+                  Anmeldungen konnten nicht geladen werden.
+                </div>
               ) : announcements?.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Keine offenen Anmeldungen
@@ -254,11 +417,25 @@ export default function LogisticsPortal() {
                             {a.container_count}x {a.container_type} ({a.estimated_weight_kg} kg)
                           </TableCell>
                           <TableCell>
+                            {getFreightPayerLabel(
+                              getContractForCompany(a.company_id)?.freight_payer ??
+                                a.freight_payer ??
+                                null
+                            )}
+                          </TableCell>
+                          <TableCell>
                             {a.preferred_date && (
                               <div className="flex items-center gap-1">
-                                <Calendar className="h-3 w-3" />
+                                <CalendarIcon className="h-3 w-3" />
                                 {format(new Date(a.preferred_date), "dd.MM.yyyy", { locale: de })}
                                 {a.preferred_time_slot && ` (${getTimeSlotLabel(a.preferred_time_slot)})`}
+                              </div>
+                            )}
+                            {a.confirmed_date && (
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                <Check className="h-3 w-3" />
+                                {format(new Date(a.confirmed_date), "dd.MM.yyyy", { locale: de })}
+                                {a.confirmed_time_slot && ` (${getTimeSlotLabel(a.confirmed_time_slot)})`}
                               </div>
                             )}
                           </TableCell>
@@ -266,16 +443,20 @@ export default function LogisticsPortal() {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               {a.status === "pending" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    updateAnnouncementMutation.mutate({ id: a.id, status: "confirmed" })
+                                <ConfirmAppointmentPopover
+                                  preferredDate={a.preferred_date}
+                                  preferredTimeSlot={a.preferred_time_slot}
+                                  withTimeSlot
+                                  disabled={updateAnnouncementMutation.isPending}
+                                  onConfirm={({ confirmedDate, confirmedTimeSlot }) =>
+                                    updateAnnouncementMutation.mutate({
+                                      id: a.id,
+                                      status: "confirmed",
+                                      confirmedDate,
+                                      confirmedTimeSlot,
+                                    })
                                   }
-                                >
-                                  <Check className="h-4 w-4 mr-1" />
-                                  Bestätigen
-                                </Button>
+                                />
                               )}
                               {a.status === "confirmed" && (
                                 <Button
@@ -320,6 +501,10 @@ export default function LogisticsPortal() {
             <CardContent>
               {pickupsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Lädt...</div>
+              ) : pickupsError ? (
+                <div className="text-center py-8 text-destructive">
+                  Abholungsanfragen konnten nicht geladen werden.
+                </div>
               ) : pickups?.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Keine offenen Abholungsanfragen
@@ -348,15 +533,19 @@ export default function LogisticsPortal() {
                             {p.weight_kg && ` (${p.weight_kg} kg)`}
                           </TableCell>
                           <TableCell>
-                            {p.pickup_address || (
-                              p.company && `${p.company.address}, ${p.company.postal_code} ${p.company.city}`
-                            ) || "-"}
+                            {p.pickup_address || formatCompanyAddress(p.company) || "-"}
                           </TableCell>
                           <TableCell>
                             {p.preferred_date && (
                               <div className="flex items-center gap-1">
-                                <Calendar className="h-3 w-3" />
+                                <CalendarIcon className="h-3 w-3" />
                                 {format(new Date(p.preferred_date), "dd.MM.yyyy", { locale: de })}
+                              </div>
+                            )}
+                            {p.confirmed_date && (
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                <Check className="h-3 w-3" />
+                                {format(new Date(p.confirmed_date), "dd.MM.yyyy", { locale: de })}
                               </div>
                             )}
                           </TableCell>
@@ -364,16 +553,18 @@ export default function LogisticsPortal() {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               {p.status === "pending" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    updatePickupMutation.mutate({ id: p.id, status: "confirmed" })
+                                <ConfirmAppointmentPopover
+                                  preferredDate={p.preferred_date}
+                                  withTimeSlot={false}
+                                  disabled={updatePickupMutation.isPending}
+                                  onConfirm={({ confirmedDate }) =>
+                                    updatePickupMutation.mutate({
+                                      id: p.id,
+                                      status: "confirmed",
+                                      confirmedDate,
+                                    })
                                   }
-                                >
-                                  <Check className="h-4 w-4 mr-1" />
-                                  Bestätigen
-                                </Button>
+                                />
                               )}
                               {p.status === "confirmed" && (
                                 <Button
@@ -418,6 +609,10 @@ export default function LogisticsPortal() {
             <CardContent>
               {containersLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Lädt...</div>
+              ) : containersError ? (
+                <div className="text-center py-8 text-destructive">
+                  Container konnten nicht geladen werden.
+                </div>
               ) : containers?.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Keine aktiven Container
@@ -439,7 +634,7 @@ export default function LogisticsPortal() {
                       {containers?.map((c) => (
                         <TableRow key={c.id}>
                           <TableCell className="font-mono text-sm">{c.container_id}</TableCell>
-                          <TableCell>{c.type}</TableCell>
+                          <TableCell>{CONTAINER_TYPE_LABELS[c.type] || c.type}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <MapPin className="h-3 w-3" />
@@ -457,10 +652,14 @@ export default function LogisticsPortal() {
                           <TableCell>
                             <Badge
                               variant={
-                                c.status === "full" ? "default" : c.status === "partial" ? "secondary" : "outline"
+                                c.status === "full"
+                                  ? "default"
+                                  : c.status === "filling"
+                                    ? "secondary"
+                                    : "outline"
                               }
                             >
-                              {c.status === "full" ? "Voll" : c.status === "partial" ? "Teilweise" : c.status}
+                              {CONTAINER_STATUS_LABELS[c.status] || c.status}
                             </Badge>
                           </TableCell>
                         </TableRow>

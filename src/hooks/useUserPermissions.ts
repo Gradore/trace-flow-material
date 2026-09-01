@@ -55,12 +55,18 @@ export function useUserPermissions() {
   const { user } = useAuth();
   const { role, isLoading: isRoleLoading } = useUserRole();
   const [permissions, setPermissions] = useState<UserPermissions>(defaultPermissions);
+  const [hasCustomPermissions, setHasCustomPermissions] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Guards against a slow response of a previous user/role overwriting the
+    // permissions of the current one - they now gate page access.
+    let cancelled = false;
+
     async function fetchPermissions() {
       if (!user) {
         setPermissions(defaultPermissions);
+        setHasCustomPermissions(false);
         setIsLoading(false);
         return;
       }
@@ -73,12 +79,15 @@ export function useUserPermissions() {
           .eq("user_id", user.id)
           .single();
 
+        if (cancelled) return;
+
         if (customError && customError.code !== "PGRST116") {
           console.error("Error fetching permissions:", customError);
         }
 
         if (customPerms) {
-          // Use custom permissions
+          // Use custom permissions - an admin has explicitly configured this user
+          setHasCustomPermissions(true);
           setPermissions({
             can_view_dashboard: customPerms.can_view_dashboard ?? true,
             can_view_reporting: customPerms.can_view_reporting ?? false,
@@ -104,8 +113,11 @@ export function useUserPermissions() {
           });
         } else if (role) {
           // Fall back to role-based defaults
+          setHasCustomPermissions(false);
           const { data: rolePerms } = await supabase
             .rpc("get_default_permissions_for_role", { role_name: role });
+
+          if (cancelled) return;
 
           if (rolePerms && typeof rolePerms === 'object' && !Array.isArray(rolePerms)) {
             setPermissions(rolePerms as unknown as UserPermissions);
@@ -114,18 +126,24 @@ export function useUserPermissions() {
       } catch (err) {
         console.error("Error fetching permissions:", err);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
 
     if (!isRoleLoading) {
       fetchPermissions();
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, role, isRoleLoading]);
 
   return {
     permissions,
     isLoading: isLoading || isRoleLoading,
+    // True when an admin has stored an individual permission row for this user
+    hasCustomPermissions,
     canView: (module: keyof UserPermissions) => permissions[module],
   };
 }

@@ -69,49 +69,63 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const readFileAsText = async (file: File): Promise<string> => {
-    // For PDFs and images, we'll need to extract text
-    // For now, return the file name as placeholder
-    // In production, you'd use a proper PDF parser or send the base64 to the AI
+  // The OCR function is text-in / JSON-out; the browser can only supply real
+  // text for plain-text formats. PDFs and images would need a PDF parser or a
+  // vision model, so they are never sent - an AI call on a placeholder string
+  // only produces hallucinated fields and costs a request.
+  const isTextExtractable = (file: File) =>
+    file.type.startsWith("text/") || /\.(txt|csv|json|md)$/i.test(file.name);
+
+  const readFileAsText = async (file: File): Promise<string | null> => {
+    if (!isTextExtractable(file)) return null;
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        // For images, convert to base64 for AI vision
-        if (file.type.startsWith("image/")) {
-          resolve(`[Bild: ${file.name}]\nBase64: ${result.split(",")[1]?.substring(0, 500)}...`);
-        } else if (file.type === "application/pdf") {
-          // For PDFs, we'll send a placeholder - in production use pdf.js
-          resolve(`[PDF Dokument: ${file.name}]`);
-        } else {
-          resolve(result);
-        }
+        resolve(result && result.trim() ? result : null);
       };
-      reader.onerror = () => resolve("");
-      if (file.type.startsWith("image/")) {
-        reader.readAsDataURL(file);
-      } else {
-        reader.readAsText(file);
-      }
+      reader.onerror = () => resolve(null);
+      reader.readAsText(file);
     });
   };
 
   const processFiles = async () => {
     setIsProcessing(true);
-    
+    let successCount = 0;
+
+    // documents.uploaded_by references profiles(id) - a surrogate key that is
+    // never equal to auth.uid(). Resolve the caller's profile row first.
+    let profileId: string | null = null;
+    if (user?.id) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (profileError) {
+        console.error("Profile lookup error:", profileError);
+      }
+      profileId = profile?.id ?? null;
+    }
+
     for (let i = 0; i < files.length; i++) {
       setCurrentFileIndex(i);
       const fileStatus = files[i];
-      
+
       // Update status to uploading
-      setFiles(prev => prev.map((f, idx) => 
+      setFiles(prev => prev.map((f, idx) =>
         idx === i ? { ...f, status: "uploading" } : f
       ));
 
       try {
-        // Upload file to storage
+        // Upload file to storage. The name is sanitized (Supabase Storage
+        // rejects umlauts and other non-ASCII keys) and stored below the auth
+        // user id so the storage delete policy can match it later.
         const timestamp = Date.now();
-        const filePath = `${timestamp}_${fileStatus.file.name}`;
+        const sanitizedName = fileStatus.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = user?.id
+          ? `${user.id}/${timestamp}_${sanitizedName}`
+          : `${timestamp}_${sanitizedName}`;
 
         const { error: uploadError } = await supabase.storage
           .from("documents")
@@ -120,16 +134,17 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
         if (uploadError) throw uploadError;
 
         let extractedData = null;
-        
-        if (enableOCR) {
+        let detectedType: string | null = null;
+
+        // Read file content for OCR (null when no text can be extracted)
+        const fileContent = enableOCR ? await readFileAsText(fileStatus.file) : null;
+
+        if (fileContent) {
           // Update status to analyzing
-          setFiles(prev => prev.map((f, idx) => 
+          setFiles(prev => prev.map((f, idx) =>
             idx === i ? { ...f, status: "analyzing" } : f
           ));
 
-          // Read file content for OCR
-          const fileContent = await readFileAsText(fileStatus.file);
-          
           // Call OCR analysis
           const { data: ocrResult, error: ocrError } = await supabase.functions.invoke(
             "analyze-document-ocr",
@@ -142,8 +157,13 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
             }
           );
 
-          if (!ocrError && ocrResult?.success) {
+          if (ocrError) {
+            console.error("OCR error:", ocrError);
+          } else if (ocrResult?.success) {
             extractedData = ocrResult.data;
+            detectedType = ocrResult.documentType && ocrResult.documentType !== "unknown"
+              ? ocrResult.documentType
+              : null;
           }
         }
 
@@ -168,7 +188,10 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
             file_type: fileExt,
             file_size: fileStatus.file.size,
             tag,
-            uploaded_by: user?.id || null,
+            uploaded_by: profileId,
+            document_type: detectedType ?? (documentType === "auto" ? null : documentType),
+            ai_extracted_data: extractedData,
+            ai_summary: extractedData?.summary ?? extractedData?.notes ?? null,
           }]);
 
         if (dbError) throw dbError;
@@ -187,7 +210,8 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
         });
 
         // Update status to success
-        setFiles(prev => prev.map((f, idx) => 
+        successCount++;
+        setFiles(prev => prev.map((f, idx) =>
           idx === i ? { ...f, status: "success", extractedData } : f
         ));
 
@@ -202,10 +226,10 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
     queryClient.invalidateQueries({ queryKey: ["documents"] });
     setIsProcessing(false);
 
-    const successCount = files.filter(f => f.status === "success").length;
     toast({
       title: "Upload abgeschlossen",
       description: `${successCount} von ${files.length} Dokumenten erfolgreich hochgeladen.`,
+      variant: successCount === 0 ? "destructive" : "default",
     });
   };
 
@@ -229,7 +253,8 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
             Massenupload mit KI-Analyse
           </DialogTitle>
           <DialogDescription>
-            Laden Sie mehrere Dokumente hoch. Die KI extrahiert automatisch relevante Daten per OCR.
+            Laden Sie mehrere Dokumente hoch. Aus Text- und CSV-Dateien extrahiert die KI
+            automatisch die relevanten Daten; PDFs und Bilder werden nur gespeichert.
           </DialogDescription>
         </DialogHeader>
 
@@ -262,7 +287,7 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
             />
             <Label htmlFor="enableOCR" className="flex items-center gap-2 cursor-pointer">
               <Sparkles className="h-4 w-4 text-primary" />
-              KI-Textanalyse aktivieren (OCR)
+              KI-Textanalyse aktivieren (nur Text- und CSV-Dateien)
             </Label>
           </div>
 
@@ -274,7 +299,7 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
             >
               <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <p className="text-sm font-medium">Dateien auswählen oder hierher ziehen</p>
-              <p className="text-xs text-muted-foreground mt-1">PDF, JPG, PNG - Mehrfachauswahl möglich</p>
+              <p className="text-xs text-muted-foreground mt-1">PDF, JPG, PNG, CSV, TXT - Mehrfachauswahl möglich</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -307,8 +332,13 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
                         <p className="text-xs text-muted-foreground">
                           {(fileStatus.file.size / 1024).toFixed(1)} KB
                         </p>
+                        {fileStatus.extractedData && (
+                          <pre className="mt-1 max-h-24 overflow-auto rounded bg-background/60 p-2 text-[10px] leading-tight text-muted-foreground">
+                            {JSON.stringify(fileStatus.extractedData, null, 2)}
+                          </pre>
+                        )}
                       </div>
-                      
+
                       {fileStatus.status === "pending" && (
                         <Button
                           variant="ghost"
@@ -347,7 +377,7 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept=".pdf,.jpg,.jpeg,.png,.csv"
+            accept=".pdf,.jpg,.jpeg,.png,.csv,.txt"
             multiple
             onChange={handleFileSelect}
           />

@@ -30,11 +30,23 @@ interface UserPermissionsDialogProps {
     id: string;
     user_id: string;
     name: string;
-    email: string;
-    role: string;
+    email: string | null;
+    role: string | null;
   } | null;
+  /** The logged-in admin may not change their own role (set_user_role rejects it). */
+  isSelf?: boolean;
   onSuccess: () => void;
 }
+
+type AppRole =
+  | "admin"
+  | "betriebsleiter"
+  | "intake"
+  | "production"
+  | "qa"
+  | "customer"
+  | "supplier"
+  | "logistics";
 
 interface Permissions {
   can_view_dashboard: boolean;
@@ -169,33 +181,37 @@ export function UserPermissionsDialog({
   open,
   onOpenChange,
   user,
+  isSelf = false,
   onSuccess,
 }: UserPermissionsDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [permissions, setPermissions] = useState<Permissions>(defaultPermissions);
-  const [selectedRole, setSelectedRole] = useState(user?.role || "customer");
+  const [selectedRole, setSelectedRole] = useState(user?.role || "");
 
   useEffect(() => {
     if (user && open) {
-      setSelectedRole(user.role);
+      setSelectedRole(user.role || "");
       loadPermissions();
     }
   }, [user, open]);
 
   const loadPermissions = async () => {
     if (!user) return;
-    
+
     setIsLoading(true);
+    // Never carry the previously opened user's switches over: if loading fails
+    // below, those values must not end up being saved onto this user.
+    setPermissions(defaultPermissions);
     try {
       // First check if user has custom permissions
       const { data: existingPerms, error } = await supabase
         .from("user_permissions")
         .select("*")
         .eq("user_id", user.user_id)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== "PGRST116") {
+      if (error) {
         throw error;
       }
 
@@ -227,9 +243,10 @@ export function UserPermissionsDialog({
         setPermissions(perms);
       } else {
         // Get default permissions for role
-        const { data: defaultPerms } = await supabase
-          .rpc("get_default_permissions_for_role", { role_name: user.role });
-        
+        const { data: defaultPerms, error: defaultsError } = await supabase
+          .rpc("get_default_permissions_for_role", { role_name: user.role || "customer" });
+        if (defaultsError) throw defaultsError;
+
         if (defaultPerms && typeof defaultPerms === 'object' && !Array.isArray(defaultPerms)) {
           setPermissions(defaultPerms as unknown as Permissions);
         } else {
@@ -238,9 +255,10 @@ export function UserPermissionsDialog({
       }
     } catch (error: any) {
       console.error("Error loading permissions:", error);
+      setPermissions(defaultPermissions);
       toast({
         title: "Fehler",
-        description: "Berechtigungen konnten nicht geladen werden.",
+        description: error?.message || "Berechtigungen konnten nicht geladen werden.",
         variant: "destructive",
       });
     } finally {
@@ -248,73 +266,91 @@ export function UserPermissionsDialog({
     }
   };
 
+  // supabase-js resolves with { data, error } instead of throwing, so the error
+  // has to be read explicitly - otherwise the button silently does nothing.
+  const fetchRoleDefaults = async (roleName: string): Promise<Permissions | null> => {
+    const { data: defaultPerms, error } = await supabase
+      .rpc("get_default_permissions_for_role", { role_name: roleName });
+
+    if (error || !defaultPerms || typeof defaultPerms !== "object" || Array.isArray(defaultPerms)) {
+      console.error("Error loading default permissions:", error);
+      toast({
+        title: "Fehler",
+        description: error?.message || "Standard-Berechtigungen konnten nicht geladen werden.",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    return defaultPerms as unknown as Permissions;
+  };
+
   const handleResetToRoleDefaults = async () => {
     if (!selectedRole) return;
-    
-    try {
-      const { data: defaultPerms } = await supabase
-        .rpc("get_default_permissions_for_role", { role_name: selectedRole });
-      
-      if (defaultPerms && typeof defaultPerms === 'object' && !Array.isArray(defaultPerms)) {
-        setPermissions(defaultPerms as unknown as Permissions);
-        toast({ title: "Berechtigungen auf Rollen-Standard zurückgesetzt" });
-      }
-    } catch (error: any) {
-      console.error("Error resetting permissions:", error);
-    }
+
+    const defaults = await fetchRoleDefaults(selectedRole);
+    if (!defaults) return;
+
+    setPermissions(defaults);
+    toast({ title: "Berechtigungen auf Rollen-Standard zurückgesetzt" });
   };
 
   const handleRoleChange = async (newRole: string) => {
     setSelectedRole(newRole);
-    
+
     // Get default permissions for new role
-    try {
-      const { data: defaultPerms } = await supabase
-        .rpc("get_default_permissions_for_role", { role_name: newRole });
-      
-      if (defaultPerms && typeof defaultPerms === 'object' && !Array.isArray(defaultPerms)) {
-        setPermissions(defaultPerms as unknown as Permissions);
-      }
-    } catch (error: any) {
-      console.error("Error getting default permissions:", error);
-    }
+    const defaults = await fetchRoleDefaults(newRole);
+    if (!defaults) return;
+
+    setPermissions(defaults);
   };
 
   const handleSave = async () => {
     if (!user) return;
-    
+
+    if (!selectedRole) {
+      toast({
+        title: "Rolle fehlt",
+        description: "Bitte wählen Sie eine Rolle aus.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
-      // Update role - first delete all existing roles for this user, then insert the new one
-      const roleValue = selectedRole as "admin" | "intake" | "production" | "qa" | "customer" | "supplier" | "logistics" | "betriebsleiter";
-      
-      // Delete all existing roles for this user
-      const { error: deleteError } = await supabase
-        .from("user_roles")
-        .delete()
-        .eq("user_id", user.user_id);
-      
-      if (deleteError) throw deleteError;
-      
-      // Insert the new role
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert([{ user_id: user.user_id, role: roleValue }]);
-      if (roleError) throw roleError;
+      // Role change goes through the SECURITY DEFINER RPC, which swaps the row
+      // atomically. The former delete + insert left the acting admin without
+      // any role as soon as RLS rejected the follow-up insert.
+      if (selectedRole !== user.role) {
+        if (isSelf) {
+          throw new Error("Die eigene Rolle kann nicht geändert werden.");
+        }
+        const { error: roleError } = await supabase.rpc("set_user_role", {
+          _user_id: user.user_id,
+          _role: selectedRole as AppRole,
+        });
+        if (roleError) throw roleError;
+      }
 
       // Update or insert permissions
-      const { data: existingPerms } = await supabase
+      const { data: existingPerms, error: existingError } = await supabase
         .from("user_permissions")
         .select("id")
         .eq("user_id", user.user_id)
-        .single();
+        .maybeSingle();
+      if (existingError) throw existingError;
 
       if (existingPerms) {
-        const { error: permError } = await supabase
+        const { data: updated, error: permError } = await supabase
           .from("user_permissions")
           .update(permissions)
-          .eq("user_id", user.user_id);
+          .eq("user_id", user.user_id)
+          .select();
         if (permError) throw permError;
+        if (!updated || updated.length === 0) {
+          throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+        }
       } else {
         const { error: permError } = await supabase
           .from("user_permissions")
@@ -365,7 +401,7 @@ export function UserPermissionsDialog({
               <div className="space-y-2">
                 <Label>Rolle</Label>
                 <div className="flex gap-2">
-                  <Select value={selectedRole} onValueChange={handleRoleChange}>
+                  <Select value={selectedRole} onValueChange={handleRoleChange} disabled={isSelf}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Rolle auswählen" />
                     </SelectTrigger>
@@ -388,7 +424,9 @@ export function UserPermissionsDialog({
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Bei Rollenwechsel werden die Berechtigungen auf den Standard der Rolle gesetzt.
+                  {isSelf
+                    ? "Die eigene Rolle kann nicht geändert werden."
+                    : "Bei Rollenwechsel werden die Berechtigungen auf den Standard der Rolle gesetzt."}
                 </p>
               </div>
 

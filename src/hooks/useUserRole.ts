@@ -22,7 +22,9 @@ export function useUserRole() {
           .from('user_roles')
           .select('role')
           .eq('user_id', user.id)
-          .single();
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
 
         if (error) {
           console.error('Error fetching role:', error);

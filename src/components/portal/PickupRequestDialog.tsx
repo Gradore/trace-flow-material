@@ -21,7 +21,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { de } from "date-fns/locale";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -70,7 +70,9 @@ export function PickupRequestDialog({
         material_description: data.material_description,
         weight_kg: data.weight_kg ? parseFloat(data.weight_kg) : null,
         pickup_address: data.pickup_address || null,
-        preferred_date: data.preferred_date?.toISOString().split("T")[0] || null,
+        // format() and not toISOString(): the calendar hands us local midnight,
+        // which toISOString() shifts to the previous day in any positive offset.
+        preferred_date: data.preferred_date ? format(data.preferred_date, "yyyy-MM-dd") : null,
         preferred_time_slot: data.preferred_time_slot || null,
         notes: data.notes || null,
       });
@@ -160,7 +162,7 @@ export function PickupRequestDialog({
                     mode="single"
                     selected={formData.preferred_date}
                     onSelect={(date) => setFormData({ ...formData, preferred_date: date })}
-                    disabled={(date) => date < new Date()}
+                    disabled={(date) => date < startOfDay(new Date())}
                     locale={de}
                   />
                 </PopoverContent>
@@ -204,6 +206,7 @@ export function PickupRequestDialog({
             <Textarea
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="z.B. Container-ID laut Etikett, Zufahrtshinweise"
               rows={3}
             />
           </div>

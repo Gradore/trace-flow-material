@@ -10,13 +10,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FlaskConical, Upload, FileText, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { FlaskConical, Upload, FileText, CheckCircle, XCircle, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { useMaterialFlowHistory } from "@/hooks/useMaterialFlowHistory";
+import { DocumentUploadDialog } from "@/components/documents/DocumentUploadDialog";
 
 interface SampleResultsDialogProps {
   open: boolean;
@@ -38,9 +39,11 @@ export function SampleResultsDialog({ open, onOpenChange, sample }: SampleResult
   const queryClient = useQueryClient();
   const { logEvent } = useMaterialFlowHistory();
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
 
   // Fetch sample results
-  const { data: results = [] } = useQuery({
+  const { data: results = [], isError: isResultsError } = useQuery({
     queryKey: ["sample-results", sample?.id],
     queryFn: async () => {
       if (!sample?.id) return [];
@@ -56,7 +59,7 @@ export function SampleResultsDialog({ open, onOpenChange, sample }: SampleResult
   });
 
   // Fetch documents
-  const { data: documents = [] } = useQuery({
+  const { data: documents = [], isError: isDocumentsError } = useQuery({
     queryKey: ["sample-documents", sample?.id],
     queryFn: async () => {
       if (!sample?.id) return [];
@@ -85,15 +88,19 @@ export function SampleResultsDialog({ open, onOpenChange, sample }: SampleResult
   const handleStatusUpdate = async (newStatus: "approved" | "rejected") => {
     setIsUpdating(true);
     try {
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from("samples")
         .update({ 
           status: newStatus,
           approved_at: newStatus === "approved" ? new Date().toISOString() : null,
         })
-        .eq("id", sample.id);
+        .eq("id", sample.id)
+        .select("id");
 
       if (error) throw error;
+      if (!updated || updated.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
 
       // Log event
       await logEvent({
@@ -103,12 +110,49 @@ export function SampleResultsDialog({ open, onOpenChange, sample }: SampleResult
         materialInputId: sample.materialInputId,
       });
 
-      queryClient.invalidateQueries({ queryKey: ["samples"] });
+      // CRITICAL: a rejected sample also rejects its batch and stops its processing steps
+      let batchRejected = false;
+      if (newStatus === "rejected" && sample.materialInputId) {
+        // .select() so an RLS-filtered (zero row) update is not reported as a rejection
+        const { data: rejectedBatch, error: materialError } = await supabase
+          .from("material_inputs")
+          .update({ status: "rejected" })
+          .eq("id", sample.materialInputId)
+          .select("id");
 
-      toast({
-        title: newStatus === "approved" ? "Probe freigegeben" : "Probe abgelehnt",
-        description: `${sample.sampleId} wurde aktualisiert.`,
-      });
+        batchRejected = !materialError && !!rejectedBatch && rejectedBatch.length > 0;
+
+        if (!batchRejected) {
+          console.warn("Could not update material input status:", materialError);
+        } else {
+          const { error: processingError } = await supabase
+            .from("processing_steps")
+            .update({ status: "completed", notes: "Automatisch beendet wegen Proben-Ablehnung" })
+            .eq("material_input_id", sample.materialInputId)
+            .in("status", ["running", "paused", "pending", "sample_required"]);
+
+          if (processingError) {
+            console.warn("Could not cancel processing steps:", processingError);
+          }
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["samples"] });
+      queryClient.invalidateQueries({ queryKey: ["material-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
+
+      if (newStatus === "rejected" && batchRejected) {
+        toast({
+          title: "Probe und Charge abgelehnt",
+          description: "Die zugehörige Charge wurde ebenfalls als abgelehnt markiert. Keine weiteren Verarbeitungsschritte möglich.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: newStatus === "approved" ? "Probe freigegeben" : "Probe abgelehnt",
+          description: `${sample.sampleId} wurde aktualisiert.`,
+        });
+      }
 
       onOpenChange(false);
     } catch (error: any) {
@@ -122,7 +166,36 @@ export function SampleResultsDialog({ open, onOpenChange, sample }: SampleResult
     }
   };
 
+  const handleOpenDocument = async (doc: { id: string; name: string; file_url: string }) => {
+    setOpeningDocumentId(doc.id);
+    try {
+      // Older records may already hold a full URL, newer ones hold the storage path
+      if (doc.file_url.startsWith("http")) {
+        window.open(doc.file_url, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      const { data, error } = await supabase.storage
+        .from("documents")
+        .createSignedUrl(doc.file_url, 60);
+
+      if (error) throw error;
+      if (!data?.signedUrl) throw new Error("Dokument konnte nicht geöffnet werden.");
+
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: error.message || "Dokument konnte nicht geöffnet werden.",
+        variant: "destructive",
+      });
+    } finally {
+      setOpeningDocumentId(null);
+    }
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -144,7 +217,12 @@ export function SampleResultsDialog({ open, onOpenChange, sample }: SampleResult
           </TabsList>
 
           <TabsContent value="results" className="space-y-4 mt-4">
-            {results.length > 0 ? (
+            {isResultsError ? (
+              <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                Ergebnisse konnten nicht geladen werden.
+              </div>
+            ) : results.length > 0 ? (
               <div className="grid grid-cols-2 gap-4">
                 {results.map((result) => (
                   <div key={result.id} className="space-y-2">
@@ -195,14 +273,24 @@ export function SampleResultsDialog({ open, onOpenChange, sample }: SampleResult
               <p className="text-xs text-muted-foreground mt-1">
                 Laborberichte, Fotos oder CSV-Daten
               </p>
-              <Button variant="outline" size="sm" className="mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => setIsUploadDialogOpen(true)}
+              >
                 <Upload className="h-4 w-4 mr-2" />
                 Datei wählen
               </Button>
             </div>
 
             <div className="space-y-2">
-              {documents.length > 0 ? (
+              {isDocumentsError ? (
+                <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  Dokumente konnten nicht geladen werden.
+                </div>
+              ) : documents.length > 0 ? (
                 documents.map((doc) => (
                   <div
                     key={doc.id}
@@ -215,7 +303,15 @@ export function SampleResultsDialog({ open, onOpenChange, sample }: SampleResult
                         {new Date(doc.created_at).toLocaleDateString("de-DE")}
                       </p>
                     </div>
-                    <Button variant="ghost" size="sm">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={openingDocumentId === doc.id}
+                      onClick={() => handleOpenDocument(doc)}
+                    >
+                      {openingDocumentId === doc.id && (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      )}
                       Öffnen
                     </Button>
                   </div>
@@ -263,5 +359,12 @@ export function SampleResultsDialog({ open, onOpenChange, sample }: SampleResult
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <DocumentUploadDialog
+      open={isUploadDialogOpen}
+      onOpenChange={setIsUploadDialogOpen}
+      preselectedSampleId={sample.id}
+    />
+    </>
   );
 }

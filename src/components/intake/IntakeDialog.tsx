@@ -63,6 +63,12 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
       return;
     }
 
+    const weight = parseFloat(formData.weight);
+    if (!Number.isFinite(weight) || weight <= 0) {
+      toast({ title: "Ungültiges Gewicht", description: "Bitte geben Sie ein Gewicht größer als 0 kg an.", variant: "destructive" });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       // Generate unique ID
@@ -80,7 +86,7 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
         supplier: formData.supplier,
         material_type: materialType,
         material_subtype: formData.resinType || null,
-        weight_kg: parseFloat(formData.weight),
+        weight_kg: weight,
         waste_code: formData.wasteCode || null,
         container_id: formData.container && formData.container !== "new" ? formData.container : null,
         status: "received",
@@ -88,12 +94,27 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
 
       if (error) throw error;
 
-      // Update container status if assigned
+      // Update container status if assigned. RLS can filter the row out without
+      // raising an error, so the affected rows have to be checked explicitly.
       if (formData.container && formData.container !== "new") {
-        await supabase
+        const { data: updatedContainer, error: containerError } = await supabase
           .from("containers")
           .update({ status: "filling" })
-          .eq("id", formData.container);
+          .eq("id", formData.container)
+          .select();
+
+        if (containerError || !updatedContainer || updatedContainer.length === 0) {
+          toast({
+            title: "Container-Status nicht aktualisiert",
+            description:
+              containerError?.message ||
+              "Keine Berechtigung oder Container nicht gefunden. Der Materialeingang wurde trotzdem erfasst.",
+            variant: "destructive",
+          });
+        } else {
+          queryClient.invalidateQueries({ queryKey: ["containers"] });
+          queryClient.invalidateQueries({ queryKey: ["containers-empty"] });
+        }
       }
 
       // Log event
@@ -104,7 +125,7 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
           input_id: inputId,
           supplier: formData.supplier,
           material_type: materialType,
-          weight_kg: parseFloat(formData.weight),
+          weight_kg: weight,
           waste_code: formData.wasteCode || null,
         },
         materialInputId: insertedData?.id,

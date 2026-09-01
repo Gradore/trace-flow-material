@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -55,6 +55,12 @@ export function SampleResultsInputDialog({
   const [results, setResults] = useState<ResultRow[]>([
     { id: "1", parameterName: "", parameterValue: "", unit: "" },
   ]);
+
+  // The parent keeps this dialog mounted, so entered values must not leak
+  // into the next sample when the dialog is closed or another sample is opened.
+  useEffect(() => {
+    setResults([{ id: "1", parameterName: "", parameterValue: "", unit: "" }]);
+  }, [sample?.id, open]);
 
   if (!sample) return null;
 
@@ -117,16 +123,20 @@ export function SampleResultsInputDialog({
 
       if (resultsError) throw resultsError;
 
-      // Update sample status to "in_analysis"
-      const { error: updateError } = await supabase
+      // Update sample status to "in_analysis" - .select() detects an RLS-filtered no-op
+      const { data: updated, error: updateError } = await supabase
         .from("samples")
         .update({ 
           status: "in_analysis",
           analyzed_at: new Date().toISOString(),
         })
-        .eq("id", sample.id);
+        .eq("id", sample.id)
+        .select("id");
 
       if (updateError) throw updateError;
+      if (!updated || updated.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
 
       // Log event
       await logEvent({

@@ -21,7 +21,6 @@ import {
 import { FileText, Download, Loader2 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { generateDeliveryNotePDF, downloadPDF } from "@/lib/pdf";
-import { buildDeliveryNoteQRUrl } from "@/lib/qrcode";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useMaterialFlowHistory } from "@/hooks/useMaterialFlowHistory";
@@ -44,10 +43,16 @@ interface MaterialInput {
 interface OutputMaterial {
   id: string;
   output_id: string;
+  batch_id: string;
   output_type: string;
   weight_kg: number;
   destination: string | null;
 }
+
+// There is no /delivery-notes/:id route; the list page resolves ?id= and opens
+// the matching note, so the printed QR code lands on the record itself.
+const buildDeliveryNoteDeepLink = (noteId: string) =>
+  `${window.location.origin}/delivery-notes?id=${encodeURIComponent(noteId)}`;
 
 export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogProps) {
   const [formData, setFormData] = useState({
@@ -57,6 +62,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
     weight: "",
     wasteCode: "",
     linkedId: "",
+    batchReference: "",
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [materialInputs, setMaterialInputs] = useState<MaterialInput[]>([]);
@@ -86,7 +92,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
       } else {
         const { data, error } = await supabase
           .from('output_materials')
-          .select('id, output_id, output_type, weight_kg, destination')
+          .select('id, output_id, batch_id, output_type, weight_kg, destination')
           .eq('status', 'in_stock')
           .order('created_at', { ascending: false })
           .limit(50);
@@ -101,8 +107,8 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
   };
 
   const handleLinkedItemChange = (id: string) => {
-    setFormData(prev => ({ ...prev, linkedId: id }));
-    
+    setFormData(prev => ({ ...prev, linkedId: id, batchReference: "" }));
+
     if (formData.type === 'incoming') {
       const item = materialInputs.find(m => m.id === id);
       if (item) {
@@ -112,6 +118,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
           partner: item.supplier,
           material: item.material_type,
           weight: item.weight_kg.toString(),
+          batchReference: item.input_id,
         }));
       }
     } else {
@@ -123,6 +130,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
           partner: item.destination || '',
           material: item.output_type,
           weight: item.weight_kg.toString(),
+          batchReference: item.batch_id,
         }));
       }
     }
@@ -176,7 +184,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
       }
       
       const noteId = noteIdData;
-      const qrUrl = buildDeliveryNoteQRUrl(noteId);
+      const qrUrl = buildDeliveryNoteDeepLink(noteId);
       
       // Generate PDF
       let pdfBlob: Blob;
@@ -199,10 +207,10 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
       }
       
       // Upload PDF to storage
-      const fileName = `${noteId}.pdf`;
+      const storagePath = `delivery-notes/${noteId}.pdf`;
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(`delivery-notes/${fileName}`, pdfBlob, {
+        .upload(storagePath, pdfBlob, {
           contentType: 'application/pdf',
           upsert: true,
         });
@@ -212,12 +220,23 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
         // Continue anyway - PDF will still be downloaded
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('documents')
-        .getPublicUrl(`delivery-notes/${fileName}`);
+      // delivery_notes.created_by references profiles(id) - a surrogate key
+      // that is never equal to auth.uid(). Resolve the caller's profile first.
+      let profileId: string | null = null;
+      if (user?.id) {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (profileError) {
+          console.error('Profile lookup error:', profileError);
+        }
+        profileId = profile?.id ?? null;
+      }
 
-      // Save to database
+      // Save to database. The bucket is private, so store the object path -
+      // a public URL would never resolve.
       const { data: savedNote, error: dbError } = await supabase
         .from('delivery_notes')
         .insert({
@@ -227,11 +246,12 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
           material_description: formData.material,
           weight_kg: parseFloat(formData.weight),
           waste_code: formData.wasteCode || null,
+          batch_reference: formData.batchReference || null,
           qr_code: qrUrl,
-          pdf_url: urlData?.publicUrl || null,
+          pdf_url: uploadError ? null : storagePath,
           material_input_id: formData.type === 'incoming' && formData.linkedId ? formData.linkedId : null,
           output_material_id: formData.type === 'outgoing' && formData.linkedId ? formData.linkedId : null,
-          created_by: user?.id,
+          created_by: profileId,
         })
         .select()
         .single();
@@ -260,12 +280,24 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
         deliveryNoteId: savedNote?.id,
       }).catch(console.error);
 
-      // Update output material status if outgoing
+      // Update output material status if outgoing. An RLS-filtered update
+      // returns zero rows and no error, so check the affected rows instead of
+      // assuming the status change happened.
       if (formData.type === 'outgoing' && formData.linkedId) {
-        await supabase
+        const { data: updatedOutputs, error: statusError } = await supabase
           .from('output_materials')
           .update({ status: 'shipped' })
-          .eq('id', formData.linkedId);
+          .eq('id', formData.linkedId)
+          .select('id');
+
+        if (statusError || !updatedOutputs || updatedOutputs.length === 0) {
+          console.error('Output material status update failed:', statusError);
+          toast({
+            title: "Status nicht aktualisiert",
+            description: "Der Lieferschein wurde gespeichert, das Ausgangsmaterial konnte jedoch nicht auf \"versendet\" gesetzt werden.",
+            variant: "destructive",
+          });
+        }
       }
       
       // Download PDF
@@ -286,6 +318,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
         weight: "",
         wasteCode: "",
         linkedId: "",
+        batchReference: "",
       });
       onOpenChange(false);
     } catch (error) {
@@ -326,6 +359,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
                 partner: "",
                 material: "",
                 weight: "",
+                batchReference: "",
               })}
               className="flex gap-4"
             >
@@ -425,6 +459,15 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
                 onChange={(e) => setFormData({ ...formData, wasteCode: e.target.value })}
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Chargen-Referenz</Label>
+            <Input
+              placeholder="Wird bei Verknüpfung automatisch übernommen"
+              value={formData.batchReference}
+              onChange={(e) => setFormData({ ...formData, batchReference: e.target.value })}
+            />
           </div>
 
           <div className="p-4 rounded-lg bg-info/10 border border-info/20">

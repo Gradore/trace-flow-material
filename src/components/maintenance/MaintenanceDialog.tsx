@@ -46,13 +46,16 @@ interface MaintenanceDialogProps {
   onOpenChange: (open: boolean) => void;
   equipment: Equipment[];
   maintenance?: MaintenanceRecord | null;
+  /** Preselects the Anlage when the dialog is opened from a specific equipment card. */
+  defaultEquipmentId?: string | null;
 }
 
 export function MaintenanceDialog({ 
   open, 
   onOpenChange, 
   equipment,
-  maintenance 
+  maintenance,
+  defaultEquipmentId 
 }: MaintenanceDialogProps) {
   const queryClient = useQueryClient();
   const isEditing = !!maintenance;
@@ -80,7 +83,7 @@ export function MaintenanceDialog({
       });
     } else {
       setFormData({
-        equipment_id: "",
+        equipment_id: defaultEquipmentId || "",
         title: "",
         description: "",
         maintenance_type: "scheduled",
@@ -89,7 +92,7 @@ export function MaintenanceDialog({
         priority: "normal",
       });
     }
-  }, [maintenance, open]);
+  }, [maintenance, open, defaultEquipmentId]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -126,7 +129,8 @@ export function MaintenanceDialog({
 
   const updateMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
+      // An RLS-filtered update returns zero rows and no error - request the row back.
+      const { data, error } = await supabase
         .from("maintenance_records")
         .update({
           equipment_id: formData.equipment_id,
@@ -137,9 +141,13 @@ export function MaintenanceDialog({
           interval_days: formData.interval_days ? parseInt(formData.interval_days) : null,
           priority: formData.priority,
         })
-        .eq("id", maintenance!.id);
+        .eq("id", maintenance!.id)
+        .select("id");
       
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["maintenance-records"] });

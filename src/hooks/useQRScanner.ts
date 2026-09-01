@@ -14,29 +14,47 @@ interface UseQRScannerReturn {
   lastResult: string | null;
 }
 
+const describeError = (err: unknown, fallback: string): string => {
+  if (err instanceof Error) return err.message;
+  // html5-qrcode rejects/throws plain strings in several places
+  if (typeof err === 'string' && err.trim()) return err;
+  return fallback;
+};
+
 export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerReturn {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  // html5-qrcode's stop() throws synchronously when the camera never started,
+  // so the running state is tracked in a ref instead of the (async) state value.
+  const runningRef = useRef(false);
+  // start() receives the callbacks once; reading them from a ref keeps them
+  // from going stale for the rest of the scanning session.
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const stopScanning = useCallback(async () => {
-    if (scannerRef.current && isScanning) {
-      try {
-        await scannerRef.current.stop();
-        scannerRef.current.clear();
-        scannerRef.current = null;
-        setIsScanning(false);
-      } catch (err) {
-        console.error('Error stopping scanner:', err);
+    const scanner = scannerRef.current;
+    if (!scanner) return;
+
+    const wasRunning = runningRef.current;
+    scannerRef.current = null;
+    runningRef.current = false;
+    setIsScanning(false);
+
+    try {
+      if (wasRunning) {
+        await scanner.stop();
       }
+      scanner.clear();
+    } catch (err) {
+      console.error('Error stopping scanner:', err);
     }
-  }, [isScanning]);
+  }, []);
 
   const startScanning = useCallback(async (elementId: string) => {
-    if (scannerRef.current) {
-      await stopScanning();
-    }
+    await stopScanning();
 
     try {
       setError(null);
@@ -51,29 +69,49 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         },
         (decodedText) => {
           setLastResult(decodedText);
-          options.onScanSuccess?.(decodedText);
+          optionsRef.current.onScanSuccess?.(decodedText);
         },
         (errorMessage) => {
           // Ignore frequent scan errors (no QR code in view)
           if (!errorMessage.includes('No QR code found')) {
-            options.onScanError?.(errorMessage);
+            optionsRef.current.onScanError?.(errorMessage);
           }
         }
       );
 
+      runningRef.current = true;
       setIsScanning(true);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Kamera konnte nicht gestartet werden';
+      // The camera never came up - drop the instance so the next attempt starts clean
+      const scanner = scannerRef.current;
+      scannerRef.current = null;
+      runningRef.current = false;
+      setIsScanning(false);
+      try {
+        scanner?.clear();
+      } catch {
+        // element was never populated
+      }
+
+      const errorMessage = describeError(err, 'Kamera konnte nicht gestartet werden');
       setError(errorMessage);
-      options.onScanError?.(errorMessage);
+      optionsRef.current.onScanError?.(errorMessage);
     }
-  }, [options, stopScanning]);
+  }, [stopScanning]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(console.error);
+      const scanner = scannerRef.current;
+      scannerRef.current = null;
+      if (!scanner || !runningRef.current) return;
+
+      runningRef.current = false;
+      try {
+        scanner.stop().catch((err) => console.error('Error stopping scanner:', err));
+      } catch (err) {
+        // stop() throws synchronously when the scanner is not running
+        console.error('Error stopping scanner:', err);
       }
     };
   }, []);
@@ -88,61 +126,77 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
 }
 
 /**
+ * Prefixes handed to the generate_unique_id RPC across the app, mapped to the
+ * record type the scanner resolves them against.
+ */
+const PREFIX_TYPE_MAP: Record<string, string> = {
+  BB: 'containers',
+  BX: 'containers',
+  GX: 'containers',
+  CT: 'containers',
+  ME: 'intake',
+  VRB: 'processing',
+  PRB: 'sampling',
+  RST: 'sampling',
+  OUT: 'output',
+  AUS: 'output',
+  LS: 'delivery',
+};
+
+const ID_PATTERN = new RegExp(`(${Object.keys(PREFIX_TYPE_MAP).join('|')})-\\d{4}-\\d{4}`);
+
+/**
+ * Path segments used by QR codes printed before the /scan resolver existed,
+ * normalised to the record types above.
+ */
+const PATH_TYPE_MAP: Record<string, string> = {
+  containers: 'containers',
+  intake: 'intake',
+  'material-intake': 'intake',
+  processing: 'processing',
+  sampling: 'sampling',
+  'retention-samples': 'sampling',
+  output: 'output',
+  'output-materials': 'output',
+  delivery: 'delivery',
+  'delivery-notes': 'delivery',
+};
+
+function parseDirectId(value: string): { type: string; id: string } | null {
+  const idMatch = value.match(ID_PATTERN);
+  if (!idMatch) return null;
+
+  return {
+    type: PREFIX_TYPE_MAP[idMatch[1]] || 'unknown',
+    id: idMatch[0],
+  };
+}
+
+/**
  * Parse a RekuFLOW QR code URL to extract the type and ID
  */
 export function parseRekuFLOWQRCode(url: string): { type: string; id: string } | null {
   try {
     const urlObj = new URL(url);
+
+    // Current QR codes point at /scan?code=<id>
+    const code = urlObj.searchParams.get('code');
+    if (code) {
+      return parseDirectId(code);
+    }
+
+    // Legacy QR codes point at /<type>/<id>
     const pathParts = urlObj.pathname.split('/').filter(Boolean);
-    
     if (pathParts.length >= 2) {
-      return {
-        type: pathParts[0],
-        id: pathParts[1],
-      };
+      const type = PATH_TYPE_MAP[pathParts[0]];
+      if (type) {
+        return { type, id: decodeURIComponent(pathParts[1]) };
+      }
     }
-    
-    // Handle direct IDs (e.g., BB-2024-0001)
-    const idMatch = url.match(/(BB|GX|BX|ME|VRB|PRB|OUT|LS)-\d{4}-\d{4}/);
-    if (idMatch) {
-      const prefix = idMatch[1];
-      const typeMap: Record<string, string> = {
-        BB: 'containers',
-        GX: 'containers',
-        BX: 'containers',
-        ME: 'intake',
-        VRB: 'processing',
-        PRB: 'sampling',
-        OUT: 'output',
-        LS: 'delivery-notes',
-      };
-      return {
-        type: typeMap[prefix] || 'unknown',
-        id: idMatch[0],
-      };
-    }
-    
-    return null;
+
+    return parseDirectId(url);
   } catch {
-    // Try to parse as direct ID
-    const idMatch = url.match(/(BB|GX|BX|ME|VRB|PRB|OUT|LS)-\d{4}-\d{4}/);
-    if (idMatch) {
-      const prefix = idMatch[1];
-      const typeMap: Record<string, string> = {
-        BB: 'containers',
-        GX: 'containers',
-        BX: 'containers',
-        ME: 'intake',
-        VRB: 'processing',
-        PRB: 'sampling',
-        OUT: 'output',
-        LS: 'delivery-notes',
-      };
-      return {
-        type: typeMap[prefix] || 'unknown',
-        id: idMatch[0],
-      };
-    }
-    return null;
+    // Not a URL - try to parse as direct ID (e.g., BB-2024-0001)
+    return parseDirectId(url);
   }
 }

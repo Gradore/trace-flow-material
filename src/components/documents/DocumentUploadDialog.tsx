@@ -150,10 +150,29 @@ export function DocumentUploadDialog({
 
     setIsUploading(true);
     try {
-      // Create unique file path - sanitize filename
+      // documents.uploaded_by references profiles(id) - a surrogate key that is
+      // never equal to auth.uid(). Resolve the caller's profile row first.
+      let profileId: string | null = null;
+      if (user?.id) {
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (profileError) {
+          console.error("Profile lookup error:", profileError);
+        }
+        profileId = profile?.id ?? null;
+      }
+
+      // Create unique file path - sanitize filename.
+      // The storage delete policy matches on the first path segment being the
+      // auth user id, so uploads must live in a per-user folder.
       const timestamp = Date.now();
       const sanitizedName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const filePath = `${timestamp}_${sanitizedName}`;
+      const filePath = user?.id
+        ? `${user.id}/${timestamp}_${sanitizedName}`
+        : `${timestamp}_${sanitizedName}`;
 
       // Upload to storage with retry
       let uploadAttempts = 0;
@@ -219,7 +238,7 @@ export function DocumentUploadDialog({
           file_type: fileExt || "unknown",
           file_size: selectedFile.size,
           tag: formData.tag || null,
-          uploaded_by: user?.id || null,
+          uploaded_by: profileId,
           material_input_id: materialInputId,
           container_id: containerId,
           sample_id: sampleId,

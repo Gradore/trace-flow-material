@@ -32,6 +32,7 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { logEvent } = useMaterialFlowHistory();
   const { role, isLoading: isRoleLoading } = useUserRole();
+  const canCreateSample = role === 'admin' || role === 'production' || role === 'qa';
   const queryClient = useQueryClient();
   const { data: materialInputs = [] } = useQuery({
     queryKey: ["material-inputs-for-sampling"],
@@ -73,7 +74,6 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
       return;
     }
 
-    const canCreateSample = role === 'admin' || role === 'production' || role === 'qa';
     if (!canCreateSample) {
       toast({
         title: "Keine Berechtigung",
@@ -224,6 +224,15 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
             />
           </div>
 
+          {!isRoleLoading && !canCreateSample && (
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+              <p className="text-sm font-medium text-destructive">Keine Berechtigung</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Proben dürfen nur von Administrator, Produktion oder Qualitätssicherung erstellt werden.
+              </p>
+            </div>
+          )}
+
           <div className="p-4 rounded-lg bg-secondary/30 border border-border">
             <p className="text-sm text-muted-foreground">
               <strong>Proben-ID:</strong> Wird automatisch generiert
@@ -239,11 +248,7 @@ export function SampleDialog({ open, onOpenChange }: SampleDialogProps) {
             </Button>
             <Button
               type="submit"
-              disabled={
-                isSubmitting ||
-                isRoleLoading ||
-                !(role === 'admin' || role === 'production' || role === 'qa')
-              }
+              disabled={isSubmitting || isRoleLoading || !canCreateSample}
             >
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Probe erstellen

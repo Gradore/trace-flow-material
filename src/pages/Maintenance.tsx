@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageDescription } from "@/components/layout/PageDescription";
 import { 
   Plus, Wrench, Settings2, AlertTriangle, CheckCircle2, 
-  Clock, Calendar, Loader2, MoreHorizontal 
+  Clock, Calendar, Loader2, MoreHorizontal, Trash2 
 } from "lucide-react";
 import { format, isPast, addDays } from "date-fns";
 import { de } from "date-fns/locale";
@@ -28,8 +28,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { MaintenanceDialog } from "@/components/maintenance/MaintenanceDialog";
+import { EquipmentDialog } from "@/components/maintenance/EquipmentDialog";
 import { EquipmentDetailsDialog } from "@/components/maintenance/EquipmentDetailsDialog";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface Equipment {
   id: string;
@@ -61,22 +73,34 @@ interface MaintenanceRecord {
 export default function Maintenance() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [equipmentDialogOpen, setEquipmentDialogOpen] = useState(false);
+  const [newEquipmentDialogOpen, setNewEquipmentDialogOpen] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
   const [selectedMaintenance, setSelectedMaintenance] = useState<MaintenanceRecord | null>(null);
+  const [defaultEquipmentId, setDefaultEquipmentId] = useState<string | null>(null);
+  const [recordToDelete, setRecordToDelete] = useState<MaintenanceRecord | null>(null);
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
   const queryClient = useQueryClient();
+  const { isAdmin } = useUserRole();
+
+  const COMPLETED_PREVIEW_COUNT = 20;
 
   const handleEquipmentClick = (eq: Equipment) => {
     setSelectedEquipment(eq);
     setEquipmentDialogOpen(true);
   };
 
-  const handleAddMaintenanceFromEquipment = () => {
-    setEquipmentDialogOpen(false);
+  const handleNewMaintenance = (equipmentId: string | null) => {
     setSelectedMaintenance(null);
+    setDefaultEquipmentId(equipmentId);
     setDialogOpen(true);
   };
 
-  const { data: equipment = [], isLoading: loadingEquipment } = useQuery({
+  const handleAddMaintenanceFromEquipment = (equipmentId: string) => {
+    setEquipmentDialogOpen(false);
+    handleNewMaintenance(equipmentId);
+  };
+
+  const { data: equipment = [], isLoading: loadingEquipment, isError: equipmentError } = useQuery({
     queryKey: ["equipment"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -89,7 +113,7 @@ export default function Maintenance() {
     },
   });
 
-  const { data: maintenanceRecords = [], isLoading: loadingMaintenance } = useQuery({
+  const { data: maintenanceRecords = [], isLoading: loadingMaintenance, isError: maintenanceError } = useQuery({
     queryKey: ["maintenance-records"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -117,16 +141,21 @@ export default function Maintenance() {
       if (record.interval_days) {
         const nextDueDate = format(addDays(now, record.interval_days), 'yyyy-MM-dd');
         
-        // Update current record as completed
-        const { error: updateError } = await supabase
+        // Update current record as completed. An RLS-filtered update returns zero rows
+        // and no error, so the affected row has to be requested back.
+        const { data: updatedRows, error: updateError } = await supabase
           .from("maintenance_records")
           .update({
             status: 'completed',
             completed_date: now.toISOString().split('T')[0],
           })
-          .eq("id", record.id);
+          .eq("id", record.id)
+          .select("id");
         
         if (updateError) throw updateError;
+        if (!updatedRows || updatedRows.length === 0) {
+          throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+        }
         
         // Create new record for next occurrence
         const maintenanceId = `MAINT-${Date.now().toString(36).toUpperCase()}`;
@@ -147,21 +176,53 @@ export default function Maintenance() {
         if (insertError) throw insertError;
       } else {
         // No interval - just mark as completed
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("maintenance_records")
           .update(updates)
-          .eq("id", record.id);
+          .eq("id", record.id)
+          .select("id");
         
         if (error) throw error;
+        if (!data || data.length === 0) {
+          throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+        }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["maintenance-records"] });
       queryClient.invalidateQueries({ queryKey: ["maintenance-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["equipment-maintenance"] });
       toast.success("Wartung als erledigt markiert");
     },
-    onError: () => {
-      toast.error("Fehler beim Aktualisieren");
+    onError: (error: Error) => {
+      toast.error("Fehler beim Aktualisieren: " + (error.message || "Unbekannter Fehler"));
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (record: MaintenanceRecord) => {
+      // An RLS-filtered delete removes zero rows and returns no error.
+      const { data, error } = await supabase
+        .from("maintenance_records")
+        .delete()
+        .eq("id", record.id)
+        .select("id");
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["maintenance-records"] });
+      queryClient.invalidateQueries({ queryKey: ["maintenance-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["equipment-maintenance"] });
+      toast.success("Wartung gelöscht");
+      setRecordToDelete(null);
+    },
+    onError: (error: Error) => {
+      toast.error("Fehler beim Löschen: " + (error.message || "Unbekannter Fehler"));
+      setRecordToDelete(null);
     },
   });
 
@@ -171,6 +232,10 @@ export default function Maintenance() {
     m.status === 'pending' || m.status === 'overdue'
   );
   const completedRecords = maintenanceRecords.filter(m => m.status === 'completed');
+  const visibleCompletedRecords = showAllCompleted
+    ? completedRecords
+    : completedRecords.slice(0, COMPLETED_PREVIEW_COUNT);
+  const hiddenCompletedCount = completedRecords.length - visibleCompletedRecords.length;
 
   const getStatusBadge = (record: MaintenanceRecord) => {
     if (record.status === 'completed') {
@@ -216,19 +281,40 @@ export default function Maintenance() {
           <h1 className="text-2xl font-bold text-foreground">Wartung & Anlagen</h1>
           <p className="text-muted-foreground mt-1">Wartungspläne und Anlagenverwaltung</p>
         </div>
-        <Button onClick={() => { setSelectedMaintenance(null); setDialogOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Neue Wartung
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setNewEquipmentDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Neue Anlage
+          </Button>
+          <Button onClick={() => handleNewMaintenance(null)} disabled={equipment.length === 0}>
+            <Plus className="h-4 w-4 mr-2" />
+            Neue Wartung
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
+      ) : equipmentError || maintenanceError ? (
+        <Card className="border-destructive/50">
+          <CardContent className="py-12 text-center">
+            <AlertTriangle className="h-10 w-10 text-destructive mx-auto mb-4" />
+            <p className="font-medium">Daten konnten nicht geladen werden</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {equipmentError && maintenanceError
+                ? "Anlagen und Wartungen konnten nicht geladen werden."
+                : equipmentError
+                ? "Die Anlagen konnten nicht geladen werden."
+                : "Die Wartungen konnten nicht geladen werden."}{" "}
+              Bitte prüfen Sie Ihre Berechtigungen und versuchen Sie es erneut.
+            </p>
+          </CardContent>
+        </Card>
       ) : (
         <Tabs defaultValue="equipment" className="space-y-4">
-          <TabsList>
+          <TabsList className="max-w-full justify-start overflow-x-auto">
             <TabsTrigger value="equipment" className="gap-2">
               <Settings2 className="h-4 w-4" />
               Anlagen ({equipment.length})
@@ -250,6 +336,19 @@ export default function Maintenance() {
                 <CardTitle className="text-lg">Anlagenübersicht</CardTitle>
               </CardHeader>
               <CardContent>
+                {equipment.length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <Settings2 className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                    <p className="font-medium text-foreground">Keine Anlagen vorhanden</p>
+                    <p className="text-sm mt-1">
+                      Legen Sie zuerst eine Anlage an, um Wartungen planen zu können.
+                    </p>
+                    <Button className="mt-4" onClick={() => setNewEquipmentDialogOpen(true)}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Neue Anlage
+                    </Button>
+                  </div>
+                ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {equipment.map((eq) => {
                     const eqMaintenance = maintenanceRecords.filter(m => m.equipment_id === eq.id);
@@ -308,9 +407,8 @@ export default function Maintenance() {
                             className="mt-3 w-full"
                             onClick={(e) => {
                               e.stopPropagation();
-                              // Create new maintenance for this equipment
-                              setSelectedMaintenance(null);
-                              setDialogOpen(true);
+                              // Create new maintenance preselected for this equipment
+                              handleNewMaintenance(eq.id);
                             }}
                           >
                             <Plus className="h-4 w-4 mr-2" />
@@ -321,6 +419,7 @@ export default function Maintenance() {
                     );
                   })}
                 </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -388,11 +487,21 @@ export default function Maintenance() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => { 
                                   setSelectedMaintenance(record); 
+                                  setDefaultEquipmentId(null);
                                   setDialogOpen(true); 
                                 }}>
                                   <Wrench className="h-4 w-4 mr-2" />
                                   Bearbeiten
                                 </DropdownMenuItem>
+                                {isAdmin && (
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => setRecordToDelete(record)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Löschen
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -427,7 +536,7 @@ export default function Maintenance() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      completedRecords.slice(0, 20).map((record) => (
+                      visibleCompletedRecords.map((record) => (
                         <TableRow key={record.id}>
                           <TableCell className="font-medium">
                             {record.equipment?.name || '-'}
@@ -457,6 +566,21 @@ export default function Maintenance() {
                     )}
                   </TableBody>
                 </Table>
+                {hiddenCompletedCount > 0 && (
+                  <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground">
+                    <span>+{hiddenCompletedCount} weitere</span>
+                    <Button variant="link" size="sm" onClick={() => setShowAllCompleted(true)}>
+                      Alle anzeigen
+                    </Button>
+                  </div>
+                )}
+                {showAllCompleted && completedRecords.length > COMPLETED_PREVIEW_COUNT && (
+                  <div className="flex items-center justify-center py-3">
+                    <Button variant="link" size="sm" onClick={() => setShowAllCompleted(false)}>
+                      Weniger anzeigen
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -468,6 +592,13 @@ export default function Maintenance() {
         onOpenChange={setDialogOpen}
         equipment={equipment}
         maintenance={selectedMaintenance}
+        defaultEquipmentId={defaultEquipmentId}
+      />
+
+      <EquipmentDialog
+        open={newEquipmentDialogOpen}
+        onOpenChange={setNewEquipmentDialogOpen}
+        existingEquipmentIds={equipment.map((eq) => eq.equipment_id)}
       />
 
       <EquipmentDetailsDialog
@@ -476,6 +607,36 @@ export default function Maintenance() {
         equipment={selectedEquipment}
         onAddMaintenance={handleAddMaintenanceFromEquipment}
       />
+
+      <AlertDialog
+        open={!!recordToDelete}
+        onOpenChange={(open) => { if (!open) setRecordToDelete(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Wartung löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {recordToDelete
+                ? `Die Wartung "${recordToDelete.title}" wird unwiderruflich gelöscht.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (recordToDelete) deleteMutation.mutate(recordToDelete);
+              }}
+            >
+              {deleteMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
