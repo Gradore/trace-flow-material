@@ -1,77 +1,13 @@
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Package,
-  Inbox,
-  Cog,
-  FlaskConical,
-  FileOutput,
-  FileText,
-  FolderOpen,
-  History,
-  Users,
-  QrCode,
-  Settings,
-  User,
-  ClipboardList,
-  Building2,
-  Truck,
-  ShoppingCart,
-  Shield,
-  BarChart3,
-  Wrench,
-  FileCode,
-  ScrollText,
-  Sparkles,
-  Search,
-  SlidersHorizontal,
-  Upload,
-  Archive,
-} from "lucide-react";
+import { ChevronDown, QrCode } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ACCENT_STYLES, activePath, hasAccess, visibleGroups } from "./navigation";
 import rekuflowLogo from "@/assets/rekuflow-logo.png";
-
-interface NavItem {
-  icon: typeof LayoutDashboard;
-  label: string;
-  path: string;
-  roles?: string[];
-  adminOnly?: boolean;
-}
-
-const navItems: NavItem[] = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: BarChart3, label: "Reporting", path: "/reporting", roles: ['admin', 'intake', 'production', 'qa'] },
-  { icon: ClipboardList, label: "Aufträge", path: "/orders", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa', 'customer'] },
-  { icon: Building2, label: "Firmen", path: "/companies", roles: ['admin', 'betriebsleiter', 'intake', 'logistics'] },
-  { icon: Package, label: "Container", path: "/containers", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa', 'logistics'] },
-  { icon: Inbox, label: "Materialeingang", path: "/intake", roles: ['admin', 'betriebsleiter', 'intake', 'production'] },
-  { icon: Cog, label: "Verarbeitung", path: "/processing", roles: ['admin', 'betriebsleiter', 'production'] },
-  { icon: Wrench, label: "Wartung", path: "/maintenance", roles: ['admin', 'betriebsleiter', 'production'] },
-  { icon: FlaskConical, label: "Beprobung", path: "/sampling", roles: ['admin', 'betriebsleiter', 'qa', 'production'] },
-  { icon: FileOutput, label: "Ausgangsmaterial", path: "/output", roles: ['admin', 'betriebsleiter', 'production', 'qa'] },
-  { icon: FileText, label: "Lieferscheine", path: "/delivery-notes", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'logistics'] },
-  { icon: FolderOpen, label: "Dokumente", path: "/documents", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
-  { icon: Archive, label: "Archiv", path: "/archive", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
-  { icon: History, label: "Rückverfolgung", path: "/traceability", roles: ['admin', 'betriebsleiter', 'intake', 'production', 'qa'] },
-  { icon: Upload, label: "Datenblatt-Upload", path: "/datasheet-upload", roles: ['admin', 'intake', 'production', 'qa'] },
-  { icon: Sparkles, label: "KI Rezepturen", path: "/recipe-matching", roles: ['admin', 'production', 'qa', 'intake'] },
-  { icon: Search, label: "KI Vertrieb", path: "/sales-search", roles: ['admin', 'production', 'qa', 'intake'] },
-  { icon: Truck, label: "Logistik", path: "/logistics", roles: ['admin', 'betriebsleiter', 'logistics'] },
-  { icon: ShoppingCart, label: "Kunden-Portal", path: "/customer-portal", roles: ['customer'] },
-  { icon: Package, label: "Lieferanten-Portal", path: "/supplier-portal", roles: ['supplier'] },
-  { icon: Users, label: "Benutzer", path: "/users", roles: ['admin', 'betriebsleiter'] },
-  { icon: Shield, label: "Admin", path: "/admin/users", adminOnly: true },
-  { icon: ScrollText, label: "Audit-Log", path: "/audit-logs", roles: ['admin', 'betriebsleiter'] },
-  { icon: FileCode, label: "API-Docs", path: "/api-docs", roles: ['admin'] },
-  { icon: User, label: "Profil", path: "/profile" },
-  { icon: Settings, label: "Einstellungen", path: "/settings", roles: ['admin', 'betriebsleiter'] },
-  { icon: SlidersHorizontal, label: "Admin-Einstellungen", path: "/admin-settings", adminOnly: true },
-];
 
 interface MobileSidebarProps {
   open: boolean;
@@ -82,63 +18,116 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
   const location = useLocation();
   const { role, isLoading, isAdmin } = useUserRole();
 
-  const filteredNavItems = navItems.filter(item => {
-    if (item.adminOnly) return isAdmin;
-    if (item.roles) return role && item.roles.includes(role);
-    return true;
-  });
+  const groups = useMemo(() => visibleGroups(role, isAdmin), [role, isAdmin]);
+  const current = useMemo(() => activePath(location.pathname, role, isAdmin), [location.pathname, role, isAdmin]);
 
-  const handleNavClick = () => {
-    onOpenChange(false);
-  };
+  const groupOfCurrent = useMemo(
+    () => groups.find((g) => g.items.some((i) => i.path === current))?.id ?? null,
+    [groups, current],
+  );
+
+  const canScan = hasAccess("/scan", role, isAdmin);
+
+  const [openGroups, setOpenGroups] = useState<string[]>([]);
+
+  // The role is unknown on the first render, so the default-open groups can
+  // only be resolved once it has loaded.
+  useEffect(() => {
+    if (isLoading) return;
+    setOpenGroups((prev) => {
+      const defaults = groups.filter((g) => g.defaultOpen).map((g) => g.id);
+      const missing = defaults.filter((id) => !prev.includes(id));
+      return missing.length ? [...prev, ...missing] : prev;
+    });
+  }, [isLoading, groups]);
+
+  useEffect(() => {
+    if (groupOfCurrent) {
+      setOpenGroups((prev) => (prev.includes(groupOfCurrent) ? prev : [...prev, groupOfCurrent]));
+    }
+  }, [groupOfCurrent]);
+
+  const toggleGroup = (id: string) =>
+    setOpenGroups((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
+
+  const handleNavClick = () => onOpenChange(false);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-[280px] p-0 bg-sidebar border-sidebar-border">
+      <SheetContent side="left" className="w-[300px] p-0 bg-sidebar border-sidebar-border flex flex-col">
         <SheetHeader className="p-4 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
-            <img 
-              src={rekuflowLogo} 
-              alt="RekuFLOW Logo" 
-              className="h-10 w-10 object-contain"
-            />
-            <div className="flex flex-col">
-              <SheetTitle className="text-sidebar-foreground text-lg font-bold">RekuFLOW</SheetTitle>
-            </div>
+            <img src={rekuflowLogo} alt="RekuFLOW Logo" className="h-10 w-10 object-contain" />
+            <SheetTitle className="text-sidebar-foreground text-lg font-bold">RekuFLOW</SheetTitle>
           </div>
         </SheetHeader>
 
-        <ScrollArea className="flex-1 h-[calc(100vh-140px)]">
-          <nav className="p-3 space-y-1">
+        <ScrollArea className="flex-1">
+          <nav className="p-3 space-y-1" aria-label="Hauptnavigation">
             {isLoading ? (
               <div className="space-y-2">
-                {[1, 2, 3, 4, 5].map(i => (
+                {[1, 2, 3, 4, 5, 6].map((i) => (
                   <Skeleton key={i} className="h-10 w-full" />
                 ))}
               </div>
             ) : (
-              filteredNavItems.map((item) => {
-                const isActive = location.pathname === item.path;
+              groups.map((group) => {
+                const accent = ACCENT_STYLES[group.accent];
+                const isOpen = openGroups.includes(group.id);
+                const containsActive = group.items.some((i) => i.path === current);
                 return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    onClick={handleNavClick}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors",
-                      isActive && "bg-primary/10 text-primary font-medium"
+                  <div key={group.id} className="pb-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group.id)}
+                      aria-expanded={isOpen}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide hover:bg-sidebar-accent transition-colors",
+                        accent.groupLabel,
+                      )}
+                    >
+                      <group.icon className="h-4 w-4 shrink-0" />
+                      <span className="flex-1 text-left truncate">{group.label}</span>
+                      {!isOpen && containsActive && (
+                        <span className={cn("h-1.5 w-1.5 rounded-full", accent.dot)} aria-hidden />
+                      )}
+                      <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", !isOpen && "-rotate-90")} />
+                    </button>
+
+                    {isOpen && (
+                      <div className="mt-1 space-y-0.5 pl-3 border-l border-sidebar-border ml-4">
+                        {group.items.map((item) => {
+                          const isActive = item.path === current;
+                          return (
+                            <NavLink
+                              key={item.path}
+                              to={item.path}
+                              onClick={handleNavClick}
+                              className={cn(
+                                "relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                                isActive
+                                  ? cn(accent.activeBg, accent.activeText, "font-medium")
+                                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                              )}
+                            >
+                              {isActive && (
+                                <span className={cn("absolute -left-3 top-1 bottom-1 w-0.5 rounded-full", accent.bar)} aria-hidden />
+                              )}
+                              <item.icon className={cn("h-4 w-4 shrink-0", isActive ? accent.iconActive : accent.icon)} />
+                              <span className="truncate">{item.label}</span>
+                            </NavLink>
+                          );
+                        })}
+                      </div>
                     )}
-                  >
-                    <item.icon className="h-5 w-5 shrink-0" />
-                    <span>{item.label}</span>
-                  </NavLink>
+                  </div>
                 );
               })
             )}
           </nav>
         </ScrollArea>
 
-        {/* QR Scanner Quick Action */}
+        {canScan && (
         <div className="p-3 border-t border-sidebar-border">
           <NavLink
             to="/scan"
@@ -149,6 +138,7 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
             <span>QR Scannen</span>
           </NavLink>
         </div>
+        )}
       </SheetContent>
     </Sheet>
   );

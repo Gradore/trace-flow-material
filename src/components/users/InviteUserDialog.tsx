@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Loader2, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,11 +41,9 @@ const roles = [
 
 const generatePassword = () => {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
-  let password = "";
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return password;
+  const bytes = new Uint32Array(14);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => chars.charAt(b % chars.length)).join("");
 };
 
 export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDialogProps) {
@@ -56,6 +55,21 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     name: "",
     password: "",
     role: "customer",
+    companyId: "",
+  });
+
+  const isExternalRole = ["customer", "supplier", "logistics"].includes(formData.role);
+
+  const { data: companies = [] } = useQuery({
+    queryKey: ["companies", "for-invite"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("companies")
+        .select("id, name, type")
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
   });
 
   const handleGeneratePassword = () => {
@@ -89,10 +103,10 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
       return;
     }
 
-    if (formData.password.length < 6) {
+    if (formData.password.length < 8) {
       toast({
         title: "Fehler",
-        description: "Passwort muss mindestens 6 Zeichen lang sein.",
+        description: "Passwort muss mindestens 8 Zeichen lang sein.",
         variant: "destructive",
       });
       return;
@@ -107,57 +121,47 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
       return;
     }
 
+    if (isExternalRole && !formData.companyId) {
+      toast({
+        title: "Fehler",
+        description: "Für Kunde, Lieferant und Logistiker ist eine Firmenzuordnung erforderlich.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      // Use real email if provided, otherwise generate internal email from username
-      const authEmail = formData.email || `${formData.username.toLowerCase()}@rekuflow.internal`;
-
-      // Create user via Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: authEmail,
-        password: formData.password,
-        options: {
-          data: {
-            name: formData.name,
-          },
+      // The user is created server-side with the service role. Creating it from
+      // the browser with supabase.auth.signUp() would replace the admin's own
+      // session with the new user's session.
+      const { data, error } = await supabase.functions.invoke("admin-create-user", {
+        body: {
+          username: formData.username.toLowerCase(),
+          email: formData.email || null,
+          name: formData.name,
+          password: formData.password,
+          role: formData.role,
+          companyId: formData.companyId || null,
         },
       });
 
-      if (authError) throw authError;
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
-      if (authData.user) {
-        // Create profile
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .insert({
-            user_id: authData.user.id,
-            email: formData.email || null,
-            name: formData.name,
-            username: formData.username.toLowerCase(),
-            role: formData.role,
-          });
+      toast({
+        title: "Benutzer angelegt",
+        description: data?.warning
+          ? data.warning
+          : `${formData.name} (@${formData.username.toLowerCase()}) wurde erfolgreich angelegt.`,
+        variant: data?.warning ? "destructive" : "default",
+      });
 
-        if (profileError) {
-          if (profileError.message.includes("idx_profiles_username")) {
-            throw new Error("Benutzername ist bereits vergeben.");
-          }
-          throw profileError;
-        }
-
-        // Role is automatically created by the database trigger on profile insert
-        // using the role value from the profile record
-
-        toast({
-          title: "Benutzer angelegt",
-          description: `${formData.name} (@${formData.username}) wurde erfolgreich angelegt.`,
-        });
-
-        setFormData({ username: "", email: "", name: "", password: "", role: "customer" });
-        setShowPassword(false);
-        onSuccess();
-        onOpenChange(false);
-      }
+      setFormData({ username: "", email: "", name: "", password: "", role: "customer", companyId: "" });
+      setShowPassword(false);
+      onSuccess();
+      onOpenChange(false);
     } catch (error: any) {
       console.error("Error creating user:", error);
       toast({
@@ -230,7 +234,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder="Mindestens 6 Zeichen"
+                  placeholder="Mindestens 8 Zeichen"
                   className="pr-10"
                 />
                 <Button
@@ -271,6 +275,29 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                 </SelectContent>
               </Select>
             </div>
+            {isExternalRole && (
+              <div className="grid gap-2">
+                <Label htmlFor="company">Firma *</Label>
+                <Select
+                  value={formData.companyId}
+                  onValueChange={(value) => setFormData({ ...formData, companyId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Firma auswählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.map((company) => (
+                      <SelectItem key={company.id} value={company.id}>
+                        {company.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Externe Rollen sehen nur die Daten ihrer Firma.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

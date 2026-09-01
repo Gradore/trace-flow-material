@@ -1,13 +1,11 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Recycle, Loader2, Building2, Info } from "lucide-react";
+import { Recycle, Loader2, Info, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,59 +16,38 @@ const loginSchema = z.object({
   password: z.string().min(6, "Passwort muss mindestens 6 Zeichen haben"),
 });
 
-const signupSchema = z.object({
-  name: z.string().min(2, "Name muss mindestens 2 Zeichen haben"),
-  email: z.string().email("Ungültige E-Mail-Adresse"),
-  password: z.string().min(6, "Passwort muss mindestens 6 Zeichen haben"),
-  confirmPassword: z.string(),
-  role: z.enum(['customer', 'supplier', 'logistics']),
-  companyName: z.string().min(2, "Firmenname muss mindestens 2 Zeichen haben"),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwörter stimmen nicht überein",
-  path: ["confirmPassword"],
-});
-
-type RequestedRole = 'customer' | 'supplier' | 'logistics';
-
-const roleLabels: Record<RequestedRole, string> = {
-  customer: 'Kunde',
-  supplier: 'Lieferant',
-  logistics: 'Logistiker',
-};
-
 export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-  const [signupName, setSignupName] = useState("");
-  const [signupEmail, setSignupEmail] = useState("");
-  const [signupPassword, setSignupPassword] = useState("");
-  const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
-  const [signupRole, setSignupRole] = useState<RequestedRole>('customer');
-  const [signupCompanyName, setSignupCompanyName] = useState("");
-  const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
   const [forceLogout, setForceLogout] = useState(false);
-  
-  const { signIn, signUp, user } = useAuth();
+
+  const { signIn, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
-  // If user navigated to /auth with ?logout=true, force sign out
+  // If the user navigated to /auth with ?logout=true, force a sign out.
   useEffect(() => {
-    const shouldLogout = searchParams.get('logout') === 'true';
+    const shouldLogout = searchParams.get("logout") === "true";
     if (shouldLogout && !forceLogout) {
       setForceLogout(true);
       supabase.auth.signOut().then(() => {
-        // Clear the URL parameter
-        window.history.replaceState({}, '', '/auth');
+        window.history.replaceState({}, "", "/auth");
       });
     }
   }, [searchParams, forceLogout]);
+
+  // Redirect if already logged in (but not while forcing a logout).
+  useEffect(() => {
+    if (user && !forceLogout) {
+      navigate("/", { replace: true });
+    }
+  }, [user, forceLogout, navigate]);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,11 +67,7 @@ export default function Auth() {
     setIsLoading(false);
 
     if (error) {
-      toast({
-        variant: "destructive",
-        title: "Fehler",
-        description: error.message,
-      });
+      toast({ variant: "destructive", title: "Fehler", description: error.message });
       return;
     }
 
@@ -105,23 +78,15 @@ export default function Auth() {
     });
   };
 
-  // Redirect if already logged in (but not if we're forcing logout)
-  if (user && !forceLogout) {
-    navigate("/", { replace: true });
-    return null;
-  }
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-    
+
     const validation = loginSchema.safeParse({ username: loginUsername, password: loginPassword });
     if (!validation.success) {
       const fieldErrors: Record<string, string> = {};
       validation.error.errors.forEach((err) => {
-        if (err.path[0]) {
-          fieldErrors[`login_${err.path[0]}`] = err.message;
-        }
+        if (err.path[0]) fieldErrors[`login_${err.path[0]}`] = err.message;
       });
       setErrors(fieldErrors);
       return;
@@ -130,9 +95,11 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      // Look up email by username
-      const { data: email, error: lookupError } = await supabase.rpc('get_email_by_username', { _username: loginUsername.toLowerCase() });
-      
+      // Look up the login e-mail by username.
+      const { data: email, error: lookupError } = await supabase.rpc("get_email_by_username", {
+        _username: loginUsername.toLowerCase(),
+      });
+
       if (lookupError || !email) {
         toast({
           variant: "destructive",
@@ -166,147 +133,24 @@ export default function Auth() {
     }
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrors({});
-
-    const validation = signupSchema.safeParse({
-      name: signupName,
-      email: signupEmail,
-      password: signupPassword,
-      confirmPassword: signupConfirmPassword,
-      role: signupRole,
-      companyName: signupCompanyName,
-    });
-    
-    if (!validation.success) {
-      const fieldErrors: Record<string, string> = {};
-      validation.error.errors.forEach((err) => {
-        if (err.path[0]) {
-          fieldErrors[`signup_${err.path[0]}`] = err.message;
-        }
-      });
-      setErrors(fieldErrors);
-      return;
-    }
-
-    setIsLoading(true);
-    
-    // First, create the user with Supabase Auth
-    const { error: authError } = await signUp(signupEmail, signupPassword, signupName);
-    
-    if (authError) {
-      setIsLoading(false);
-      if (authError.message.includes("already registered")) {
-        toast({
-          variant: "destructive",
-          title: "Registrierung fehlgeschlagen",
-          description: "Diese E-Mail-Adresse ist bereits registriert.",
-        });
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Registrierung fehlgeschlagen",
-          description: authError.message,
-        });
-      }
-      return;
-    }
-
-    // Get the newly created user
-    const { data: { user: newUser } } = await supabase.auth.getUser();
-    
-    if (newUser) {
-      // Create pending registration
-      const { error: regError } = await supabase
-        .from('pending_registrations')
-        .insert({
-          user_id: newUser.id,
-          email: signupEmail,
-          name: signupName,
-          requested_role: signupRole,
-          company_name: signupCompanyName,
-          status: 'pending',
-        });
-
-      if (regError) {
-        console.error('Error creating pending registration:', regError);
-      }
-    }
-
-    setIsLoading(false);
-    setRegistrationSuccess(true);
-    
-    toast({
-      title: "Registrierung eingereicht",
-      description: "Ihre Registrierung wird von einem Administrator geprüft.",
-    });
-
-    // Sign out the user since they need approval first
-    await supabase.auth.signOut();
-  };
-
-  if (registrationSuccess) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
-                <Recycle className="h-6 w-6 text-primary" />
-              </div>
-              <span className="text-2xl font-bold">RekuFLOW</span>
-            </div>
-            <CardTitle>Registrierung erfolgreich</CardTitle>
-            <CardDescription>
-              Ihre Registrierung wurde eingereicht
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertDescription>
-                Ihre Registrierung als <strong>{roleLabels[signupRole]}</strong> für die Firma <strong>{signupCompanyName}</strong> wurde eingereicht. 
-                Ein Administrator wird Ihre Anfrage prüfen und Sie per E-Mail benachrichtigen, sobald Ihr Konto aktiviert wurde.
-              </AlertDescription>
-            </Alert>
-            <Button 
-              className="w-full" 
-              variant="outline"
-              onClick={() => {
-                setRegistrationSuccess(false);
-                setSignupName("");
-                setSignupEmail("");
-                setSignupPassword("");
-                setSignupConfirmPassword("");
-                setSignupCompanyName("");
-              }}
-            >
-              Zurück zur Anmeldung
-            </Button>
-          </CardContent>
-        </Card>
+  const brandHeader = (
+    <div className="flex items-center justify-center gap-2 mb-4">
+      <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
+        <Recycle className="h-6 w-6 text-primary" />
       </div>
-    );
-  }
+      <span className="text-2xl font-bold">RekuFLOW</span>
+    </div>
+  );
 
-  // Forgot password view
   if (showForgotPassword) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
-                <Recycle className="h-6 w-6 text-primary" />
-              </div>
-              <span className="text-2xl font-bold">RekuFLOW</span>
-            </div>
+            {brandHeader}
             <CardTitle>Passwort zurücksetzen</CardTitle>
             <CardDescription>
-              {forgotPasswordSent 
-                ? "E-Mail wurde gesendet" 
-                : "Geben Sie Ihre E-Mail-Adresse ein"}
+              {forgotPasswordSent ? "E-Mail wurde gesendet" : "Geben Sie Ihre E-Mail-Adresse ein"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -315,12 +159,12 @@ export default function Auth() {
                 <Alert>
                   <Info className="h-4 w-4" />
                   <AlertDescription>
-                    Falls ein Konto mit der E-Mail <strong>{forgotPasswordEmail}</strong> existiert, 
+                    Falls ein Konto mit der E-Mail <strong>{forgotPasswordEmail}</strong> existiert,
                     erhalten Sie in Kürze einen Link zum Zurücksetzen des Passworts.
                   </AlertDescription>
                 </Alert>
-                <Button 
-                  className="w-full" 
+                <Button
+                  className="w-full"
                   variant="outline"
                   onClick={() => {
                     setShowForgotPassword(false);
@@ -348,12 +192,7 @@ export default function Auth() {
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Link senden
                 </Button>
-                <Button 
-                  type="button"
-                  className="w-full" 
-                  variant="outline"
-                  onClick={() => setShowForgotPassword(false)}
-                >
+                <Button type="button" className="w-full" variant="outline" onClick={() => setShowForgotPassword(false)}>
                   Zurück
                 </Button>
               </form>
@@ -368,176 +207,55 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
-              <Recycle className="h-6 w-6 text-primary" />
-            </div>
-            <span className="text-2xl font-bold">RekuFLOW</span>
-          </div>
-          <CardTitle>Willkommen</CardTitle>
-          <CardDescription>
-            Materialfluss-Tracking für die Recycling-Industrie
-          </CardDescription>
+          {brandHeader}
+          <CardTitle>Anmelden</CardTitle>
+          <CardDescription>Materialfluss-Tracking für die Recycling-Industrie</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="login">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">Anmelden</TabsTrigger>
-              <TabsTrigger value="signup">Registrieren</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="login">
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="login-username">Benutzername</Label>
-                  <Input
-                    id="login-username"
-                    type="text"
-                    placeholder="benutzername"
-                    value={loginUsername}
-                    onChange={(e) => setLoginUsername(e.target.value)}
-                    disabled={isLoading}
-                  />
-                  {errors.login_username && (
-                    <p className="text-sm text-destructive">{errors.login_username}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="login-password">Passwort</Label>
-                  <Input
-                    id="login-password"
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    disabled={isLoading}
-                  />
-                  {errors.login_password && (
-                    <p className="text-sm text-destructive">{errors.login_password}</p>
-                  )}
-                </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Anmelden
-                </Button>
-                <div className="text-center mt-4">
-                  <Link
-                    to="/forgot-password"
-                    className="text-sm text-primary hover:underline"
-                  >
-                    Passwort vergessen?
-                  </Link>
-                </div>
-              </form>
-            </TabsContent>
-            
-            <TabsContent value="signup">
-              <form onSubmit={handleSignup} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-name">Name</Label>
-                  <Input
-                    id="signup-name"
-                    type="text"
-                    placeholder="Max Mustermann"
-                    value={signupName}
-                    onChange={(e) => setSignupName(e.target.value)}
-                    disabled={isLoading}
-                  />
-                  {errors.signup_name && (
-                    <p className="text-sm text-destructive">{errors.signup_name}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">E-Mail</Label>
-                  <Input
-                    id="signup-email"
-                    type="email"
-                    placeholder="name@firma.de"
-                    value={signupEmail}
-                    onChange={(e) => setSignupEmail(e.target.value)}
-                    disabled={isLoading}
-                  />
-                  {errors.signup_email && (
-                    <p className="text-sm text-destructive">{errors.signup_email}</p>
-                  )}
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="signup-role">Rolle</Label>
-                  <Select value={signupRole} onValueChange={(val) => setSignupRole(val as RequestedRole)} disabled={isLoading}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Rolle auswählen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="customer">Kunde</SelectItem>
-                      <SelectItem value="supplier">Lieferant</SelectItem>
-                      <SelectItem value="logistics">Logistiker</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {errors.signup_role && (
-                    <p className="text-sm text-destructive">{errors.signup_role}</p>
-                  )}
-                </div>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="login-username">Benutzername</Label>
+              <Input
+                id="login-username"
+                type="text"
+                autoComplete="username"
+                placeholder="benutzername"
+                value={loginUsername}
+                onChange={(e) => setLoginUsername(e.target.value)}
+                disabled={isLoading}
+              />
+              {errors.login_username && <p className="text-sm text-destructive">{errors.login_username}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="login-password">Passwort</Label>
+              <Input
+                id="login-password"
+                type="password"
+                autoComplete="current-password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                disabled={isLoading}
+              />
+              {errors.login_password && <p className="text-sm text-destructive">{errors.login_password}</p>}
+            </div>
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Anmelden
+            </Button>
+            <div className="text-center">
+              <Link to="/forgot-password" className="text-sm text-primary hover:underline">
+                Passwort vergessen?
+              </Link>
+            </div>
+          </form>
 
-                <div className="space-y-2">
-                  <Label htmlFor="signup-company">Firmenname</Label>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="signup-company"
-                      type="text"
-                      placeholder="Musterfirma GmbH"
-                      value={signupCompanyName}
-                      onChange={(e) => setSignupCompanyName(e.target.value)}
-                      disabled={isLoading}
-                      className="pl-10"
-                    />
-                  </div>
-                  {errors.signup_companyName && (
-                    <p className="text-sm text-destructive">{errors.signup_companyName}</p>
-                  )}
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Passwort</Label>
-                  <Input
-                    id="signup-password"
-                    type="password"
-                    value={signupPassword}
-                    onChange={(e) => setSignupPassword(e.target.value)}
-                    disabled={isLoading}
-                  />
-                  {errors.signup_password && (
-                    <p className="text-sm text-destructive">{errors.signup_password}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-confirm">Passwort bestätigen</Label>
-                  <Input
-                    id="signup-confirm"
-                    type="password"
-                    value={signupConfirmPassword}
-                    onChange={(e) => setSignupConfirmPassword(e.target.value)}
-                    disabled={isLoading}
-                  />
-                  {errors.signup_confirmPassword && (
-                    <p className="text-sm text-destructive">{errors.signup_confirmPassword}</p>
-                  )}
-                </div>
-                
-                <Alert className="bg-muted">
-                  <Info className="h-4 w-4" />
-                  <AlertDescription className="text-sm">
-                    Ihre Registrierung muss von einem Administrator genehmigt werden, bevor Sie sich anmelden können.
-                  </AlertDescription>
-                </Alert>
-                
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Registrierung einreichen
-                </Button>
-              </form>
-            </TabsContent>
-          </Tabs>
+          <Alert className="mt-6 bg-muted">
+            <ShieldCheck className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              Eine Selbstregistrierung ist nicht möglich. Zugänge werden ausschließlich von einem
+              Administrator angelegt. Wenden Sie sich bei Bedarf an Ihren Ansprechpartner.
+            </AlertDescription>
+          </Alert>
         </CardContent>
       </Card>
     </div>

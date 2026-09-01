@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -253,7 +252,7 @@ export default function RecipeMatching() {
 
   // ── RENDER ──
   return (
-    <AppLayout>
+    <>
       <div className="space-y-6 animate-fade-in">
 
         {/* ── LIST VIEW ── */}
@@ -916,6 +915,6 @@ export default function RecipeMatching() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </>
   );
 }

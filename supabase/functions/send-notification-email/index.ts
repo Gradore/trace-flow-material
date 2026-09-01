@@ -8,7 +8,10 @@ const corsHeaders = {
 };
 
 interface NotificationEmailRequest {
-  to: string;
+  /** Explicit recipient. Ignored when userId is supplied. */
+  to?: string;
+  /** Preferred: the recipient is resolved from this account server-side. */
+  userId?: string;
   subject: string;
   title: string;
   message: string;
@@ -16,7 +19,17 @@ interface NotificationEmailRequest {
   type: 'sample_approved' | 'sample_rejected' | 'order_created' | 'deadline_approaching' | 'registration_approved' | 'registration_rejected' | 'pickup_request' | 'announcement' | 'general';
 }
 
-const getEmailTemplate = (title: string, message: string, link?: string, type?: string) => {
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const getEmailTemplate = (rawTitle: string, rawMessage: string, link?: string, type?: string) => {
+  const title = escapeHtml(rawTitle);
+  const message = escapeHtml(rawMessage);
   const buttonText = type === 'sample_approved' ? 'Probe anzeigen' 
     : type === 'order_created' ? 'Auftrag anzeigen'
     : type === 'deadline_approaching' ? 'Details anzeigen'
@@ -98,7 +111,58 @@ serve(async (req: Request): Promise<Response> => {
     const userId = claimsData.claims.sub;
     console.log(`Sending email requested by user: ${userId}`);
 
-    const { to, subject, title, message, link, type }: NotificationEmailRequest = await req.json();
+    // Sending under the company brand is staff-only - otherwise this is an
+    // authenticated open mail relay.
+    const { data: isStaff } = await supabase.rpc('is_internal_staff', { _user_id: userId });
+    if (!isStaff) {
+      return new Response(JSON.stringify({ error: 'Nur interne Mitarbeiter dürfen Benachrichtigungen versenden.' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const body: NotificationEmailRequest = await req.json();
+    const { subject, title, message, type } = body;
+
+    // The recipient is resolved server-side from a known account whenever a
+    // userId is supplied; a free-text address is only accepted from admins.
+    let to = body.to;
+    if (body.userId) {
+      const serviceClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const { data: profile } = await serviceClient
+        .from('profiles').select('email').eq('user_id', body.userId).maybeSingle();
+      if (!profile?.email || profile.email.endsWith('@rekuflow.internal')) {
+        return new Response(JSON.stringify({ error: 'Empfänger hat keine E-Mail-Adresse hinterlegt.' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      to = profile.email;
+    }
+
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      return new Response(JSON.stringify({ error: 'Ungültige Empfängeradresse.' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Only links back into the application are embedded as a button, so the
+    // branded mail cannot be turned into a phishing vector.
+    const allowedOrigins = [Deno.env.get('APP_ORIGIN'), req.headers.get('origin')]
+      .filter((o): o is string => !!o);
+    const link = (() => {
+      if (!body.link) return undefined;
+      if (body.link.startsWith('/')) {
+        return allowedOrigins[0] ? `${allowedOrigins[0]}${body.link}` : undefined;
+      }
+      try {
+        const url = new URL(body.link);
+        return allowedOrigins.some((o) => url.origin === new URL(o).origin) ? url.toString() : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
 
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) {

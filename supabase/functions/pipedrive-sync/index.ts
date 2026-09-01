@@ -156,6 +156,15 @@ serve(async (req) => {
     const userId = claimsData.claims.sub;
     console.log(`Authenticated user: ${userId}`);
 
+    // The CRM sync reads and mutates the whole address book - internal only.
+    const { data: isStaff } = await supabase.rpc('is_internal_staff', { _user_id: userId });
+    if (!isStaff) {
+      return new Response(JSON.stringify({ error: 'Nur interne Mitarbeiter dürfen die CRM-Synchronisation nutzen.' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     if (!PIPEDRIVE_API_KEY) {
       throw new Error('PIPEDRIVE_API_KEY not configured');
     }

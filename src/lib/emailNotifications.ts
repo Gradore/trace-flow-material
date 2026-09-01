@@ -12,7 +12,10 @@ type NotificationType =
   | 'general';
 
 interface SendEmailParams {
-  to: string;
+  /** Explicit recipient. Prefer userId so the address is resolved server-side. */
+  to?: string;
+  /** Recipient account - the edge function resolves the address itself. */
+  userId?: string;
   subject: string;
   title: string;
   message: string;
@@ -20,10 +23,10 @@ interface SendEmailParams {
   type: NotificationType;
 }
 
-export async function sendNotificationEmail({ to, subject, title, message, link, type }: SendEmailParams) {
+export async function sendNotificationEmail({ to, userId, subject, title, message, link, type }: SendEmailParams) {
   try {
     const { data, error } = await supabase.functions.invoke('send-notification-email', {
-      body: { to, subject, title, message, link, type },
+      body: { to, userId, subject, title, message, link, type },
     });
 
     if (error) {
