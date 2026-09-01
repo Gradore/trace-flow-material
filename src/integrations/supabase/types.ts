@@ -10,1181 +10,60 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
-      project_partners: {
-        Row: {
-          id: string
-          name: string
-          category: string
-          subcategory: string | null
-          street: string | null
-          postal_code: string | null
-          city: string | null
-          country: string | null
-          website: string | null
-          phone: string | null
-          email: string | null
-          status: string
-          suitability_rating: number | null
-          is_fixed_partner: boolean
-          material_classes: string[] | null
-          fraction_ids: string[] | null
-          notes: string | null
-          company_id: string | null
-          created_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          name: string
-          category?: string
-          subcategory?: string | null
-          street?: string | null
-          postal_code?: string | null
-          city?: string | null
-          country?: string | null
-          website?: string | null
-          phone?: string | null
-          email?: string | null
-          status?: string
-          suitability_rating?: number | null
-          is_fixed_partner?: boolean
-          material_classes?: string[] | null
-          fraction_ids?: string[] | null
-          notes?: string | null
-          company_id?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          name?: string
-          category?: string
-          subcategory?: string | null
-          street?: string | null
-          postal_code?: string | null
-          city?: string | null
-          country?: string | null
-          website?: string | null
-          phone?: string | null
-          email?: string | null
-          status?: string
-          suitability_rating?: number | null
-          is_fixed_partner?: boolean
-          material_classes?: string[] | null
-          fraction_ids?: string[] | null
-          notes?: string | null
-          company_id?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_partners_company_id_fkey"
-            columns: ["company_id"]
-            isOneToOne: false
-            referencedRelation: "companies"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      project_contacts: {
-        Row: {
-          id: string
-          partner_id: string
-          name: string
-          role: string | null
-          department: string | null
-          email: string | null
-          phone: string | null
-          mobile: string | null
-          is_primary: boolean
-          is_decision_maker: boolean
-          last_contact_date: string | null
-          next_action: string | null
-          next_action_date: string | null
-          notes: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          partner_id: string
-          name: string
-          role?: string | null
-          department?: string | null
-          email?: string | null
-          phone?: string | null
-          mobile?: string | null
-          is_primary?: boolean
-          is_decision_maker?: boolean
-          last_contact_date?: string | null
-          next_action?: string | null
-          next_action_date?: string | null
-          notes?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          partner_id?: string
-          name?: string
-          role?: string | null
-          department?: string | null
-          email?: string | null
-          phone?: string | null
-          mobile?: string | null
-          is_primary?: boolean
-          is_decision_maker?: boolean
-          last_contact_date?: string | null
-          next_action?: string | null
-          next_action_date?: string | null
-          notes?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_contacts_partner_id_fkey"
-            columns: ["partner_id"]
-            isOneToOne: false
-            referencedRelation: "project_partners"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      project_phases: {
-        Row: {
-          id: string
-          code: string
-          name: string
-          description: string | null
-          order_num: number
-          status: string
-          planned_start: string | null
-          planned_end: string | null
-          actual_start: string | null
-          actual_end: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          code: string
-          name: string
-          description?: string | null
-          order_num?: number
-          status?: string
-          planned_start?: string | null
-          planned_end?: string | null
-          actual_start?: string | null
-          actual_end?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          code?: string
-          name?: string
-          description?: string | null
-          order_num?: number
-          status?: string
-          planned_start?: string | null
-          planned_end?: string | null
-          actual_start?: string | null
-          actual_end?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      project_tasks: {
-        Row: {
-          id: string
-          code: string
-          phase_id: string | null
-          title: string
-          description: string | null
-          status: string
-          priority: string
-          due_date: string | null
-          estimated_duration_weeks: number | null
-          estimated_cost_eur: number | null
-          actual_cost_eur: number | null
-          assignee: string | null
-          partner_id: string | null
-          blocker_reason: string | null
-          completed_at: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          code: string
-          phase_id?: string | null
-          title: string
-          description?: string | null
-          status?: string
-          priority?: string
-          due_date?: string | null
-          estimated_duration_weeks?: number | null
-          estimated_cost_eur?: number | null
-          actual_cost_eur?: number | null
-          assignee?: string | null
-          partner_id?: string | null
-          blocker_reason?: string | null
-          completed_at?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          code?: string
-          phase_id?: string | null
-          title?: string
-          description?: string | null
-          status?: string
-          priority?: string
-          due_date?: string | null
-          estimated_duration_weeks?: number | null
-          estimated_cost_eur?: number | null
-          actual_cost_eur?: number | null
-          assignee?: string | null
-          partner_id?: string | null
-          blocker_reason?: string | null
-          completed_at?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_tasks_phase_id_fkey"
-            columns: ["phase_id"]
-            isOneToOne: false
-            referencedRelation: "project_phases"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_tasks_partner_id_fkey"
-            columns: ["partner_id"]
-            isOneToOne: false
-            referencedRelation: "project_partners"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      project_task_dependencies: {
-        Row: {
-          task_id: string
-          depends_on_task_id: string
-        }
-        Insert: {
-          task_id: string
-          depends_on_task_id: string
-        }
-        Update: {
-          task_id?: string
-          depends_on_task_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_task_dependencies_task_id_fkey"
-            columns: ["task_id"]
-            isOneToOne: false
-            referencedRelation: "project_tasks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_task_dependencies_depends_on_task_id_fkey"
-            columns: ["depends_on_task_id"]
-            isOneToOne: false
-            referencedRelation: "project_tasks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      material_batches: {
-        Row: {
-          id: string
-          batch_code: string
-          supplier_partner_id: string | null
-          material_class: string
-          resin_type: string | null
-          weight_kg: number
-          received_date: string | null
-          declared_fiber_content_pct: number | null
-          declared_filler: string | null
-          contamination_notes: string | null
-          storage_location: string | null
-          status: string
-          notes: string | null
-          material_input_id: string | null
-          container_id: string | null
-          created_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          batch_code: string
-          supplier_partner_id?: string | null
-          material_class?: string
-          resin_type?: string | null
-          weight_kg?: number
-          received_date?: string | null
-          declared_fiber_content_pct?: number | null
-          declared_filler?: string | null
-          contamination_notes?: string | null
-          storage_location?: string | null
-          status?: string
-          notes?: string | null
-          material_input_id?: string | null
-          container_id?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          batch_code?: string
-          supplier_partner_id?: string | null
-          material_class?: string
-          resin_type?: string | null
-          weight_kg?: number
-          received_date?: string | null
-          declared_fiber_content_pct?: number | null
-          declared_filler?: string | null
-          contamination_notes?: string | null
-          storage_location?: string | null
-          status?: string
-          notes?: string | null
-          material_input_id?: string | null
-          container_id?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "material_batches_supplier_partner_id_fkey"
-            columns: ["supplier_partner_id"]
-            isOneToOne: false
-            referencedRelation: "project_partners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "material_batches_material_input_id_fkey"
-            columns: ["material_input_id"]
-            isOneToOne: false
-            referencedRelation: "material_inputs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "material_batches_container_id_fkey"
-            columns: ["container_id"]
-            isOneToOne: false
-            referencedRelation: "containers"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      doe_series: {
-        Row: {
-          id: string
-          code: string
-          name: string
-          process_line: string
-          description: string | null
-          factors: Json
-          responses: string[] | null
-          planned_runs: number
-          design_type: string
-          status: string
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          code: string
-          name: string
-          process_line?: string
-          description?: string | null
-          factors?: Json
-          responses?: string[] | null
-          planned_runs?: number
-          design_type?: string
-          status?: string
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          code?: string
-          name?: string
-          process_line?: string
-          description?: string | null
-          factors?: Json
-          responses?: string[] | null
-          planned_runs?: number
-          design_type?: string
-          status?: string
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      test_runs: {
-        Row: {
-          id: string
-          run_code: string
-          title: string
-          partner_id: string | null
-          machine_name: string | null
-          machine_type: string | null
-          input_batch_id: string | null
-          input_weight_kg: number | null
-          process_line: string
-          planned_date: string | null
-          actual_date: string | null
-          status: string
-          doe_run_number: number | null
-          doe_series_id: string | null
-          cost_eur: number | null
-          responsible: string | null
-          summary: string | null
-          ai_interpretation: string | null
-          ai_interpreted_at: string | null
-          created_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          run_code: string
-          title: string
-          partner_id?: string | null
-          machine_name?: string | null
-          machine_type?: string | null
-          input_batch_id?: string | null
-          input_weight_kg?: number | null
-          process_line?: string
-          planned_date?: string | null
-          actual_date?: string | null
-          status?: string
-          doe_run_number?: number | null
-          doe_series_id?: string | null
-          cost_eur?: number | null
-          responsible?: string | null
-          summary?: string | null
-          ai_interpretation?: string | null
-          ai_interpreted_at?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          run_code?: string
-          title?: string
-          partner_id?: string | null
-          machine_name?: string | null
-          machine_type?: string | null
-          input_batch_id?: string | null
-          input_weight_kg?: number | null
-          process_line?: string
-          planned_date?: string | null
-          actual_date?: string | null
-          status?: string
-          doe_run_number?: number | null
-          doe_series_id?: string | null
-          cost_eur?: number | null
-          responsible?: string | null
-          summary?: string | null
-          ai_interpretation?: string | null
-          ai_interpreted_at?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "test_runs_partner_id_fkey"
-            columns: ["partner_id"]
-            isOneToOne: false
-            referencedRelation: "project_partners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "test_runs_input_batch_id_fkey"
-            columns: ["input_batch_id"]
-            isOneToOne: false
-            referencedRelation: "material_batches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "test_runs_doe_series_id_fkey"
-            columns: ["doe_series_id"]
-            isOneToOne: false
-            referencedRelation: "doe_series"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      test_run_parameters: {
-        Row: {
-          id: string
-          test_run_id: string
-          parameter_key: string
-          value_numeric: number | null
-          value_text: string | null
-          unit: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          test_run_id: string
-          parameter_key: string
-          value_numeric?: number | null
-          value_text?: string | null
-          unit?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          test_run_id?: string
-          parameter_key?: string
-          value_numeric?: number | null
-          value_text?: string | null
-          unit?: string | null
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "test_run_parameters_test_run_id_fkey"
-            columns: ["test_run_id"]
-            isOneToOne: false
-            referencedRelation: "test_runs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      fraction_specs: {
-        Row: {
-          id: string
-          name: string
-          fiber_length_min_mm: number | null
-          fiber_length_max_mm: number | null
-          glass_content_min_pct: number | null
-          moisture_max_pct: number | null
-          fines_max_pct: number | null
-          application: string | null
-          target_price_eur_t: number | null
-          process_line: string | null
-          notes: string | null
-          updated_at: string
-        }
-        Insert: {
-          id: string
-          name: string
-          fiber_length_min_mm?: number | null
-          fiber_length_max_mm?: number | null
-          glass_content_min_pct?: number | null
-          moisture_max_pct?: number | null
-          fines_max_pct?: number | null
-          application?: string | null
-          target_price_eur_t?: number | null
-          process_line?: string | null
-          notes?: string | null
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          name?: string
-          fiber_length_min_mm?: number | null
-          fiber_length_max_mm?: number | null
-          glass_content_min_pct?: number | null
-          moisture_max_pct?: number | null
-          fines_max_pct?: number | null
-          application?: string | null
-          target_price_eur_t?: number | null
-          process_line?: string | null
-          notes?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      output_fractions: {
-        Row: {
-          id: string
-          fraction_code: string
-          test_run_id: string | null
-          target_fraction_id: string | null
-          weight_kg: number
-          yield_pct: number | null
-          storage_location: string | null
-          retained_sample_kg: number | null
-          status: string
-          released_for_product_test: boolean
-          notes: string | null
-          output_material_id: string | null
-          created_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          fraction_code: string
-          test_run_id?: string | null
-          target_fraction_id?: string | null
-          weight_kg?: number
-          yield_pct?: number | null
-          storage_location?: string | null
-          retained_sample_kg?: number | null
-          status?: string
-          released_for_product_test?: boolean
-          notes?: string | null
-          output_material_id?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          fraction_code?: string
-          test_run_id?: string | null
-          target_fraction_id?: string | null
-          weight_kg?: number
-          yield_pct?: number | null
-          storage_location?: string | null
-          retained_sample_kg?: number | null
-          status?: string
-          released_for_product_test?: boolean
-          notes?: string | null
-          output_material_id?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "output_fractions_test_run_id_fkey"
-            columns: ["test_run_id"]
-            isOneToOne: false
-            referencedRelation: "test_runs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "output_fractions_target_fraction_id_fkey"
-            columns: ["target_fraction_id"]
-            isOneToOne: false
-            referencedRelation: "fraction_specs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "output_fractions_output_material_id_fkey"
-            columns: ["output_material_id"]
-            isOneToOne: false
-            referencedRelation: "output_materials"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      fraction_analyses: {
-        Row: {
-          id: string
-          analysis_code: string
-          output_fraction_id: string | null
-          lab_partner_id: string | null
-          method: string | null
-          sample_sent_date: string | null
-          result_date: string | null
-          status: string
-          cost_eur: number | null
-          ai_interpretation: string | null
-          ai_interpreted_at: string | null
-          notes: string | null
-          sample_id: string | null
-          created_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          analysis_code: string
-          output_fraction_id?: string | null
-          lab_partner_id?: string | null
-          method?: string | null
-          sample_sent_date?: string | null
-          result_date?: string | null
-          status?: string
-          cost_eur?: number | null
-          ai_interpretation?: string | null
-          ai_interpreted_at?: string | null
-          notes?: string | null
-          sample_id?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          analysis_code?: string
-          output_fraction_id?: string | null
-          lab_partner_id?: string | null
-          method?: string | null
-          sample_sent_date?: string | null
-          result_date?: string | null
-          status?: string
-          cost_eur?: number | null
-          ai_interpretation?: string | null
-          ai_interpreted_at?: string | null
-          notes?: string | null
-          sample_id?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "fraction_analyses_output_fraction_id_fkey"
-            columns: ["output_fraction_id"]
-            isOneToOne: false
-            referencedRelation: "output_fractions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fraction_analyses_lab_partner_id_fkey"
-            columns: ["lab_partner_id"]
-            isOneToOne: false
-            referencedRelation: "project_partners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fraction_analyses_sample_id_fkey"
-            columns: ["sample_id"]
-            isOneToOne: false
-            referencedRelation: "samples"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      fraction_analysis_results: {
-        Row: {
-          id: string
-          analysis_id: string
-          parameter_key: string
-          value_numeric: number | null
-          value_text: string | null
-          unit: string | null
-          target_value: number | null
-          spec_min: number | null
-          spec_max: number | null
-          pass_fail: boolean | null
-          measured_at: string
-        }
-        Insert: {
-          id?: string
-          analysis_id: string
-          parameter_key: string
-          value_numeric?: number | null
-          value_text?: string | null
-          unit?: string | null
-          target_value?: number | null
-          spec_min?: number | null
-          spec_max?: number | null
-          pass_fail?: boolean | null
-          measured_at?: string
-        }
-        Update: {
-          id?: string
-          analysis_id?: string
-          parameter_key?: string
-          value_numeric?: number | null
-          value_text?: string | null
-          unit?: string | null
-          target_value?: number | null
-          spec_min?: number | null
-          spec_max?: number | null
-          pass_fail?: boolean | null
-          measured_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "fraction_analysis_results_analysis_id_fkey"
-            columns: ["analysis_id"]
-            isOneToOne: false
-            referencedRelation: "fraction_analyses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      product_tests: {
-        Row: {
-          id: string
-          test_code: string
-          title: string
-          category: string
-          partner_id: string | null
-          output_fraction_id: string | null
-          dosage_pct: number | null
-          recipe_notes: string | null
-          planned_date: string | null
-          actual_date: string | null
-          status: string
-          cost_eur: number | null
-          summary: string | null
-          ai_interpretation: string | null
-          ai_interpreted_at: string | null
-          created_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          test_code: string
-          title: string
-          category?: string
-          partner_id?: string | null
-          output_fraction_id?: string | null
-          dosage_pct?: number | null
-          recipe_notes?: string | null
-          planned_date?: string | null
-          actual_date?: string | null
-          status?: string
-          cost_eur?: number | null
-          summary?: string | null
-          ai_interpretation?: string | null
-          ai_interpreted_at?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          test_code?: string
-          title?: string
-          category?: string
-          partner_id?: string | null
-          output_fraction_id?: string | null
-          dosage_pct?: number | null
-          recipe_notes?: string | null
-          planned_date?: string | null
-          actual_date?: string | null
-          status?: string
-          cost_eur?: number | null
-          summary?: string | null
-          ai_interpretation?: string | null
-          ai_interpreted_at?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "product_tests_partner_id_fkey"
-            columns: ["partner_id"]
-            isOneToOne: false
-            referencedRelation: "project_partners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "product_tests_output_fraction_id_fkey"
-            columns: ["output_fraction_id"]
-            isOneToOne: false
-            referencedRelation: "output_fractions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      product_test_results: {
-        Row: {
-          id: string
-          product_test_id: string
-          parameter_key: string
-          value_numeric: number | null
-          unit: string | null
-          age_days: number | null
-          baseline_value: number | null
-          delta_pct: number | null
-          measured_at: string
-        }
-        Insert: {
-          id?: string
-          product_test_id: string
-          parameter_key: string
-          value_numeric?: number | null
-          unit?: string | null
-          age_days?: number | null
-          baseline_value?: number | null
-          delta_pct?: number | null
-          measured_at?: string
-        }
-        Update: {
-          id?: string
-          product_test_id?: string
-          parameter_key?: string
-          value_numeric?: number | null
-          unit?: string | null
-          age_days?: number | null
-          baseline_value?: number | null
-          delta_pct?: number | null
-          measured_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "product_test_results_product_test_id_fkey"
-            columns: ["product_test_id"]
-            isOneToOne: false
-            referencedRelation: "product_tests"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      project_email_templates: {
-        Row: {
-          id: string
-          code: string
-          name: string
-          category: string
-          subject: string
-          body_md: string
-          placeholders: string[] | null
-          notes: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          code: string
-          name: string
-          category?: string
-          subject: string
-          body_md: string
-          placeholders?: string[] | null
-          notes?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          code?: string
-          name?: string
-          category?: string
-          subject?: string
-          body_md?: string
-          placeholders?: string[] | null
-          notes?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      project_communications: {
-        Row: {
-          id: string
-          partner_id: string | null
-          contact_id: string | null
-          direction: string
-          channel: string
-          subject: string | null
-          body: string | null
-          template_id: string | null
-          occurred_at: string
-          linked_task_id: string | null
-          linked_test_run_id: string | null
-          ai_summary: string | null
-          ai_action_items: Json | null
-          ai_sentiment: string | null
-          created_by: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          partner_id?: string | null
-          contact_id?: string | null
-          direction?: string
-          channel?: string
-          subject?: string | null
-          body?: string | null
-          template_id?: string | null
-          occurred_at?: string
-          linked_task_id?: string | null
-          linked_test_run_id?: string | null
-          ai_summary?: string | null
-          ai_action_items?: Json | null
-          ai_sentiment?: string | null
-          created_by?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          partner_id?: string | null
-          contact_id?: string | null
-          direction?: string
-          channel?: string
-          subject?: string | null
-          body?: string | null
-          template_id?: string | null
-          occurred_at?: string
-          linked_task_id?: string | null
-          linked_test_run_id?: string | null
-          ai_summary?: string | null
-          ai_action_items?: Json | null
-          ai_sentiment?: string | null
-          created_by?: string | null
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_communications_partner_id_fkey"
-            columns: ["partner_id"]
-            isOneToOne: false
-            referencedRelation: "project_partners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_communications_contact_id_fkey"
-            columns: ["contact_id"]
-            isOneToOne: false
-            referencedRelation: "project_contacts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_communications_template_id_fkey"
-            columns: ["template_id"]
-            isOneToOne: false
-            referencedRelation: "project_email_templates"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_communications_linked_task_id_fkey"
-            columns: ["linked_task_id"]
-            isOneToOne: false
-            referencedRelation: "project_tasks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_communications_linked_test_run_id_fkey"
-            columns: ["linked_test_run_id"]
-            isOneToOne: false
-            referencedRelation: "test_runs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       ai_analyses: {
         Row: {
-          id: string
-          analysis_type: string
-          scope_type: string
-          scope_id: string | null
-          input_context: Json | null
-          output_md: string | null
-          recommendations: Json | null
-          confidence: string | null
-          model: string | null
-          tokens_used: number | null
-          created_for_user: string | null
           acknowledged_at: string | null
           acted_upon: boolean
+          analysis_type: string
+          confidence: string | null
           created_at: string
+          created_for_user: string | null
+          id: string
+          input_context: Json | null
+          model: string | null
+          output_md: string | null
+          recommendations: Json | null
+          scope_id: string | null
+          scope_type: string
+          tokens_used: number | null
         }
         Insert: {
-          id?: string
-          analysis_type: string
-          scope_type?: string
-          scope_id?: string | null
-          input_context?: Json | null
-          output_md?: string | null
-          recommendations?: Json | null
-          confidence?: string | null
-          model?: string | null
-          tokens_used?: number | null
-          created_for_user?: string | null
           acknowledged_at?: string | null
           acted_upon?: boolean
+          analysis_type: string
+          confidence?: string | null
           created_at?: string
+          created_for_user?: string | null
+          id?: string
+          input_context?: Json | null
+          model?: string | null
+          output_md?: string | null
+          recommendations?: Json | null
+          scope_id?: string | null
+          scope_type?: string
+          tokens_used?: number | null
         }
         Update: {
-          id?: string
-          analysis_type?: string
-          scope_type?: string
-          scope_id?: string | null
-          input_context?: Json | null
-          output_md?: string | null
-          recommendations?: Json | null
-          confidence?: string | null
-          model?: string | null
-          tokens_used?: number | null
-          created_for_user?: string | null
           acknowledged_at?: string | null
           acted_upon?: boolean
+          analysis_type?: string
+          confidence?: string | null
           created_at?: string
+          created_for_user?: string | null
+          id?: string
+          input_context?: Json | null
+          model?: string | null
+          output_md?: string | null
+          recommendations?: Json | null
+          scope_id?: string | null
+          scope_type?: string
+          tokens_used?: number | null
         }
         Relationships: []
-      }
-      project_risks: {
-        Row: {
-          id: string
-          title: string
-          description: string | null
-          category: string
-          probability: number
-          impact: number
-          severity: number | null
-          mitigation_plan: string | null
-          owner: string | null
-          status: string
-          phase_id: string | null
-          ai_suggested: boolean
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          title: string
-          description?: string | null
-          category?: string
-          probability?: number
-          impact?: number
-          mitigation_plan?: string | null
-          owner?: string | null
-          status?: string
-          phase_id?: string | null
-          ai_suggested?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          title?: string
-          description?: string | null
-          category?: string
-          probability?: number
-          impact?: number
-          mitigation_plan?: string | null
-          owner?: string | null
-          status?: string
-          phase_id?: string | null
-          ai_suggested?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_risks_phase_id_fkey"
-            columns: ["phase_id"]
-            isOneToOne: false
-            referencedRelation: "project_phases"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       applications: {
         Row: {
@@ -1758,13 +637,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "delivery_notes_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "delivery_notes_material_input_id_fkey"
             columns: ["material_input_id"]
             isOneToOne: false
@@ -1782,18 +654,18 @@ export type Database = {
       }
       documents: {
         Row: {
+          ai_extracted_data: Json | null
+          ai_summary: string | null
           container_id: string | null
           created_at: string
           delivery_note_id: string | null
+          document_type: string | null
           file_size: number | null
           file_type: string
           file_url: string
-          linked_to_type: string | null
-          linked_to_id: string | null
-          document_type: string | null
-          ai_summary: string | null
-          ai_extracted_data: Json | null
           id: string
+          linked_to_id: string | null
+          linked_to_type: string | null
           material_input_id: string | null
           name: string
           output_material_id: string | null
@@ -1802,18 +674,18 @@ export type Database = {
           uploaded_by: string | null
         }
         Insert: {
+          ai_extracted_data?: Json | null
+          ai_summary?: string | null
           container_id?: string | null
           created_at?: string
           delivery_note_id?: string | null
+          document_type?: string | null
           file_size?: number | null
           file_type: string
           file_url: string
-          linked_to_type?: string | null
-          linked_to_id?: string | null
-          document_type?: string | null
-          ai_summary?: string | null
-          ai_extracted_data?: Json | null
           id?: string
+          linked_to_id?: string | null
+          linked_to_type?: string | null
           material_input_id?: string | null
           name: string
           output_material_id?: string | null
@@ -1822,18 +694,18 @@ export type Database = {
           uploaded_by?: string | null
         }
         Update: {
+          ai_extracted_data?: Json | null
+          ai_summary?: string | null
           container_id?: string | null
           created_at?: string
           delivery_note_id?: string | null
+          document_type?: string | null
           file_size?: number | null
           file_type?: string
           file_url?: string
-          linked_to_type?: string | null
-          linked_to_id?: string | null
-          document_type?: string | null
-          ai_summary?: string | null
-          ai_extracted_data?: Json | null
           id?: string
+          linked_to_id?: string | null
+          linked_to_type?: string | null
           material_input_id?: string | null
           name?: string
           output_material_id?: string | null
@@ -1877,14 +749,52 @@ export type Database = {
             referencedRelation: "samples"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "documents_uploaded_by_fkey"
-            columns: ["uploaded_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
         ]
+      }
+      doe_series: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          design_type: string
+          factors: Json
+          id: string
+          name: string
+          planned_runs: number
+          process_line: string
+          responses: string[] | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          design_type?: string
+          factors?: Json
+          id?: string
+          name: string
+          planned_runs?: number
+          process_line?: string
+          responses?: string[] | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          design_type?: string
+          factors?: Json
+          id?: string
+          name?: string
+          planned_runs?: number
+          process_line?: string
+          responses?: string[] | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       equipment: {
         Row: {
@@ -1941,6 +851,180 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      fraction_analyses: {
+        Row: {
+          ai_interpretation: string | null
+          ai_interpreted_at: string | null
+          analysis_code: string
+          cost_eur: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          lab_partner_id: string | null
+          method: string | null
+          notes: string | null
+          output_fraction_id: string | null
+          result_date: string | null
+          sample_id: string | null
+          sample_sent_date: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          ai_interpretation?: string | null
+          ai_interpreted_at?: string | null
+          analysis_code: string
+          cost_eur?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lab_partner_id?: string | null
+          method?: string | null
+          notes?: string | null
+          output_fraction_id?: string | null
+          result_date?: string | null
+          sample_id?: string | null
+          sample_sent_date?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          ai_interpretation?: string | null
+          ai_interpreted_at?: string | null
+          analysis_code?: string
+          cost_eur?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lab_partner_id?: string | null
+          method?: string | null
+          notes?: string | null
+          output_fraction_id?: string | null
+          result_date?: string | null
+          sample_id?: string | null
+          sample_sent_date?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fraction_analyses_lab_partner_id_fkey"
+            columns: ["lab_partner_id"]
+            isOneToOne: false
+            referencedRelation: "project_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fraction_analyses_output_fraction_id_fkey"
+            columns: ["output_fraction_id"]
+            isOneToOne: false
+            referencedRelation: "output_fractions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fraction_analyses_sample_id_fkey"
+            columns: ["sample_id"]
+            isOneToOne: false
+            referencedRelation: "samples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fraction_analysis_results: {
+        Row: {
+          analysis_id: string
+          id: string
+          measured_at: string
+          parameter_key: string
+          pass_fail: boolean | null
+          spec_max: number | null
+          spec_min: number | null
+          target_value: number | null
+          unit: string | null
+          value_numeric: number | null
+          value_text: string | null
+        }
+        Insert: {
+          analysis_id: string
+          id?: string
+          measured_at?: string
+          parameter_key: string
+          pass_fail?: boolean | null
+          spec_max?: number | null
+          spec_min?: number | null
+          target_value?: number | null
+          unit?: string | null
+          value_numeric?: number | null
+          value_text?: string | null
+        }
+        Update: {
+          analysis_id?: string
+          id?: string
+          measured_at?: string
+          parameter_key?: string
+          pass_fail?: boolean | null
+          spec_max?: number | null
+          spec_min?: number | null
+          target_value?: number | null
+          unit?: string | null
+          value_numeric?: number | null
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fraction_analysis_results_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "fraction_analyses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fraction_specs: {
+        Row: {
+          application: string | null
+          fiber_length_max_mm: number | null
+          fiber_length_min_mm: number | null
+          fines_max_pct: number | null
+          glass_content_min_pct: number | null
+          id: string
+          moisture_max_pct: number | null
+          name: string
+          notes: string | null
+          process_line: string | null
+          target_price_eur_t: number | null
+          updated_at: string
+        }
+        Insert: {
+          application?: string | null
+          fiber_length_max_mm?: number | null
+          fiber_length_min_mm?: number | null
+          fines_max_pct?: number | null
+          glass_content_min_pct?: number | null
+          id: string
+          moisture_max_pct?: number | null
+          name: string
+          notes?: string | null
+          process_line?: string | null
+          target_price_eur_t?: number | null
+          updated_at?: string
+        }
+        Update: {
+          application?: string | null
+          fiber_length_max_mm?: number | null
+          fiber_length_min_mm?: number | null
+          fines_max_pct?: number | null
+          glass_content_min_pct?: number | null
+          id?: string
+          moisture_max_pct?: number | null
+          name?: string
+          notes?: string | null
+          process_line?: string | null
+          target_price_eur_t?: number | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       maintenance_records: {
         Row: {
@@ -2196,6 +1280,91 @@ export type Database = {
           },
         ]
       }
+      material_batches: {
+        Row: {
+          batch_code: string
+          container_id: string | null
+          contamination_notes: string | null
+          created_at: string
+          created_by: string | null
+          declared_fiber_content_pct: number | null
+          declared_filler: string | null
+          id: string
+          material_class: string
+          material_input_id: string | null
+          notes: string | null
+          received_date: string | null
+          resin_type: string | null
+          status: string
+          storage_location: string | null
+          supplier_partner_id: string | null
+          updated_at: string
+          weight_kg: number
+        }
+        Insert: {
+          batch_code: string
+          container_id?: string | null
+          contamination_notes?: string | null
+          created_at?: string
+          created_by?: string | null
+          declared_fiber_content_pct?: number | null
+          declared_filler?: string | null
+          id?: string
+          material_class?: string
+          material_input_id?: string | null
+          notes?: string | null
+          received_date?: string | null
+          resin_type?: string | null
+          status?: string
+          storage_location?: string | null
+          supplier_partner_id?: string | null
+          updated_at?: string
+          weight_kg?: number
+        }
+        Update: {
+          batch_code?: string
+          container_id?: string | null
+          contamination_notes?: string | null
+          created_at?: string
+          created_by?: string | null
+          declared_fiber_content_pct?: number | null
+          declared_filler?: string | null
+          id?: string
+          material_class?: string
+          material_input_id?: string | null
+          notes?: string | null
+          received_date?: string | null
+          resin_type?: string | null
+          status?: string
+          storage_location?: string | null
+          supplier_partner_id?: string | null
+          updated_at?: string
+          weight_kg?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_batches_container_id_fkey"
+            columns: ["container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_batches_material_input_id_fkey"
+            columns: ["material_input_id"]
+            isOneToOne: false
+            referencedRelation: "material_inputs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_batches_supplier_partner_id_fkey"
+            columns: ["supplier_partner_id"]
+            isOneToOne: false
+            referencedRelation: "project_partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       material_flow_history: {
         Row: {
           container_id: string | null
@@ -2245,13 +1414,6 @@ export type Database = {
             columns: ["container_id"]
             isOneToOne: false
             referencedRelation: "containers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "material_flow_history_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -2554,6 +1716,82 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      output_fractions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          fraction_code: string
+          id: string
+          notes: string | null
+          output_material_id: string | null
+          released_for_product_test: boolean
+          retained_sample_kg: number | null
+          status: string
+          storage_location: string | null
+          target_fraction_id: string | null
+          test_run_id: string | null
+          updated_at: string
+          weight_kg: number
+          yield_pct: number | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          fraction_code: string
+          id?: string
+          notes?: string | null
+          output_material_id?: string | null
+          released_for_product_test?: boolean
+          retained_sample_kg?: number | null
+          status?: string
+          storage_location?: string | null
+          target_fraction_id?: string | null
+          test_run_id?: string | null
+          updated_at?: string
+          weight_kg?: number
+          yield_pct?: number | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          fraction_code?: string
+          id?: string
+          notes?: string | null
+          output_material_id?: string | null
+          released_for_product_test?: boolean
+          retained_sample_kg?: number | null
+          status?: string
+          storage_location?: string | null
+          target_fraction_id?: string | null
+          test_run_id?: string | null
+          updated_at?: string
+          weight_kg?: number
+          yield_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "output_fractions_output_material_id_fkey"
+            columns: ["output_material_id"]
+            isOneToOne: false
+            referencedRelation: "output_materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "output_fractions_target_fraction_id_fkey"
+            columns: ["target_fraction_id"]
+            isOneToOne: false
+            referencedRelation: "fraction_specs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "output_fractions_test_run_id_fkey"
+            columns: ["test_run_id"]
+            isOneToOne: false
+            referencedRelation: "test_runs"
             referencedColumns: ["id"]
           },
         ]
@@ -2868,6 +2106,128 @@ export type Database = {
           },
         ]
       }
+      product_test_results: {
+        Row: {
+          age_days: number | null
+          baseline_value: number | null
+          delta_pct: number | null
+          id: string
+          measured_at: string
+          parameter_key: string
+          product_test_id: string
+          unit: string | null
+          value_numeric: number | null
+        }
+        Insert: {
+          age_days?: number | null
+          baseline_value?: number | null
+          delta_pct?: number | null
+          id?: string
+          measured_at?: string
+          parameter_key: string
+          product_test_id: string
+          unit?: string | null
+          value_numeric?: number | null
+        }
+        Update: {
+          age_days?: number | null
+          baseline_value?: number | null
+          delta_pct?: number | null
+          id?: string
+          measured_at?: string
+          parameter_key?: string
+          product_test_id?: string
+          unit?: string | null
+          value_numeric?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_test_results_product_test_id_fkey"
+            columns: ["product_test_id"]
+            isOneToOne: false
+            referencedRelation: "product_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_tests: {
+        Row: {
+          actual_date: string | null
+          ai_interpretation: string | null
+          ai_interpreted_at: string | null
+          category: string
+          cost_eur: number | null
+          created_at: string
+          created_by: string | null
+          dosage_pct: number | null
+          id: string
+          output_fraction_id: string | null
+          partner_id: string | null
+          planned_date: string | null
+          recipe_notes: string | null
+          status: string
+          summary: string | null
+          test_code: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          actual_date?: string | null
+          ai_interpretation?: string | null
+          ai_interpreted_at?: string | null
+          category?: string
+          cost_eur?: number | null
+          created_at?: string
+          created_by?: string | null
+          dosage_pct?: number | null
+          id?: string
+          output_fraction_id?: string | null
+          partner_id?: string | null
+          planned_date?: string | null
+          recipe_notes?: string | null
+          status?: string
+          summary?: string | null
+          test_code: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          actual_date?: string | null
+          ai_interpretation?: string | null
+          ai_interpreted_at?: string | null
+          category?: string
+          cost_eur?: number | null
+          created_at?: string
+          created_by?: string | null
+          dosage_pct?: number | null
+          id?: string
+          output_fraction_id?: string | null
+          partner_id?: string | null
+          planned_date?: string | null
+          recipe_notes?: string | null
+          status?: string
+          summary?: string | null
+          test_code?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_tests_output_fraction_id_fkey"
+            columns: ["output_fraction_id"]
+            isOneToOne: false
+            referencedRelation: "output_fractions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_tests_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "project_partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -2903,6 +2263,492 @@ export type Database = {
           username?: string
         }
         Relationships: []
+      }
+      project_communications: {
+        Row: {
+          ai_action_items: Json | null
+          ai_sentiment: string | null
+          ai_summary: string | null
+          body: string | null
+          channel: string
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          direction: string
+          id: string
+          linked_task_id: string | null
+          linked_test_run_id: string | null
+          occurred_at: string
+          partner_id: string | null
+          subject: string | null
+          template_id: string | null
+        }
+        Insert: {
+          ai_action_items?: Json | null
+          ai_sentiment?: string | null
+          ai_summary?: string | null
+          body?: string | null
+          channel?: string
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          direction?: string
+          id?: string
+          linked_task_id?: string | null
+          linked_test_run_id?: string | null
+          occurred_at?: string
+          partner_id?: string | null
+          subject?: string | null
+          template_id?: string | null
+        }
+        Update: {
+          ai_action_items?: Json | null
+          ai_sentiment?: string | null
+          ai_summary?: string | null
+          body?: string | null
+          channel?: string
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          direction?: string
+          id?: string
+          linked_task_id?: string | null
+          linked_test_run_id?: string | null
+          occurred_at?: string
+          partner_id?: string | null
+          subject?: string | null
+          template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_communications_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "project_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_communications_linked_task_id_fkey"
+            columns: ["linked_task_id"]
+            isOneToOne: false
+            referencedRelation: "project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_communications_linked_test_run_id_fkey"
+            columns: ["linked_test_run_id"]
+            isOneToOne: false
+            referencedRelation: "test_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_communications_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "project_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_communications_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "project_email_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_contacts: {
+        Row: {
+          created_at: string
+          department: string | null
+          email: string | null
+          id: string
+          is_decision_maker: boolean
+          is_primary: boolean
+          last_contact_date: string | null
+          mobile: string | null
+          name: string
+          next_action: string | null
+          next_action_date: string | null
+          notes: string | null
+          partner_id: string
+          phone: string | null
+          role: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          department?: string | null
+          email?: string | null
+          id?: string
+          is_decision_maker?: boolean
+          is_primary?: boolean
+          last_contact_date?: string | null
+          mobile?: string | null
+          name: string
+          next_action?: string | null
+          next_action_date?: string | null
+          notes?: string | null
+          partner_id: string
+          phone?: string | null
+          role?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          department?: string | null
+          email?: string | null
+          id?: string
+          is_decision_maker?: boolean
+          is_primary?: boolean
+          last_contact_date?: string | null
+          mobile?: string | null
+          name?: string
+          next_action?: string | null
+          next_action_date?: string | null
+          notes?: string | null
+          partner_id?: string
+          phone?: string | null
+          role?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_contacts_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "project_partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_email_templates: {
+        Row: {
+          body_md: string
+          category: string
+          code: string
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          placeholders: string[] | null
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          body_md: string
+          category?: string
+          code: string
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          placeholders?: string[] | null
+          subject: string
+          updated_at?: string
+        }
+        Update: {
+          body_md?: string
+          category?: string
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          placeholders?: string[] | null
+          subject?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_partners: {
+        Row: {
+          category: string
+          city: string | null
+          company_id: string | null
+          country: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          fraction_ids: string[] | null
+          id: string
+          is_fixed_partner: boolean
+          material_classes: string[] | null
+          name: string
+          notes: string | null
+          phone: string | null
+          postal_code: string | null
+          status: string
+          street: string | null
+          subcategory: string | null
+          suitability_rating: number | null
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          category?: string
+          city?: string | null
+          company_id?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          fraction_ids?: string[] | null
+          id?: string
+          is_fixed_partner?: boolean
+          material_classes?: string[] | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          status?: string
+          street?: string | null
+          subcategory?: string | null
+          suitability_rating?: number | null
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          category?: string
+          city?: string | null
+          company_id?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          fraction_ids?: string[] | null
+          id?: string
+          is_fixed_partner?: boolean
+          material_classes?: string[] | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          status?: string
+          street?: string | null
+          subcategory?: string | null
+          suitability_rating?: number | null
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_partners_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_phases: {
+        Row: {
+          actual_end: string | null
+          actual_start: string | null
+          code: string
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          order_num: number
+          planned_end: string | null
+          planned_start: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          actual_end?: string | null
+          actual_start?: string | null
+          code: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          order_num?: number
+          planned_end?: string | null
+          planned_start?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          actual_end?: string | null
+          actual_start?: string | null
+          code?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          order_num?: number
+          planned_end?: string | null
+          planned_start?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_risks: {
+        Row: {
+          ai_suggested: boolean
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          impact: number
+          mitigation_plan: string | null
+          owner: string | null
+          phase_id: string | null
+          probability: number
+          severity: number | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          ai_suggested?: boolean
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          impact?: number
+          mitigation_plan?: string | null
+          owner?: string | null
+          phase_id?: string | null
+          probability?: number
+          severity?: number | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          ai_suggested?: boolean
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          impact?: number
+          mitigation_plan?: string | null
+          owner?: string | null
+          phase_id?: string | null
+          probability?: number
+          severity?: number | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_risks_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "project_phases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_task_dependencies: {
+        Row: {
+          depends_on_task_id: string
+          task_id: string
+        }
+        Insert: {
+          depends_on_task_id: string
+          task_id: string
+        }
+        Update: {
+          depends_on_task_id?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_task_dependencies_depends_on_task_id_fkey"
+            columns: ["depends_on_task_id"]
+            isOneToOne: false
+            referencedRelation: "project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_task_dependencies_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "project_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_tasks: {
+        Row: {
+          actual_cost_eur: number | null
+          assignee: string | null
+          blocker_reason: string | null
+          code: string
+          completed_at: string | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          estimated_cost_eur: number | null
+          estimated_duration_weeks: number | null
+          id: string
+          partner_id: string | null
+          phase_id: string | null
+          priority: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          actual_cost_eur?: number | null
+          assignee?: string | null
+          blocker_reason?: string | null
+          code: string
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          estimated_cost_eur?: number | null
+          estimated_duration_weeks?: number | null
+          id?: string
+          partner_id?: string | null
+          phase_id?: string | null
+          priority?: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          actual_cost_eur?: number | null
+          assignee?: string | null
+          blocker_reason?: string | null
+          code?: string
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          estimated_cost_eur?: number | null
+          estimated_duration_weeks?: number | null
+          id?: string
+          partner_id?: string | null
+          phase_id?: string | null
+          priority?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_tasks_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "project_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_tasks_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "project_phases"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rate_limit_log: {
         Row: {
@@ -3131,6 +2977,141 @@ export type Database = {
           },
         ]
       }
+      test_run_parameters: {
+        Row: {
+          created_at: string
+          id: string
+          parameter_key: string
+          test_run_id: string
+          unit: string | null
+          value_numeric: number | null
+          value_text: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          parameter_key: string
+          test_run_id: string
+          unit?: string | null
+          value_numeric?: number | null
+          value_text?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          parameter_key?: string
+          test_run_id?: string
+          unit?: string | null
+          value_numeric?: number | null
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_run_parameters_test_run_id_fkey"
+            columns: ["test_run_id"]
+            isOneToOne: false
+            referencedRelation: "test_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_runs: {
+        Row: {
+          actual_date: string | null
+          ai_interpretation: string | null
+          ai_interpreted_at: string | null
+          cost_eur: number | null
+          created_at: string
+          created_by: string | null
+          doe_run_number: number | null
+          doe_series_id: string | null
+          id: string
+          input_batch_id: string | null
+          input_weight_kg: number | null
+          machine_name: string | null
+          machine_type: string | null
+          partner_id: string | null
+          planned_date: string | null
+          process_line: string
+          responsible: string | null
+          run_code: string
+          status: string
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          actual_date?: string | null
+          ai_interpretation?: string | null
+          ai_interpreted_at?: string | null
+          cost_eur?: number | null
+          created_at?: string
+          created_by?: string | null
+          doe_run_number?: number | null
+          doe_series_id?: string | null
+          id?: string
+          input_batch_id?: string | null
+          input_weight_kg?: number | null
+          machine_name?: string | null
+          machine_type?: string | null
+          partner_id?: string | null
+          planned_date?: string | null
+          process_line?: string
+          responsible?: string | null
+          run_code: string
+          status?: string
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          actual_date?: string | null
+          ai_interpretation?: string | null
+          ai_interpreted_at?: string | null
+          cost_eur?: number | null
+          created_at?: string
+          created_by?: string | null
+          doe_run_number?: number | null
+          doe_series_id?: string | null
+          id?: string
+          input_batch_id?: string | null
+          input_weight_kg?: number | null
+          machine_name?: string | null
+          machine_type?: string | null
+          partner_id?: string | null
+          planned_date?: string | null
+          process_line?: string
+          responsible?: string | null
+          run_code?: string
+          status?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_runs_doe_series_id_fkey"
+            columns: ["doe_series_id"]
+            isOneToOne: false
+            referencedRelation: "doe_series"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_runs_input_batch_id_fkey"
+            columns: ["input_batch_id"]
+            isOneToOne: false
+            referencedRelation: "material_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_runs_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "project_partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_permissions: {
         Row: {
           can_view_admin: boolean | null
@@ -3262,32 +3243,34 @@ export type Database = {
         Returns: boolean
       }
       is_internal_staff: { Args: { _user_id: string }; Returns: boolean }
-      set_user_role: { Args: { _user_id: string; _role: Database["public"]["Enums"]["app_role"] }; Returns: undefined }
+      log_audit: {
+        Args: {
+          _action: string
+          _changed_fields?: string[]
+          _new_data?: Json
+          _old_data?: Json
+          _record_id: string
+          _table_name: string
+        }
+        Returns: string
+      }
+      next_fraction_code: {
+        Args: { _target_fraction_id: string; _test_run_id: string }
+        Returns: string
+      }
       next_project_code: { Args: { _kind: string }; Returns: string }
-      next_fraction_code: { Args: { _test_run_id: string; _target_fraction_id: string }; Returns: string }
-      log_audit:
-        | {
-            Args: {
-              _action: string
-              _changed_fields?: string[]
-              _new_data?: Json
-              _old_data?: Json
-              _record_id: string
-              _table_name: string
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              _action: string
-              _changed_fields?: string[]
-              _new_data?: Json
-              _old_data?: Json
-              _record_id: string
-              _table_name: string
-            }
-            Returns: string
-          }
+      schedule_project_ai: {
+        Args: { _base_url: string; _service_key: string }
+        Returns: string
+      }
+      set_user_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: undefined
+      }
+      unschedule_project_ai: { Args: never; Returns: string }
       user_belongs_to_company: {
         Args: { _company_id: string; _user_id: string }
         Returns: boolean
