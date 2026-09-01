@@ -3262,7 +3262,6 @@ export type Database = {
         Returns: boolean
       }
       is_internal_staff: { Args: { _user_id: string }; Returns: boolean }
-      is_patent_filed: { Args: never; Returns: boolean }
       set_user_role: { Args: { _user_id: string; _role: Database["public"]["Enums"]["app_role"] }; Returns: undefined }
       next_project_code: { Args: { _kind: string }; Returns: string }
       next_fraction_code: { Args: { _test_run_id: string; _target_fraction_id: string }; Returns: string }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import {
   Dialog,
@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { IpGateBanner, ToneBadge } from "@/components/project/ProjectUI";
+import { ToneBadge } from "@/components/project/ProjectUI";
 import { TASK_PRIORITIES, TASK_STATUSES, labelOf, toneOf } from "@/lib/project/constants";
 import type { Partner, Phase, ProjectTask } from "@/lib/project/types";
 
@@ -50,8 +50,6 @@ interface ProjectTasksDialogProps {
   partners: Partner[];
   predecessors: ProjectTask[];
   successors: ProjectTask[];
-  /** True when the given phase belongs to the IP-gated phases P2..P7. */
-  isPhaseTwoPlus: (phaseId: string | null) => boolean;
   isSaving: boolean;
   onSubmit: (payload: TaskFormPayload) => void;
 }
@@ -164,7 +162,6 @@ export default function ProjectTasksDialog({
   partners,
   predecessors,
   successors,
-  isPhaseTwoPlus,
   isSaving,
   onSubmit,
 }: ProjectTasksDialogProps) {
@@ -195,10 +192,6 @@ export default function ProjectTasksDialog({
   }, [open, mode, task]);
 
   const selectedPhaseId = form.phaseId === NONE ? null : form.phaseId;
-  const ipRelevant = useMemo(
-    () => isPhaseTwoPlus(selectedPhaseId),
-    [isPhaseTwoPlus, selectedPhaseId],
-  );
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -255,8 +248,6 @@ export default function ProjectTasksDialog({
               : "Änderungen wirken sich sofort auf Abhängigkeiten und Kostenrollup aus."}
           </DialogDescription>
         </DialogHeader>
-
-        {ipRelevant && <IpGateBanner compact />}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

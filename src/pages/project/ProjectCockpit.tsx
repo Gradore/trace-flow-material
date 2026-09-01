@@ -14,7 +14,6 @@ import {
   Package,
   PackageCheck,
   Rocket,
-  ShieldAlert,
   Sparkles,
   Users,
   X,
@@ -55,7 +54,6 @@ import {
   ConformityBadge,
   EmptyState,
   ErrorState,
-  IpGateBanner,
   LoadingRows,
   Markdown,
   PhaseStepper,
@@ -77,7 +75,6 @@ import {
   useMaterialBatches,
   useOutputFractions,
   usePartners,
-  usePatentFiled,
   usePhases,
   useProjectRisks,
   useProjectTasks,
@@ -91,7 +88,6 @@ import {
 import {
   MATERIAL_CLASSES,
   PARTNER_STATUSES,
-  PATENT_TASK_CODE,
   PROCESS_LINES,
   RISK_CATEGORIES,
   RISK_STATUSES,
@@ -161,17 +157,6 @@ function timeOf(value: string | null | undefined): number | null {
   if (!value) return null;
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? null : time;
-}
-
-/**
- * "Phase 2" is derived from the phase code (P0, P1, P2 ...) because task codes
- * such as P0-2 carry the same prefix. order_num is only the fallback.
- */
-function phaseRank(phase: Phase | null): number | null {
-  if (!phase) return null;
-  const match = phase.code.match(/(\d+)/);
-  if (match) return Number(match[1]);
-  return phase.order_num;
 }
 
 function phaseWindow(phase: Phase): { start: number | null; end: number | null; hasWindow: boolean } {
@@ -357,7 +342,6 @@ export default function ProjectCockpit() {
   const runsQuery = useTestRuns();
   const partnersQuery = usePartners();
   const risksQuery = useProjectRisks();
-  const { isFiled: patentFiled } = usePatentFiled();
 
   const requestBriefing = useRequestAiAnalysis();
   const acknowledgeBriefing = useAcknowledgeAiAnalysis();
@@ -391,19 +375,6 @@ export default function ProjectCockpit() {
       return byCode.get(prefix) ?? null;
     };
   }, [phases]);
-
-  /* ------------------------------------------------------------- IP gate */
-
-  const ipBreachTasks = useMemo<ProjectTask[]>(() => {
-    if (patentFiled) return [];
-    return tasks
-      .filter((task) => task.status === "doing")
-      .filter((task) => {
-        const rank = phaseRank(resolveTaskPhase(task));
-        return rank !== null && rank >= 2;
-      })
-      .sort((a, b) => a.code.localeCompare(b.code, "de"));
-  }, [patentFiled, tasks, resolveTaskPhase]);
 
   /* ------------------------------------------------------------ briefing */
 
@@ -726,55 +697,6 @@ export default function ProjectCockpit() {
           </Button>
         }
       />
-
-      {/* 2 — IP-Gate: Phase-2-Aktivitäten vor der Patentanmeldung sind unzulässig */}
-      <IpGateBanner />
-
-      {ipBreachTasks.length > 0 && (
-        <Card className="mb-4 border-destructive/50 bg-destructive/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base text-destructive">
-              <ShieldAlert className="h-4 w-4 shrink-0" />
-              Schutzrechtsverstoß droht — Phase-2-Aufgaben laufen bereits
-            </CardTitle>
-            <CardDescription className="text-xs">
-              {PATENT_TASK_CODE} (Patentanmeldung) ist nicht abgeschlossen, es sind aber{" "}
-              {ipBreachTasks.length} Aufgabe(n) aus Phase 2 oder höher in Arbeit. Jede Herstellerdemo
-              vor der Einreichung zerstört die Neuheit des Verfahrens.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <ul className="space-y-2">
-              {ipBreachTasks.map((task) => {
-                const phase = resolveTaskPhase(task);
-                return (
-                  <li
-                    key={task.id}
-                    className="flex flex-wrap items-center gap-2 rounded-md border border-destructive/30 bg-background/60 px-3 py-2"
-                  >
-                    <span className="font-mono text-xs font-semibold text-destructive">{task.code}</span>
-                    <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
-                    {phase && (
-                      <span className="text-xs text-muted-foreground">
-                        {phase.code} · {phase.name}
-                      </span>
-                    )}
-                    <ToneBadge tone={toneOf(TASK_STATUSES, task.status)}>
-                      {labelOf(TASK_STATUSES, task.status)}
-                    </ToneBadge>
-                  </li>
-                );
-              })}
-            </ul>
-            <Button asChild variant="outline" size="sm" className="mt-3 h-8 text-xs">
-              <Link to="/projekt/aufgaben">
-                Aufgaben stoppen oder umplanen
-                <ArrowRight className="ml-1 h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
 
       {/* 11 — KPI-Reihe */}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">

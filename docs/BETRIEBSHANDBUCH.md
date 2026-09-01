@@ -153,13 +153,28 @@ Der Projektplan ist kein Silo. Diese Brücken legen Daten wechselseitig an
 | Dokumente | generischer Link `linked_to_type` / `linked_to_id` | `documents` |
 | KI-Auswertung | erzeugt eine Benachrichtigung | `notifications` |
 
-### IP-Sperre
+### Phasen und Reihenfolge
 
-Aufgaben der Phasen P2–P7 dürfen erst auf `doing` gesetzt werden, wenn **P0-2
-(Patentanmeldung eingereicht)** auf `done` steht. Bis dahin zeigen alle
-betroffenen Ansichten den Warnhinweis
-*„Patent noch nicht eingereicht — Herstellerdemo gefährdet die Neuheit."*
-Ein bewusstes Übersteuern ist möglich, aber immer ein expliziter Klick.
+Es wird **kein Patent angemeldet** — die frühere IP-Sperre ist entfernt. Die
+Reihenfolge wird ausschließlich über Aufgaben-Abhängigkeiten erzwungen: eine
+Aufgabe lässt sich nicht auf `in Arbeit` setzen, solange ein Vorgänger offen
+ist; ein bewusstes Übersteuern ist möglich, aber immer ein expliziter Klick.
+
+| Phase | Inhalt |
+|---|---|
+| P0 | Vorbereitung & Prüfrahmen — NDA, Versuchsprotokoll, Labor, Bewertungskriterien für die Maschinenauswahl |
+| P1 | Materialbeschaffung GFK-Typen — je Materialklasse M1–M7 eine eigene Aufgabe mit Lieferant |
+| P2 | Maschinentests im Technikum — je Hersteller eine Aufgabe mit Partner |
+| P3 | Fraktionsherstellung |
+| P4 | Produktvalidierung Baustoff |
+| P5 | Produktvalidierung Kunststoff |
+| P6 | Wissenschaftliche Begleitung |
+| P7 | Maschinenpark & Anlagenspezifikation — Auswahl je Prozessstufe, Angebotsvergleich, CAPEX, Förderung |
+
+Das Verfahrens-Know-how ist weiterhin schützenswert, aber über das **NDA
+(P0-1)** statt über eine Anmeldung: die Materialanfragen hängen als Nachfolger
+an dieser Aufgabe, und das Risikoregister führt „Verfahrens-Know-how ohne NDA
+offengelegt" als eigenen Eintrag.
 
 ### Spec-Konformität
 

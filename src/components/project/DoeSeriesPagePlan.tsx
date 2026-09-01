@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   EmptyState,
-  IpGateBanner,
   ToneBadge,
   formatDate,
   formatNumber,
@@ -337,7 +336,6 @@ export default function DoeSeriesPagePlan({
         </Alert>
       )}
 
-      <IpGateBanner />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Button

@@ -30,7 +30,6 @@ import {
   labelOf,
 } from "@/lib/project/constants";
 import { nextProjectCode, useProjectMutation } from "@/hooks/project/useProjectData";
-import { IpGateBanner } from "@/components/project/ProjectUI";
 import type { FractionAnalysis, FractionSpec, OutputFraction, Partner } from "@/lib/project/types";
 import { NONE, formatSpecWindow, fractionLabel, parseDecimal } from "./AnalyticsShared";
 
@@ -257,7 +256,6 @@ export function AnalyticsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {!isEdit && <IpGateBanner compact />}
 
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">

@@ -24,7 +24,6 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { IpGateBanner } from "@/components/project/ProjectUI";
 import {
   CheckboxGroup,
   RatingPicker,
@@ -150,16 +149,6 @@ export function validatePartnerForm(values: PartnerFormValues): string | null {
     return "Die Website muss mit http://, https:// oder www. beginnen.";
   }
   return null;
-}
-
-/**
- * Statuses / categories that mean a manufacturer trial is being prepared.
- * Those are phase-2 activities and are gated by the patent filing (P0-2).
- */
-const TRIAL_CATEGORIES = new Set(["machine_manufacturer", "toll_processor", "research_institute"]);
-
-export function isPhaseTwoActivity(category: string, status: string): boolean {
-  return TRIAL_CATEGORIES.has(category) && (status === "testing" || status === "active_partner");
 }
 
 const MATERIAL_OPTIONS: OptionItem[] = MATERIAL_CLASSES.map((entry) => ({
@@ -292,8 +281,6 @@ export function PartnerFormFields({
           onCheckedChange={(checked) => set("is_fixed_partner", checked)}
         />
       </div>
-
-      {isPhaseTwoActivity(values.category, values.status) && <IpGateBanner compact />}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5 sm:col-span-2">
