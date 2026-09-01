@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -78,32 +78,55 @@ export function ContainerDetailsDialog({ open, onOpenChange, container }: Contai
     status: container?.status || "empty",
   });
 
-  // Update form when container changes
-  if (container && formData.type !== container.type && formData.location !== container.location) {
+  // Reset the form whenever another container is opened. The component stays
+  // mounted across opens, so the sync has to be keyed on the container id.
+  useEffect(() => {
+    if (!container) return;
     setFormData({
       type: container.type,
       weight: container.weight_kg?.toString() || "",
       location: container.location || "",
       status: container.status,
     });
-  }
+  }, [container?.id, open]);
 
   const handleSave = async () => {
     if (!container) return;
 
     setIsSubmitting(true);
     try {
-      const { error } = await supabase
+      const weight = formData.weight ? parseFloat(formData.weight) : null;
+      if (weight !== null && (!Number.isFinite(weight) || weight < 0)) {
+        toast({
+          title: "Ungültiges Gewicht",
+          description: "Bitte geben Sie ein gültiges Gewicht in kg an.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { data: updated, error } = await supabase
         .from("containers")
         .update({
           type: formData.type,
-          weight_kg: formData.weight ? parseFloat(formData.weight) : null,
+          weight_kg: weight,
           location: formData.location || null,
           status: formData.status,
         })
-        .eq("id", container.id);
+        .eq("id", container.id)
+        .select();
 
       if (error) throw error;
+
+      // RLS filters the row out silently: no error, no affected rows.
+      if (!updated || updated.length === 0) {
+        toast({
+          title: "Fehler",
+          description: "Keine Berechtigung oder Datensatz nicht gefunden.",
+          variant: "destructive",
+        });
+        return;
+      }
 
       queryClient.invalidateQueries({ queryKey: ["containers"] });
       toast({
@@ -127,12 +150,35 @@ export function ContainerDetailsDialog({ open, onOpenChange, container }: Contai
 
     setIsSubmitting(true);
     try {
-      const { error } = await supabase
+      const { data: deleted, error } = await supabase
         .from("containers")
         .delete()
-        .eq("id", container.id);
+        .eq("id", container.id)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === "23503") {
+          toast({
+            title: "Container in Verwendung",
+            description: "Dieser Container ist mit anderen Datensätzen verknüpft und kann nicht gelöscht werden.",
+            variant: "destructive",
+          });
+          setShowDeleteConfirm(false);
+          return;
+        }
+        throw error;
+      }
+
+      // RLS filters the row out silently: no error, no affected rows.
+      if (!deleted || deleted.length === 0) {
+        toast({
+          title: "Fehler",
+          description: "Keine Berechtigung oder Datensatz nicht gefunden.",
+          variant: "destructive",
+        });
+        setShowDeleteConfirm(false);
+        return;
+      }
 
       queryClient.invalidateQueries({ queryKey: ["containers"] });
       toast({

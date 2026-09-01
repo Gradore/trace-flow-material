@@ -72,20 +72,44 @@ export function DeliveryNoteDetailsDialog({ open, onOpenChange, note }: Delivery
   const type = typeConfig[note.type as keyof typeof typeConfig] || typeConfig.incoming;
   const TypeIcon = type.icon;
 
+  // Older rows stored a (never resolvable) public URL instead of the object
+  // path; storage.download() needs the bucket-relative path.
+  const toStoragePath = (value: string) => {
+    const marker = "/documents/";
+    const index = value.indexOf(marker);
+    return index >= 0 ? value.slice(index + marker.length) : value;
+  };
+
   const handleDelete = async () => {
     try {
-      // Delete PDF from storage if exists
-      if (note.pdf_url) {
-        await supabase.storage.from("documents").remove([note.pdf_url]);
-      }
-      
-      // Delete from database
-      const { error } = await supabase
+      // Delete the row first: an RLS-filtered delete returns zero rows and no
+      // error, and the PDF must not be removed while the record survives.
+      const { data: deleted, error } = await supabase
         .from("delivery_notes")
         .delete()
-        .eq("id", note.id);
-      
+        .eq("id", note.id)
+        .select();
+
       if (error) throw error;
+
+      if (!deleted || deleted.length === 0) {
+        toast({
+          title: "Fehler",
+          description: "Keine Berechtigung oder Datensatz nicht gefunden.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Delete PDF from storage if exists
+      if (note.pdf_url) {
+        const { error: storageError } = await supabase.storage
+          .from("documents")
+          .remove([toStoragePath(note.pdf_url)]);
+        if (storageError) {
+          console.error("Storage delete error:", storageError);
+        }
+      }
 
       queryClient.invalidateQueries({ queryKey: ["delivery-notes"] });
       toast({ title: "Lieferschein gelöscht" });
@@ -105,8 +129,8 @@ export function DeliveryNoteDetailsDialog({ open, onOpenChange, note }: Delivery
     try {
       const { data, error } = await supabase.storage
         .from("documents")
-        .download(note.pdf_url);
-      
+        .download(toStoragePath(note.pdf_url));
+
       if (error) throw error;
 
       const url = URL.createObjectURL(data);
@@ -203,7 +227,7 @@ export function DeliveryNoteDetailsDialog({ open, onOpenChange, note }: Delivery
                   className="p-0 h-auto font-mono font-medium"
                   onClick={() => {
                     if (note.material_input_id) {
-                      navigate("/intake");
+                      navigate(`/intake?id=${encodeURIComponent(note.material_input_id)}`);
                     } else if (note.output_material_id) {
                       navigate("/output");
                     }

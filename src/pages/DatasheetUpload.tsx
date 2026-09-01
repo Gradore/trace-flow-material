@@ -1,12 +1,17 @@
 import { useState, useCallback } from "react";
-import { Upload, FileText, X, Loader2, CheckCircle, AlertCircle, FileSearch } from "lucide-react";
+import { Upload, FileText, X, Loader2, CheckCircle, AlertCircle, FileSearch, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { de } from "date-fns/locale";
 
 interface UploadedFile {
   id: string;
@@ -22,26 +27,47 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 export default function DatasheetUpload() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [datasheetText, setDatasheetText] = useState("");
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Previously stored analyses so the page is not empty after a reload
+  const {
+    data: analyses = [],
+    isLoading: analysesLoading,
+    isError: analysesError,
+    refetch: refetchAnalyses,
+  } = useQuery({
+    queryKey: ["datasheet-analyses"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("datasheet_analyses")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   const validateFile = (file: File): string | null => {
     // Check file type first
-    const isPDF = file.type === "application/pdf" || 
-                  file.type.includes("pdf") || 
+    const isPDF = file.type === "application/pdf" ||
+                  file.type.includes("pdf") ||
                   file.name.toLowerCase().endsWith(".pdf");
-    
+
     if (!isPDF) {
       return "Ungültiges Dateiformat. Es werden nur PDF-Dateien akzeptiert (.pdf).";
     }
-    
+
     if (file.size > MAX_FILE_SIZE) {
       return `Die Datei ist zu groß (max. 10 MB). Aktuelle Größe: ${(file.size / 1024 / 1024).toFixed(2)} MB. Bitte komprimieren Sie die Datei.`;
     }
-    
+
     if (file.size === 0) {
       return "Die Datei ist leer oder beschädigt. Bitte wählen Sie eine gültige PDF-Datei.";
     }
-    
+
     return null;
   };
 
@@ -105,10 +131,23 @@ export default function DatasheetUpload() {
     );
 
     try {
-      // Upload file to storage
-      const fileExt = uploadFile.file.name.split(".").pop();
+      // documents.uploaded_by / datasheet_analyses.created_by reference
+      // profiles(id) - a surrogate key that is never equal to auth.uid().
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (profileError) {
+        console.error("Profile lookup error:", profileError);
+      }
+      const profileId = profile?.id ?? null;
+
+      // Upload file to storage. The storage delete policy matches on the first
+      // path segment being the auth user id.
+      const fileExt = uploadFile.file.name.split(".").pop() || "pdf";
       const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
-      const filePath = `datasheets/${user.id}/${fileName}`;
+      const filePath = `${user.id}/datasheets/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("documents")
@@ -122,10 +161,40 @@ export default function DatasheetUpload() {
         )
       );
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
+      // Register the file as a document so it stays reachable after the upload
+      const { data: documentRow, error: documentError } = await supabase
         .from("documents")
-        .getPublicUrl(filePath);
+        .insert({
+          name: uploadFile.file.name,
+          file_url: filePath,
+          file_type: fileExt.toLowerCase(),
+          file_size: uploadFile.file.size,
+          tag: "other",
+          document_type: "datasheet",
+          uploaded_by: profileId,
+        })
+        .select("id")
+        .single();
+
+      if (documentError) throw documentError;
+
+      const trimmedText = datasheetText.trim();
+
+      // Without datasheet text there is nothing the analysis function can read
+      // (a PDF cannot be parsed in the browser), so the file is only archived.
+      if (!trimmedText) {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === uploadFile.id ? { ...f, status: "completed", progress: 100 } : f
+          )
+        );
+        queryClient.invalidateQueries({ queryKey: ["documents"] });
+        toast({
+          title: "Datenblatt gespeichert",
+          description: `${uploadFile.file.name} wurde abgelegt. Für die KI-Analyse fügen Sie den Datenblatt-Text ein.`,
+        });
+        return;
+      }
 
       // Update status to analyzing
       setFiles((prev) =>
@@ -134,26 +203,60 @@ export default function DatasheetUpload() {
         )
       );
 
-      // Call edge function for AI analysis
-      const { data: analysisResult, error: analysisError } = await supabase.functions.invoke(
+      // Call edge function for AI analysis (contract: datasheetText + analysisType)
+      const { data: analysisResponse, error: analysisError } = await supabase.functions.invoke(
         "analyze-datasheet",
         {
           body: {
-            fileUrl: urlData.publicUrl,
-            fileName: uploadFile.file.name,
+            datasheetText: trimmedText,
+            materialContext: `Datenblatt: ${uploadFile.file.name}`,
+            analysisType: "recipe_matching",
           },
         }
       );
 
       if (analysisError) throw analysisError;
 
+      const result = analysisResponse?.result;
+      if (!result) {
+        throw new Error("Die KI hat kein Analyseergebnis zurückgegeben.");
+      }
+
+      // Persist the analysis so it survives a page reload
+      const { data: analysisId, error: idError } = await supabase
+        .rpc("generate_unique_id", { prefix: "DB" });
+      if (idError) throw idError;
+
+      const { error: persistError } = await supabase
+        .from("datasheet_analyses")
+        .insert({
+          analysis_id: analysisId,
+          document_id: documentRow.id,
+          original_filename: uploadFile.file.name,
+          extracted_properties: result.properties ?? result,
+          material_type: result.material_type ?? null,
+          material_grade: result.material_grade ?? null,
+          analysis_summary: result.summary ?? null,
+          suggested_applications: Array.isArray(result.applications)
+            ? result.applications.map((a: any) => a?.name).filter(Boolean)
+            : null,
+          status: "analyzed",
+          analyzed_at: new Date().toISOString(),
+          created_by: profileId,
+        });
+
+      if (persistError) throw persistError;
+
       setFiles((prev) =>
         prev.map((f) =>
           f.id === uploadFile.id
-            ? { ...f, status: "completed", progress: 100, result: analysisResult }
+            ? { ...f, status: "completed", progress: 100, result }
             : f
         )
       );
+
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["datasheet-analyses"] });
 
       toast({
         title: "Analyse abgeschlossen",
@@ -161,7 +264,7 @@ export default function DatasheetUpload() {
       });
     } catch (error: any) {
       console.error("Upload/Analysis error:", error);
-      
+
       // Provide specific error messages based on error type
       let errorMessage = "Unbekannter Fehler";
       if (error.message?.includes("storage")) {
@@ -173,7 +276,7 @@ export default function DatasheetUpload() {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       setFiles((prev) =>
         prev.map((f) =>
           f.id === uploadFile.id
@@ -219,7 +322,7 @@ export default function DatasheetUpload() {
       case "analyzing":
         return "KI-Analyse läuft...";
       case "completed":
-        return "Erfolgreich analysiert";
+        return "Erfolgreich gespeichert";
       case "error":
         return "Fehler aufgetreten";
     }
@@ -232,7 +335,7 @@ export default function DatasheetUpload() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Datenblatt-Upload</h1>
         <p className="text-muted-foreground mt-1">
-          Laden Sie PDF-Datenblätter hoch, um sie automatisch per KI analysieren zu lassen
+          Laden Sie PDF-Datenblätter hoch und lassen Sie den Datenblatt-Text per KI analysieren
         </p>
       </div>
 
@@ -285,11 +388,31 @@ export default function DatasheetUpload() {
               </div>
             </div>
 
+            {/* Datasheet text for the AI analysis */}
+            <div className="space-y-2">
+              <Label htmlFor="datasheet-text" className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Datenblatt-Text für die KI-Analyse
+              </Label>
+              <Textarea
+                id="datasheet-text"
+                rows={6}
+                placeholder="Text aus dem Datenblatt hier einfügen (Kennwerte, Zusammensetzung, Verarbeitungshinweise)..."
+                value={datasheetText}
+                onChange={(e) => setDatasheetText(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Der Inhalt einer PDF kann im Browser nicht ausgelesen werden. Ohne eingefügten
+                Text wird die Datei nur archiviert, es findet keine KI-Analyse statt.
+              </p>
+            </div>
+
             {/* Start Upload Button */}
             {pendingCount > 0 && (
               <Button onClick={startUpload} className="w-full">
                 <Upload className="h-4 w-4 mr-2" />
-                {pendingCount} {pendingCount === 1 ? "Datei" : "Dateien"} hochladen & analysieren
+                {pendingCount} {pendingCount === 1 ? "Datei" : "Dateien"}{" "}
+                {datasheetText.trim() ? "hochladen & analysieren" : "hochladen"}
               </Button>
             )}
           </CardContent>
@@ -350,31 +473,67 @@ export default function DatasheetUpload() {
         </Card>
       </div>
 
-      {/* Analysis Results */}
-      {files.some((f) => f.status === "completed" && f.result) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Analyse-Ergebnisse</CardTitle>
-            <CardDescription>
-              Automatisch extrahierte Informationen aus den Datenblättern
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {files
-                .filter((f) => f.status === "completed" && f.result)
-                .map((file) => (
-                  <div key={file.id} className="p-4 rounded-lg border bg-card">
-                    <h4 className="font-medium mb-2">{file.file.name}</h4>
-                    <pre className="text-sm bg-muted p-3 rounded overflow-x-auto">
-                      {JSON.stringify(file.result, null, 2)}
-                    </pre>
-                  </div>
-                ))}
+      {/* Stored analyses */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Analyse-Ergebnisse</CardTitle>
+          <CardDescription>
+            Gespeicherte KI-Analysen der hochgeladenen Datenblätter
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {analysesLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : analysesError ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <AlertCircle className="h-10 w-10 mx-auto mb-3 text-destructive" />
+              <p className="text-foreground font-medium">Analysen konnten nicht geladen werden</p>
+              <p className="text-sm mt-1">
+                Möglicherweise fehlt die Berechtigung oder die Verbindung ist unterbrochen.
+              </p>
+              <Button variant="outline" className="mt-4" onClick={() => refetchAnalyses()}>
+                Erneut versuchen
+              </Button>
+            </div>
+          ) : analyses.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <FileSearch className="h-10 w-10 mx-auto mb-3 opacity-50" />
+              <p>Noch keine Analysen vorhanden</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {analyses.map((analysis) => (
+                <div key={analysis.id} className="p-4 rounded-lg border bg-card">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="font-medium">
+                      {analysis.original_filename || analysis.analysis_id}
+                    </h4>
+                    <span className="text-xs text-muted-foreground">
+                      {format(new Date(analysis.created_at), "dd.MM.yyyy HH:mm", { locale: de })}
+                    </span>
+                  </div>
+                  {analysis.material_type && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Materialtyp: {analysis.material_type}
+                      {analysis.material_grade ? ` (${analysis.material_grade})` : ""}
+                    </p>
+                  )}
+                  {analysis.analysis_summary && (
+                    <p className="text-sm mt-2">{analysis.analysis_summary}</p>
+                  )}
+                  {analysis.suggested_applications && analysis.suggested_applications.length > 0 && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Anwendungen: {analysis.suggested_applications.join(", ")}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

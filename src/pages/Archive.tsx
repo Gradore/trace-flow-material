@@ -21,12 +21,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Archive, Tag, FlaskConical, Search, Download, Filter, Loader2 } from "lucide-react";
+import { Archive, Tag, FlaskConical, Search, Download, Filter, Loader2, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { generateLabelPDF, downloadPDF } from "@/lib/pdf";
-import { buildContainerQRUrl, buildOutputMaterialQRUrl } from "@/lib/qrcode";
 import { toast } from "@/hooks/use-toast";
+
+// There are no /containers/:id or /output/:id routes. The container list
+// resolves ?id=<uuid|Container-ID>; the output list has no deep link yet, so
+// the label points at the plain list route instead of a 404.
+const buildContainerLabelUrl = (containerId: string) =>
+  `${window.location.origin}/containers?id=${encodeURIComponent(containerId)}`;
+const buildOutputLabelUrl = () => `${window.location.origin}/output`;
 
 interface LabelRecord {
   id: string;
@@ -73,7 +79,7 @@ export default function ArchivePage() {
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
 
   // Fetch containers for label archive
-  const { data: containers = [], isLoading: containersLoading } = useQuery({
+  const { data: containers = [], isLoading: containersLoading, isError: containersError } = useQuery({
     queryKey: ["archive-containers"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -86,7 +92,7 @@ export default function ArchivePage() {
   });
 
   // Fetch output materials for label archive
-  const { data: outputMaterials = [], isLoading: outputsLoading } = useQuery({
+  const { data: outputMaterials = [], isLoading: outputsLoading, isError: outputsError } = useQuery({
     queryKey: ["archive-outputs"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -99,7 +105,7 @@ export default function ArchivePage() {
   });
 
   // Fetch retention samples
-  const { data: retentionSamples = [], isLoading: samplesLoading } = useQuery({
+  const { data: retentionSamples = [], isLoading: samplesLoading, isError: samplesError, refetch: refetchSamples } = useQuery({
     queryKey: ["archive-retention-samples"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -119,7 +125,7 @@ export default function ArchivePage() {
             input_id,
             material_type
           ),
-          output_materials (
+          output_materials:output_material_id (
             batch_id,
             output_type
           ),
@@ -194,8 +200,8 @@ export default function ArchivePage() {
     try {
       const qrUrl =
         label.type === "container"
-          ? buildContainerQRUrl(label.record_id)
-          : buildOutputMaterialQRUrl(label.record_id);
+          ? buildContainerLabelUrl(label.record_id)
+          : buildOutputLabelUrl();
 
       const pdfBlob = await generateLabelPDF(
         {
@@ -278,7 +284,7 @@ export default function ArchivePage() {
                 Etiketten-Archiv
               </CardTitle>
               <CardDescription>
-                Alle erstellten Etiketten für Container und Ausgangsmaterialien
+                Etiketten für alle Container und Ausgangsmaterialien bei Bedarf erzeugen
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -308,6 +314,14 @@ export default function ArchivePage() {
               {containersLoading || outputsLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : containersError || outputsError ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+                  <p className="text-foreground font-medium">Etiketten konnten nicht geladen werden</p>
+                  <p className="text-sm mt-1">
+                    Möglicherweise fehlt die Berechtigung oder die Verbindung ist unterbrochen.
+                  </p>
                 </div>
               ) : filteredLabels.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
@@ -407,6 +421,17 @@ export default function ArchivePage() {
               {samplesLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : samplesError ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+                  <p className="text-foreground font-medium">Rückstellmuster konnten nicht geladen werden</p>
+                  <p className="text-sm mt-1">
+                    Möglicherweise fehlt die Berechtigung oder die Verbindung ist unterbrochen.
+                  </p>
+                  <Button variant="outline" className="mt-4" onClick={() => refetchSamples()}>
+                    Erneut versuchen
+                  </Button>
                 </div>
               ) : filteredSamples.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">

@@ -63,6 +63,12 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
       return;
     }
 
+    const weight = parseFloat(formData.weight);
+    if (!Number.isFinite(weight) || weight <= 0) {
+      toast({ title: "Ungültiges Gewicht", description: "Bitte geben Sie ein Gewicht größer als 0 kg an.", variant: "destructive" });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       // Generate unique ID
@@ -80,7 +86,7 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
         supplier: formData.supplier,
         material_type: materialType,
         material_subtype: formData.resinType || null,
-        weight_kg: parseFloat(formData.weight),
+        weight_kg: weight,
         waste_code: formData.wasteCode || null,
         container_id: formData.container && formData.container !== "new" ? formData.container : null,
         status: "received",
@@ -104,7 +110,7 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
           input_id: inputId,
           supplier: formData.supplier,
           material_type: materialType,
-          weight_kg: parseFloat(formData.weight),
+          weight_kg: weight,
           waste_code: formData.wasteCode || null,
         },
         materialInputId: insertedData?.id,

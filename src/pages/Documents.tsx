@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Search, FolderOpen, FileText, Image, File, MoreVertical, Upload, Trash2, Download, Tag, Loader2, Sparkles } from "lucide-react";
+import { Search, FolderOpen, FileText, Image, File, MoreVertical, Upload, Trash2, Download, Tag, Loader2, Sparkles, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -47,7 +47,7 @@ export default function Documents() {
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: documents = [], isLoading } = useQuery({
+  const { data: documents = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["documents"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -103,14 +103,41 @@ export default function Documents() {
 
   const handleDelete = async (docId: string, fileUrl: string) => {
     try {
-      // Delete from storage
-      await supabase.storage.from("documents").remove([fileUrl]);
-      
-      // Delete from database
-      const { error } = await supabase.from("documents").delete().eq("id", docId);
+      // Delete the row first: an RLS-filtered delete returns zero rows and no
+      // error, and the file must not be removed while the record survives.
+      const { data: deleted, error } = await supabase
+        .from("documents")
+        .delete()
+        .eq("id", docId)
+        .select();
       if (error) throw error;
 
+      if (!deleted || deleted.length === 0) {
+        toast({
+          title: "Fehler",
+          description: "Keine Berechtigung oder Datensatz nicht gefunden.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Delete from storage
+      const { error: storageError } = await supabase.storage
+        .from("documents")
+        .remove([fileUrl]);
+
       queryClient.invalidateQueries({ queryKey: ["documents"] });
+
+      if (storageError) {
+        console.error("Storage delete error:", storageError);
+        toast({
+          title: "Dokument gelöscht",
+          description: "Der Eintrag wurde entfernt, die Datei blieb jedoch im Speicher zurück.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       toast({ title: "Dokument gelöscht" });
     } catch (error: any) {
       toast({
@@ -193,6 +220,17 @@ export default function Documents() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
+      ) : isError ? (
+        <div className="text-center py-12">
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <p className="text-lg font-medium text-foreground">Dokumente konnten nicht geladen werden</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Möglicherweise fehlt die Berechtigung oder die Verbindung ist unterbrochen.
+          </p>
+          <Button variant="outline" className="mt-4" onClick={() => refetch()}>
+            Erneut versuchen
+          </Button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredDocuments.map((doc) => {
@@ -208,7 +246,17 @@ export default function Documents() {
             return (
               <div
                 key={doc.id}
+                role="button"
+                tabIndex={0}
+                title="Dokument herunterladen"
                 className="glass-card rounded-xl p-4 hover:shadow-lg transition-shadow cursor-pointer group"
+                onClick={() => handleDownload(doc)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleDownload(doc);
+                  }
+                }}
               >
                 <div className="flex items-start gap-3">
                   <div className="p-3 rounded-lg bg-secondary/50 group-hover:bg-secondary transition-colors">
@@ -223,7 +271,7 @@ export default function Documents() {
                     </p>
                   </div>
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                       <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
                         <MoreVertical className="h-4 w-4" />
                       </Button>
@@ -258,7 +306,7 @@ export default function Documents() {
         </div>
       )}
 
-      {!isLoading && filteredDocuments.length === 0 && (
+      {!isLoading && !isError && filteredDocuments.length === 0 && (
         <div className="text-center py-12">
           <FolderOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <p className="text-lg font-medium text-foreground">Keine Dokumente gefunden</p>

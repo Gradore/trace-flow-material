@@ -154,19 +154,38 @@ export function BatchAllocationDialog({
         throw new Error("Zuordnung konnte nicht erstellt werden.");
       }
 
-      // Update order status to in_production if pending
+      // Update order status to in_production if pending.
+      // An RLS-filtered update returns zero rows and no error, so the affected row is
+      // requested back to detect that the status could not be advanced.
       const targetOrder = pendingOrders.find((o) => o.id === selectedOrder);
+      let statusAdvanced = true;
       if (targetOrder && targetOrder.status === "pending") {
-        await supabase
+        const { data: updatedOrder, error: orderError } = await supabase
           .from("orders")
           .update({ status: "in_production" })
-          .eq("id", selectedOrder);
+          .eq("id", selectedOrder)
+          .select("id");
+
+        if (orderError) {
+          console.error("Error updating order status:", orderError);
+          statusAdvanced = false;
+        } else if (!updatedOrder || updatedOrder.length === 0) {
+          statusAdvanced = false;
+        }
       }
 
-      toast({
-        title: "Zuordnung erstellt",
-        description: `${weight} kg wurden dem Auftrag zugeordnet.`,
-      });
+      if (statusAdvanced) {
+        toast({
+          title: "Zuordnung erstellt",
+          description: `${weight} kg wurden dem Auftrag zugeordnet.`,
+        });
+      } else {
+        toast({
+          title: "Auftragsstatus nicht geändert",
+          description: `${weight} kg wurden zugeordnet, der Auftrag konnte aber nicht auf "In Produktion" gesetzt werden. Keine Berechtigung oder Datensatz nicht gefunden.`,
+          variant: "destructive",
+        });
+      }
 
       queryClient.invalidateQueries({ queryKey: ["batch-allocations"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });

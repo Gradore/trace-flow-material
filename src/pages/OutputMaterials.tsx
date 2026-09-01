@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Plus, Search, Filter, FileOutput, MoreVertical, QrCode, Truck, FileText, Package, Loader2, Users, Pencil, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Search, Filter, FileOutput, MoreVertical, QrCode, Truck, Package, Loader2, Users, Pencil, Trash2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PageDescription } from "@/components/layout/PageDescription";
 import {
   Table,
@@ -50,6 +52,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { OutputMaterialDialog } from "@/components/output/OutputMaterialDialog";
 import { BatchAllocationDialog } from "@/components/processing/BatchAllocationDialog";
+import { generateLabelPDF, downloadPDF } from "@/lib/pdf";
+import { buildOutputMaterialQRUrl } from "@/lib/qrcode";
 import { toast } from "@/hooks/use-toast";
 
 const outputTypes: Record<string, { label: string; color: string }> = {
@@ -61,17 +65,14 @@ const outputTypes: Record<string, { label: string; color: string }> = {
 
 const statusConfig: Record<string, { label: string; class: string }> = {
   in_stock: { label: "Auf Lager", class: "status-badge-success" },
-  in_production: { label: "In Produktion", class: "status-badge-warning" },
   reserved: { label: "Reserviert", class: "status-badge-info" },
   shipped: { label: "Ausgeliefert", class: "status-badge" },
 };
 
-const statusOptions = [
-  { value: "in_stock", label: "Auf Lager" },
-  { value: "in_production", label: "In Produktion" },
-  { value: "reserved", label: "Reserviert" },
-  { value: "shipped", label: "Ausgeliefert" },
-];
+const statusOptions = Object.entries(statusConfig).map(([value, config]) => ({
+  value,
+  label: config.label,
+}));
 
 const qualityGrades = ["A", "B", "C"];
 
@@ -86,9 +87,13 @@ export default function OutputMaterials() {
   const [editingOutput, setEditingOutput] = useState<any>(null);
   const [editForm, setEditForm] = useState({ weight_kg: "", destination: "", quality_grade: "", fiber_size: "", notes: "" });
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [labelOutputId, setLabelOutputId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
-  const { data: outputs = [], isLoading } = useQuery({
+  const { data: outputs = [], isLoading, isError, error: loadError, refetch } = useQuery({
     queryKey: ["output-materials"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -106,12 +111,18 @@ export default function OutputMaterials() {
     },
   });
 
-  const filteredOutputs = outputs.filter(
-    (o) =>
-      o.output_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.batch_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (outputTypes[o.output_type]?.label.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredOutputs = outputs.filter((o) => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch =
+      o.output_id.toLowerCase().includes(term) ||
+      o.batch_id.toLowerCase().includes(term) ||
+      !!outputTypes[o.output_type]?.label.toLowerCase().includes(term);
+    const matchesType = typeFilter === "all" || o.output_type === typeFilter;
+    const matchesStatus = statusFilter === "all" || o.status === statusFilter;
+    return matchesSearch && matchesType && matchesStatus;
+  });
+
+  const activeFilterCount = (typeFilter !== "all" ? 1 : 0) + (statusFilter !== "all" ? 1 : 0);
 
   const typeStats = Object.entries(outputTypes).map(([key, config]) => {
     const total = outputs
@@ -122,12 +133,16 @@ export default function OutputMaterials() {
 
   const handleStatusChange = async (outputId: string, newStatus: string) => {
     try {
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from("output_materials")
         .update({ status: newStatus })
-        .eq("id", outputId);
+        .eq("id", outputId)
+        .select("id");
       
       if (error) throw error;
+      if (!updated || updated.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
       queryClient.invalidateQueries({ queryKey: ["output-materials"] });
       toast({ title: "Status aktualisiert", description: `Status wurde auf "${statusConfig[newStatus]?.label || newStatus}" geändert.` });
     } catch (error: any) {
@@ -138,21 +153,103 @@ export default function OutputMaterials() {
   const handleDelete = async () => {
     if (!outputToDelete) return;
     try {
-      // Delete related batch allocations first
-      await supabase.from("batch_allocations").delete().eq("output_material_id", outputToDelete.id);
-      await supabase.from("documents").delete().eq("output_material_id", outputToDelete.id);
-      await supabase.from("delivery_notes").delete().eq("output_material_id", outputToDelete.id);
-      
-      const { error } = await supabase.from("output_materials").delete().eq("id", outputToDelete.id);
+      // Retention samples reference the batch without ON DELETE, so detach them first
+      const { data: linkedSamples, error: samplesLoadError } = await supabase
+        .from("samples")
+        .select("id")
+        .eq("output_material_id", outputToDelete.id);
+      if (samplesLoadError) throw samplesLoadError;
+
+      if (linkedSamples && linkedSamples.length > 0) {
+        const { data: detachedSamples, error: samplesError } = await supabase
+          .from("samples")
+          .update({ output_material_id: null })
+          .eq("output_material_id", outputToDelete.id)
+          .select("id");
+        if (samplesError) throw samplesError;
+        if (!detachedSamples || detachedSamples.length < linkedSamples.length) {
+          throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+        }
+      }
+
+      // Delete related batch allocations and documents
+      const { error: allocationError } = await supabase
+        .from("batch_allocations")
+        .delete()
+        .eq("output_material_id", outputToDelete.id);
+      if (allocationError) throw allocationError;
+
+      const { error: documentError } = await supabase
+        .from("documents")
+        .delete()
+        .eq("output_material_id", outputToDelete.id);
+      if (documentError) throw documentError;
+
+      // Delivery notes may be filtered out by RLS, which deletes nothing without raising
+      const { data: linkedNotes, error: notesLoadError } = await supabase
+        .from("delivery_notes")
+        .select("id")
+        .eq("output_material_id", outputToDelete.id);
+      if (notesLoadError) throw notesLoadError;
+
+      if (linkedNotes && linkedNotes.length > 0) {
+        const { data: deletedNotes, error: notesError } = await supabase
+          .from("delivery_notes")
+          .delete()
+          .eq("output_material_id", outputToDelete.id)
+          .select("id");
+        if (notesError) throw notesError;
+        if (!deletedNotes || deletedNotes.length < linkedNotes.length) {
+          throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+        }
+      }
+
+      const { data: deleted, error } = await supabase
+        .from("output_materials")
+        .delete()
+        .eq("id", outputToDelete.id)
+        .select("id");
       if (error) throw error;
+      if (!deleted || deleted.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
       
       queryClient.invalidateQueries({ queryKey: ["output-materials"] });
+      queryClient.invalidateQueries({ queryKey: ["retention-samples"] });
       toast({ title: "Ausgangsmaterial gelöscht", description: `${outputToDelete.output_id} wurde gelöscht.` });
     } catch (error: any) {
       toast({ title: "Fehler beim Löschen", description: error.message || "Material konnte nicht gelöscht werden.", variant: "destructive" });
     } finally {
       setDeleteDialogOpen(false);
       setOutputToDelete(null);
+    }
+  };
+
+  const handlePrintLabel = async (output: any) => {
+    setLabelOutputId(output.id);
+    try {
+      const qrUrl = buildOutputMaterialQRUrl(output.output_id);
+      const pdfBlob = await generateLabelPDF(
+        {
+          id: output.output_id,
+          type: outputTypes[output.output_type]?.label || output.output_type,
+          material: outputTypes[output.output_type]?.label || output.output_type,
+          weight: `${Number(output.weight_kg).toLocaleString("de-DE")} kg`,
+          location: `Charge: ${output.batch_id}`,
+          date: new Date().toLocaleDateString("de-DE"),
+        },
+        qrUrl
+      );
+      downloadPDF(pdfBlob, `Etikett_${output.output_id}.pdf`);
+      toast({ title: "Etikett erstellt", description: `Das PDF-Etikett für ${output.output_id} wurde heruntergeladen.` });
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: error.message || "Das Etikett konnte nicht erstellt werden.",
+        variant: "destructive",
+      });
+    } finally {
+      setLabelOutputId(null);
     }
   };
 
@@ -169,19 +266,33 @@ export default function OutputMaterials() {
     setEditDialogOpen(true);
   };
 
+  const editWeight = parseFloat(editForm.weight_kg);
+  const isEditWeightValid = Number.isFinite(editWeight) && editWeight > 0;
+
   const handleEditSubmit = async () => {
     if (!editingOutput) return;
+    if (!isEditWeightValid) {
+      toast({
+        title: "Ungültiges Gewicht",
+        description: "Bitte geben Sie ein Gewicht größer als 0 kg ein.",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsEditSubmitting(true);
     try {
-      const { error } = await supabase.from("output_materials").update({
-        weight_kg: parseFloat(editForm.weight_kg),
+      const { data: updated, error } = await supabase.from("output_materials").update({
+        weight_kg: editWeight,
         destination: editForm.destination || null,
         quality_grade: editForm.quality_grade || null,
         fiber_size: editForm.fiber_size || null,
         attributes: editForm.notes ? { notes: editForm.notes } : {},
-      }).eq("id", editingOutput.id);
+      }).eq("id", editingOutput.id).select("id");
 
       if (error) throw error;
+      if (!updated || updated.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
       queryClient.invalidateQueries({ queryKey: ["output-materials"] });
       toast({ title: "Ausgangsmaterial aktualisiert" });
       setEditDialogOpen(false);
@@ -230,7 +341,9 @@ export default function OutputMaterials() {
               <div className={cn("w-3 h-3 rounded-full", stat.color)} />
               <div>
                 <p className="text-sm text-muted-foreground">{stat.label}</p>
-                <p className="text-xl font-bold text-foreground">{stat.total.toLocaleString("de-DE")} kg</p>
+                <p className="text-xl font-bold text-foreground">
+                  {isError ? "–" : `${stat.total.toLocaleString("de-DE")} kg`}
+                </p>
               </div>
             </div>
           </div>
@@ -247,16 +360,82 @@ export default function OutputMaterials() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button variant="outline">
-          <Filter className="h-4 w-4" />
-          Filter
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline">
+              <Filter className="h-4 w-4" />
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 space-y-4 bg-popover">
+            <div className="space-y-2">
+              <Label>Material-Typ</Label>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Alle Typen" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">Alle Typen</SelectItem>
+                  {Object.entries(outputTypes).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Alle Status" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">Alle Status</SelectItem>
+                  {statusOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              disabled={activeFilterCount === 0}
+              onClick={() => {
+                setTypeFilter("all");
+                setStatusFilter("all");
+              }}
+            >
+              Filter zurücksetzen
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="glass-card rounded-xl overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : isError ? (
+          <div className="text-center py-12">
+            <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+            <p className="text-lg font-medium text-foreground">Ausgangsmaterialien konnten nicht geladen werden</p>
+            <p className="text-muted-foreground">
+              {(loadError as Error)?.message || "Bitte versuchen Sie es erneut."}
+            </p>
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
+              Erneut laden
+            </Button>
           </div>
         ) : filteredOutputs.length === 0 ? (
           <div className="text-center py-12">
@@ -351,15 +530,18 @@ export default function OutputMaterials() {
                             <Users className="h-4 w-4 mr-2" />
                             Kunde zuordnen
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <QrCode className="h-4 w-4 mr-2" />
+                          <DropdownMenuItem
+                            disabled={labelOutputId === output.id}
+                            onClick={() => handlePrintLabel(output)}
+                          >
+                            {labelOutputId === output.id ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <QrCode className="h-4 w-4 mr-2" />
+                            )}
                             Etikett drucken
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <FileText className="h-4 w-4 mr-2" />
-                            Zertifikat anzeigen
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => navigate("/delivery-notes")}>
                             <Truck className="h-4 w-4 mr-2" />
                             Lieferschein erstellen
                           </DropdownMenuItem>
@@ -428,9 +610,13 @@ export default function OutputMaterials() {
                 <Input
                   type="number"
                   step="0.1"
+                  min="0"
                   value={editForm.weight_kg}
                   onChange={(e) => setEditForm({ ...editForm, weight_kg: e.target.value })}
                 />
+                {!isEditWeightValid && (
+                  <p className="text-xs text-destructive">Bitte ein Gewicht größer als 0 kg eingeben.</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Qualitätsstufe</Label>
@@ -475,7 +661,7 @@ export default function OutputMaterials() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Abbrechen</Button>
-            <Button onClick={handleEditSubmit} disabled={isEditSubmitting}>
+            <Button onClick={handleEditSubmit} disabled={isEditSubmitting || !isEditWeightValid}>
               {isEditSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Speichern
             </Button>

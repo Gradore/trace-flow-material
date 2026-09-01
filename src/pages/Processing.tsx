@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Plus, Search, Filter, Settings, MoreVertical, ArrowRight, FlaskConical, Play, Pause, CheckCircle, Loader2, StopCircle, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { ProcessingDialog } from "@/components/processing/ProcessingDialog";
 import { CompleteProcessingDialog } from "@/components/processing/CompleteProcessingDialog";
@@ -31,11 +34,12 @@ const statusConfig = {
 export default function Processing() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [selectedProcessingStep, setSelectedProcessingStep] = useState<any>(null);
   const queryClient = useQueryClient();
 
-  const { data: processingSteps = [], isLoading } = useQuery({
+  const { data: processingSteps = [], isLoading, isError, error: loadError } = useQuery({
     queryKey: ["processing-steps"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -62,11 +66,20 @@ export default function Processing() {
     },
   });
 
-  const filteredProcessing = processingSteps.filter(
-    (p) =>
-      p.processing_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.material_inputs?.material_type?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProcessing = processingSteps.filter((p) => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch =
+      p.processing_id.toLowerCase().includes(term) ||
+      p.material_inputs?.material_type?.toLowerCase().includes(term);
+    const matchesStatus = statusFilter.length === 0 || statusFilter.includes(p.status);
+    return matchesSearch && matchesStatus;
+  });
+
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilter((prev) =>
+      prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
+    );
+  };
 
   // Calculate stats
   const activeCount = processingSteps.filter(p => p.status !== 'completed').length;
@@ -91,31 +104,54 @@ export default function Processing() {
     return subtype ? `${type}-${subtype}` : type;
   };
 
-  const handlePause = async (processId: string) => {
-    const { error } = await supabase
+  // An RLS-filtered update returns zero rows and no error, so the affected rows
+  // have to be requested back before reporting success to the user.
+  const updateStatus = async (
+    processId: string,
+    values: Record<string, unknown>,
+    successTitle: string,
+    errorDescription: string
+  ) => {
+    const { data, error } = await supabase
       .from("processing_steps")
-      .update({ status: "paused" })
-      .eq("id", processId);
+      .update(values)
+      .eq("id", processId)
+      .select("id");
+
     if (error) {
-      toast({ title: "Fehler", description: "Konnte nicht pausieren.", variant: "destructive" });
-    } else {
-      queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
-      toast({ title: "Verarbeitung pausiert" });
+      toast({ title: "Fehler", description: errorDescription, variant: "destructive" });
+      return;
     }
+    if (!data || data.length === 0) {
+      toast({
+        title: "Fehler",
+        description: "Keine Berechtigung oder Datensatz nicht gefunden.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
+    toast({ title: successTitle });
   };
 
-  const handleResume = async (processId: string) => {
-    const { error } = await supabase
-      .from("processing_steps")
-      .update({ status: "running" })
-      .eq("id", processId);
-    if (error) {
-      toast({ title: "Fehler", description: "Konnte nicht fortsetzen.", variant: "destructive" });
-    } else {
-      queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
-      toast({ title: "Verarbeitung fortgesetzt" });
-    }
-  };
+  const handlePause = (processId: string) =>
+    updateStatus(processId, { status: "paused" }, "Verarbeitung pausiert", "Konnte nicht pausieren.");
+
+  const handleResume = (processId: string) =>
+    updateStatus(processId, { status: "running" }, "Verarbeitung fortgesetzt", "Konnte nicht fortsetzen.");
+
+  // A pending step has never run, so starting it also has to set the start timestamp.
+  const handleStart = (process: { id: string; started_at: string | null }) =>
+    updateStatus(
+      process.id,
+      {
+        status: "running",
+        started_at: process.started_at ?? new Date().toISOString(),
+      },
+      "Verarbeitung gestartet",
+      "Konnte nicht gestartet werden."
+    );
 
   const handleComplete = (process: any) => {
     setSelectedProcessingStep(process);
@@ -204,16 +240,61 @@ export default function Processing() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button variant="outline">
-          <Filter className="h-4 w-4" />
-          Filter
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline">
+              <Filter className="h-4 w-4" />
+              Filter
+              {statusFilter.length > 0 && (
+                <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {statusFilter.length}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-56">
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Status</p>
+              <div className="space-y-2">
+                {Object.entries(statusConfig).map(([value, config]) => (
+                  <div key={value} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`status-${value}`}
+                      checked={statusFilter.includes(value)}
+                      onCheckedChange={() => toggleStatusFilter(value)}
+                    />
+                    <Label htmlFor={`status-${value}`} className="cursor-pointer font-normal">
+                      {config.label}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                disabled={statusFilter.length === 0}
+                onClick={() => setStatusFilter([])}
+              >
+                Filter zurücksetzen
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Processing Cards */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : isError ? (
+        <div className="text-center py-12 glass-card rounded-xl border border-destructive/40">
+          <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <p className="text-lg font-medium text-foreground">Verarbeitungen konnten nicht geladen werden</p>
+          <p className="text-muted-foreground">
+            {(loadError as Error)?.message || "Bitte prüfen Sie Ihre Berechtigungen und versuchen Sie es erneut."}
+          </p>
         </div>
       ) : filteredProcessing.length === 0 ? (
         <div className="text-center py-12 glass-card rounded-xl">
@@ -351,7 +432,7 @@ export default function Processing() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => handleResume(process.id)}
+                          onClick={() => handleStart(process)}
                         >
                           <Play className="h-4 w-4" />
                           Starten

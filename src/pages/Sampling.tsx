@@ -2,7 +2,16 @@ import { useState } from "react";
 import { Plus, Search, Filter, FlaskConical, MoreVertical, CheckCircle, XCircle, Clock, FileText, Edit, Archive, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -52,12 +61,14 @@ export default function Sampling() {
   const [selectedSample, setSelectedSample] = useState<any>(null);
   const [selectedSampleForInput, setSelectedSampleForInput] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [revertDialogOpen, setRevertDialogOpen] = useState(false);
   const [sampleToRevert, setSampleToRevert] = useState<any>(null);
   const [isReverting, setIsReverting] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: samples = [], isLoading, refetch } = useQuery({
+  const { data: samples = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["samples"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -69,11 +80,18 @@ export default function Sampling() {
     },
   });
 
-  const filteredSamples = samples.filter(
-    (s) =>
+  const filteredSamples = samples.filter((s) => {
+    const matchesSearch =
       s.sample_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.sampler_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+      s.sampler_name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === "all" || s.status === statusFilter;
+    const matchesType =
+      typeFilter === "all" ||
+      (typeFilter === "retention" ? s.is_retention_sample : !s.is_retention_sample);
+    return matchesSearch && matchesStatus && matchesType;
+  });
+
+  const activeFilterCount = (statusFilter !== "all" ? 1 : 0) + (typeFilter !== "all" ? 1 : 0);
 
   const openResults = (sample: any) => {
     setSelectedSample({
@@ -92,17 +110,21 @@ export default function Sampling() {
 
   const handleStatusChange = async (sampleId: string, newStatus: string, materialInputId?: string) => {
     try {
-      // Update sample status
-      const { error } = await supabase
+      // Update sample status - .select() so an RLS-filtered (zero row) update is detected
+      const { data: updated, error } = await supabase
         .from("samples")
         .update({ 
           status: newStatus,
           ...(newStatus === "approved" ? { approved_at: new Date().toISOString() } : {}),
           ...(newStatus === "in_analysis" ? { analyzed_at: new Date().toISOString() } : {})
         })
-        .eq("id", sampleId);
+        .eq("id", sampleId)
+        .select("id");
 
       if (error) throw error;
+      if (!updated || updated.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
 
       // CRITICAL: If sample is rejected, also reject the associated material input (batch)
       if (newStatus === "rejected" && materialInputId) {
@@ -148,13 +170,17 @@ export default function Sampling() {
     setIsReverting(true);
 
     try {
-      // Revert sample status to in_analysis
-      const { error } = await supabase
+      // Revert sample status to in_analysis - .select() detects an RLS-filtered no-op
+      const { data: reverted, error } = await supabase
         .from("samples")
         .update({ status: "in_analysis" })
-        .eq("id", sampleToRevert.id);
+        .eq("id", sampleToRevert.id)
+        .select("id");
 
       if (error) throw error;
+      if (!reverted || reverted.length === 0) {
+        throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+      }
 
       // Also revert the material input status back to in_processing
       if (sampleToRevert.material_input_id) {
@@ -225,7 +251,7 @@ export default function Sampling() {
                   <Icon className={cn("h-5 w-5", key === "approved" ? "text-success" : key === "rejected" ? "text-destructive" : key === "in_analysis" ? "text-info" : "text-warning")} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{count}</p>
+                  <p className="text-2xl font-bold text-foreground">{isError ? "–" : count}</p>
                   <p className="text-sm text-muted-foreground">{config.label}</p>
                 </div>
               </div>
@@ -244,16 +270,79 @@ export default function Sampling() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button variant="outline">
-          <Filter className="h-4 w-4" />
-          Filter
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline">
+              <Filter className="h-4 w-4" />
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 space-y-4 bg-popover">
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Alle Status" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">Alle Status</SelectItem>
+                  {Object.entries(statusConfig).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Probenart</Label>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Alle Proben" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">Alle Proben</SelectItem>
+                  <SelectItem value="regular">Laborproben</SelectItem>
+                  <SelectItem value="retention">Rückstellmuster</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              disabled={activeFilterCount === 0}
+              onClick={() => {
+                setStatusFilter("all");
+                setTypeFilter("all");
+              }}
+            >
+              Filter zurücksetzen
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="glass-card rounded-xl overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center p-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : isError ? (
+          <div className="p-8 text-center">
+            <XCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
+            <p className="font-medium text-foreground">Proben konnten nicht geladen werden</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {(error as any)?.message || "Bitte versuchen Sie es erneut."}
+            </p>
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
+              Erneut laden
+            </Button>
           </div>
         ) : (
           <Table>

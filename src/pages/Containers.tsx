@@ -1,7 +1,17 @@
-import { useState } from "react";
-import { Plus, Search, Filter, Package, QrCode, MoreVertical, MapPin, Scale, Loader2, Edit, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Plus, Search, Filter, Package, QrCode, MoreVertical, MapPin, Scale, Loader2, Edit, Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PageDescription } from "@/components/layout/PageDescription";
 import {
   Table,
@@ -56,12 +66,15 @@ export default function Containers() {
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState<typeof containers[0] | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [containerToDelete, setContainerToDelete] = useState<typeof containers[0] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  const { data: containers = [], isLoading, refetch } = useQuery({
+  const { data: containers = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["containers"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -73,11 +86,38 @@ export default function Containers() {
     },
   });
 
-  const filteredContainers = containers.filter(
-    (c) =>
-      c.container_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.location || "").toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredContainers = containers.filter((c) => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch =
+      c.container_id.toLowerCase().includes(term) ||
+      (c.location || "").toLowerCase().includes(term);
+    const matchesType = typeFilter === "all" || c.type === typeFilter;
+    const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+    return matchesSearch && matchesType && matchesStatus;
+  });
+
+  const activeFilterCount = (typeFilter !== "all" ? 1 : 0) + (statusFilter !== "all" ? 1 : 0);
+
+  // Deep link support: /containers?id=<uuid|Container-ID> opens that container.
+  const deepLinkId = searchParams.get("id");
+  useEffect(() => {
+    if (!deepLinkId || isLoading) return;
+    const match = containers.find((c) => c.id === deepLinkId || c.container_id === deepLinkId);
+    if (match) {
+      setSelectedContainer(match);
+      setIsDetailsDialogOpen(true);
+    } else {
+      toast({
+        title: "Container nicht gefunden",
+        description: `Es existiert kein Container mit der Kennung ${deepLinkId}.`,
+        variant: "destructive",
+      });
+    }
+    const params = new URLSearchParams(searchParams);
+    params.delete("id");
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkId, isLoading, containers]);
 
   const handlePrintQR = async (container: typeof containers[0]) => {
     try {
@@ -110,37 +150,45 @@ export default function Containers() {
     
     setIsDeleting(true);
     try {
-      // Check if container is used in active processing
-      const { data: processingSteps, error: checkError } = await supabase
-        .from("processing_steps")
-        .select("id, processing_id")
-        .in("status", ["pending", "in_progress"])
-        .limit(1);
-      
-      if (checkError) throw checkError;
-
       // Check if container is assigned to materials
       const { data: materialInputs, error: materialError } = await supabase
         .from("material_inputs")
-        .select("id, input_id")
-        .eq("container_id", containerToDelete.id)
-        .in("status", ["received", "in_processing"])
-        .limit(1);
-      
+        .select("id, input_id, status")
+        .eq("container_id", containerToDelete.id);
+
       if (materialError) throw materialError;
+
+      const activeInputs = (materialInputs || []).filter(
+        (m) => m.status === "received" || m.status === "in_processing"
+      );
+
+      // Check if the material in this container is still in an active processing step
+      // (processing_steps has no container_id, so it is joined via material_inputs)
+      let activeProcessing: { id: string }[] = [];
+      if (materialInputs && materialInputs.length > 0) {
+        const { data: processingSteps, error: checkError } = await supabase
+          .from("processing_steps")
+          .select("id")
+          .in("material_input_id", materialInputs.map((m) => m.id))
+          .in("status", ["pending", "running", "paused", "sample_required"])
+          .limit(1);
+
+        if (checkError) throw checkError;
+        activeProcessing = processingSteps || [];
+      }
 
       // Check if container is assigned to output materials
       const { data: outputMaterials, error: outputError } = await supabase
         .from("output_materials")
         .select("id, output_id")
         .eq("container_id", containerToDelete.id)
-        .in("status", ["pending", "in_production"])
+        .in("status", ["in_stock", "reserved"])
         .limit(1);
-      
+
       if (outputError) throw outputError;
 
       // Block deletion if in active use
-      if ((materialInputs && materialInputs.length > 0) || (outputMaterials && outputMaterials.length > 0)) {
+      if (activeInputs.length > 0 || activeProcessing.length > 0 || (outputMaterials && outputMaterials.length > 0)) {
         toast({ 
           title: "Fehler: Container in Verwendung", 
           description: "Dieser Container ist in einem aktiven Prozess und kann nicht gelöscht werden. Bitte entfernen Sie zuerst die Verknüpfung zu Materialien.", 
@@ -150,17 +198,28 @@ export default function Containers() {
       }
 
       // Safe to delete
-      const { error } = await supabase.from("containers").delete().eq("id", containerToDelete.id);
+      const { data: deleted, error } = await supabase
+        .from("containers")
+        .delete()
+        .eq("id", containerToDelete.id)
+        .select();
       if (error) {
         if (error.code === '23503') {
-          toast({ 
-            title: "Fehler: Container in Verwendung", 
-            description: "Dieser Container ist mit anderen Datensätzen verknüpft und kann nicht gelöscht werden.", 
-            variant: "destructive" 
+          toast({
+            title: "Fehler: Container in Verwendung",
+            description: "Dieser Container ist mit anderen Datensätzen verknüpft und kann nicht gelöscht werden.",
+            variant: "destructive"
           });
         } else {
           throw error;
         }
+      } else if (!deleted || deleted.length === 0) {
+        // RLS filters the row out silently: no error, no affected rows.
+        toast({
+          title: "Fehler beim Löschen",
+          description: "Keine Berechtigung oder Datensatz nicht gefunden.",
+          variant: "destructive",
+        });
       } else {
         await queryClient.invalidateQueries({ queryKey: ["containers"] });
         toast({ title: "Container gelöscht", description: `${containerToDelete.container_id} wurde erfolgreich entfernt.` });
@@ -217,10 +276,65 @@ export default function Containers() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button variant="outline">
-          <Filter className="h-4 w-4" />
-          Filter
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline">
+              <Filter className="h-4 w-4" />
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 space-y-4 bg-popover">
+            <div className="space-y-2">
+              <Label>Container-Typ</Label>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Alle Typen" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">Alle Typen</SelectItem>
+                  {Object.entries(containerTypes).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Alle Status" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">Alle Status</SelectItem>
+                  {Object.entries(statusConfig).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              disabled={activeFilterCount === 0}
+              onClick={() => {
+                setTypeFilter("all");
+                setStatusFilter("all");
+              }}
+            >
+              Filter zurücksetzen
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -238,6 +352,16 @@ export default function Containers() {
         {isLoading ? (
           <div className="flex items-center justify-center p-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+            <AlertTriangle className="h-6 w-6 text-destructive" />
+            <p className="text-sm text-muted-foreground">
+              Container konnten nicht geladen werden. Bitte prüfen Sie Ihre Verbindung und Berechtigungen.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Erneut versuchen
+            </Button>
           </div>
         ) : (
           <Table>

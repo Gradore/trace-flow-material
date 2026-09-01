@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { Plus, Search, Filter, Inbox, MoreVertical, FileText, Upload, Calendar, Building2, Loader2, Trash2, Eye, XCircle, AlertTriangle, Pencil } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Plus, Search, Filter, Inbox, MoreVertical, FileText, Upload, Calendar, Building2, Loader2, Trash2, Eye, XCircle, AlertTriangle, Pencil, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
@@ -36,6 +38,8 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { IntakeDialog } from "@/components/intake/IntakeDialog";
+import { DocumentUploadDialog } from "@/components/documents/DocumentUploadDialog";
+import { ProcessingDialog } from "@/components/processing/ProcessingDialog";
 import { PageDescription } from "@/components/layout/PageDescription";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -62,12 +66,12 @@ const statusConfig: Record<string, { label: string; class: string }> = {
   rejected: { label: "Abgelehnt", class: "status-badge-destructive" },
 };
 
+// Only these three values are accepted by the material_inputs_status_check
+// constraint in the database.
 const statusOptions = [
-  { value: "created", label: "Angelegt" },
-  { value: "ordered", label: "Bestellt" },
   { value: "received", label: "Eingetroffen" },
-  { value: "quality_check", label: "Qualitätsprüfung" },
-  { value: "stored", label: "Eingelagert" },
+  { value: "in_processing", label: "In Verarbeitung" },
+  { value: "processed", label: "Verarbeitet" },
 ];
 
 const materialTypes: Record<string, string> = {
@@ -94,10 +98,15 @@ export default function MaterialIntake() {
   const [editingIntake, setEditingIntake] = useState<any>(null);
   const [editForm, setEditForm] = useState({ supplier: "", weight_kg: "", waste_code: "", notes: "" });
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [materialFilter, setMaterialFilter] = useState("all");
+  const [documentIntake, setDocumentIntake] = useState<{ id: string } | null>(null);
+  const [isProcessingDialogOpen, setIsProcessingDialogOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  const { data: intakes = [], isLoading, refetch } = useQuery({
-    queryKey: ["material_inputs"],
+  const { data: intakes = [], isLoading, isError, refetch } = useQuery({
+    queryKey: ["material-inputs"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("material_inputs")
@@ -108,12 +117,39 @@ export default function MaterialIntake() {
     },
   });
 
-  const filteredIntakes = intakes.filter(
-    (i) =>
-      i.input_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      i.supplier.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      i.material_type.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredIntakes = intakes.filter((i) => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch =
+      i.input_id.toLowerCase().includes(term) ||
+      i.supplier.toLowerCase().includes(term) ||
+      i.material_type.toLowerCase().includes(term);
+    const matchesStatus = statusFilter === "all" || i.status === statusFilter;
+    const matchesMaterial = materialFilter === "all" || i.material_type === materialFilter;
+    return matchesSearch && matchesStatus && matchesMaterial;
+  });
+
+  const activeFilterCount = (statusFilter !== "all" ? 1 : 0) + (materialFilter !== "all" ? 1 : 0);
+
+  // Deep link support: /intake?id=<uuid|Eingangs-ID> opens that intake.
+  const deepLinkId = searchParams.get("id");
+  useEffect(() => {
+    if (!deepLinkId || isLoading) return;
+    const match = intakes.find((i) => i.id === deepLinkId || i.input_id === deepLinkId);
+    if (match) {
+      setDetailIntake(match);
+      setDetailDialogOpen(true);
+    } else {
+      toast({
+        title: "Materialeingang nicht gefunden",
+        description: `Es existiert kein Eingang mit der Kennung ${deepLinkId}.`,
+        variant: "destructive",
+      });
+    }
+    const params = new URLSearchParams(searchParams);
+    params.delete("id");
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkId, isLoading, intakes]);
 
   const todayIntakes = intakes.filter(
     (i) => new Date(i.received_at).toDateString() === new Date().toDateString()
@@ -124,13 +160,19 @@ export default function MaterialIntake() {
 
   const handleStatusChange = async (intakeId: string, newStatus: string) => {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("material_inputs")
         .update({ status: newStatus })
-        .eq("id", intakeId);
-      
+        .eq("id", intakeId)
+        .select();
+
       if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ["material_inputs"] });
+      // RLS filters the row out silently: no error, no affected rows.
+      if (!data || data.length === 0) {
+        toast({ title: "Fehler beim Statuswechsel", description: "Keine Berechtigung oder Datensatz nicht gefunden.", variant: "destructive" });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ["material-inputs"] });
       toast({ title: "Status aktualisiert", description: `Status wurde auf "${statusConfig[newStatus]?.label || newStatus}" geändert.` });
     } catch (error: any) {
       toast({ title: "Fehler beim Statuswechsel", description: error.message || "Status konnte nicht geändert werden.", variant: "destructive" });
@@ -139,15 +181,56 @@ export default function MaterialIntake() {
 
   const handleDelete = async () => {
     if (!intakeToDelete) return;
-    
+
     try {
-      await supabase.from("documents").delete().eq("material_input_id", intakeToDelete.id);
-      await supabase.from("samples").delete().eq("material_input_id", intakeToDelete.id);
-      
-      const { error } = await supabase.from("material_inputs").delete().eq("id", intakeToDelete.id);
+      // processing_steps.material_input_id is NOT NULL without ON DELETE, so an
+      // intake that has been processed can never be removed.
+      const { data: processingSteps, error: processingError } = await supabase
+        .from("processing_steps")
+        .select("id, processing_id")
+        .eq("material_input_id", intakeToDelete.id)
+        .limit(1);
+      if (processingError) throw processingError;
+
+      if (processingSteps && processingSteps.length > 0) {
+        toast({
+          title: "Materialeingang in Verwendung",
+          description: "Zu diesem Eingang existieren Verarbeitungsschritte. Bitte löschen Sie diese zuerst.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error: documentsError } = await supabase
+        .from("documents")
+        .delete()
+        .eq("material_input_id", intakeToDelete.id);
+      if (documentsError) throw documentsError;
+
+      const { error: samplesError } = await supabase
+        .from("samples")
+        .delete()
+        .eq("material_input_id", intakeToDelete.id);
+      if (samplesError) throw samplesError;
+
+      const { data: deleted, error } = await supabase
+        .from("material_inputs")
+        .delete()
+        .eq("id", intakeToDelete.id)
+        .select();
       if (error) throw error;
 
-      queryClient.invalidateQueries({ queryKey: ["material_inputs"] });
+      // RLS filters the row out silently: no error, no affected rows.
+      if (!deleted || deleted.length === 0) {
+        toast({
+          title: "Fehler beim Löschen",
+          description: "Keine Berechtigung oder Datensatz nicht gefunden.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["material-inputs"] });
       toast({ title: "Materialeingang gelöscht" });
     } catch (error: any) {
       toast({
@@ -174,17 +257,34 @@ export default function MaterialIntake() {
 
   const handleEditSubmit = async () => {
     if (!editingIntake) return;
+
+    if (!editForm.supplier.trim()) {
+      toast({ title: "Lieferant fehlt", description: "Bitte geben Sie einen Lieferanten an.", variant: "destructive" });
+      return;
+    }
+
+    const weight = parseFloat(editForm.weight_kg);
+    if (!Number.isFinite(weight) || weight <= 0) {
+      toast({ title: "Ungültiges Gewicht", description: "Bitte geben Sie ein Gewicht größer als 0 kg an.", variant: "destructive" });
+      return;
+    }
+
     setIsEditSubmitting(true);
     try {
-      const { error } = await supabase.from("material_inputs").update({
+      const { data, error } = await supabase.from("material_inputs").update({
         supplier: editForm.supplier,
-        weight_kg: parseFloat(editForm.weight_kg),
+        weight_kg: weight,
         waste_code: editForm.waste_code || null,
         notes: editForm.notes || null,
-      }).eq("id", editingIntake.id);
+      }).eq("id", editingIntake.id).select();
 
       if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ["material_inputs"] });
+      // RLS filters the row out silently: no error, no affected rows.
+      if (!data || data.length === 0) {
+        toast({ title: "Fehler beim Speichern", description: "Keine Berechtigung oder Datensatz nicht gefunden.", variant: "destructive" });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ["material-inputs"] });
       toast({ title: "Materialeingang aktualisiert" });
       setEditDialogOpen(false);
     } catch (error: any) {
@@ -264,16 +364,79 @@ export default function MaterialIntake() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button variant="outline">
-          <Filter className="h-4 w-4" />
-          Filter
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline">
+              <Filter className="h-4 w-4" />
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 space-y-4 bg-popover">
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Alle Status" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">Alle Status</SelectItem>
+                  {statusOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Materialart</Label>
+              <Select value={materialFilter} onValueChange={setMaterialFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Alle Materialien" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">Alle Materialien</SelectItem>
+                  <SelectItem value="gfk">GFK</SelectItem>
+                  <SelectItem value="pp">Polypropylen (PP)</SelectItem>
+                  <SelectItem value="pa">Polyamid (PA)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              disabled={activeFilterCount === 0}
+              onClick={() => {
+                setStatusFilter("all");
+                setMaterialFilter("all");
+              }}
+            >
+              Filter zurücksetzen
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="glass-card rounded-xl overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center p-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+            <AlertTriangle className="h-6 w-6 text-destructive" />
+            <p className="text-sm text-muted-foreground">
+              Materialeingänge konnten nicht geladen werden. Bitte prüfen Sie Ihre Verbindung und Berechtigungen.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Erneut versuchen
+            </Button>
           </div>
         ) : (
           <Table>
@@ -376,12 +539,15 @@ export default function MaterialIntake() {
                               <Pencil className="h-4 w-4 mr-2" />
                               Bearbeiten
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setDocumentIntake(intake)}>
                               <Upload className="h-4 w-4 mr-2" />
                               Dokumente hochladen
                             </DropdownMenuItem>
                             {!isRejected && intake.status === "received" && (
-                              <DropdownMenuItem>Verarbeitung starten</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setIsProcessingDialogOpen(true)}>
+                                <Settings className="h-4 w-4 mr-2" />
+                                Verarbeitung starten
+                              </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
@@ -407,6 +573,17 @@ export default function MaterialIntake() {
       </div>
 
       <IntakeDialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) refetch(); }} />
+
+      <DocumentUploadDialog
+        open={!!documentIntake}
+        onOpenChange={(open) => { if (!open) setDocumentIntake(null); }}
+        preselectedMaterialInputId={documentIntake?.id}
+      />
+
+      <ProcessingDialog
+        open={isProcessingDialogOpen}
+        onOpenChange={(open) => { setIsProcessingDialogOpen(open); if (!open) refetch(); }}
+      />
 
       {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

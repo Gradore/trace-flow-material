@@ -1,7 +1,17 @@
-import { useState } from "react";
-import { Plus, Search, Filter, FileText, MoreVertical, Download, Mail, Eye, ArrowDownLeft, ArrowUpRight, Loader2, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Plus, Search, Filter, FileText, MoreVertical, Download, Eye, ArrowDownLeft, ArrowUpRight, Loader2, Trash2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PageDescription } from "@/components/layout/PageDescription";
 import {
   Table,
@@ -45,13 +55,17 @@ const typeConfig = {
 export default function DeliveryNotes() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [selectedNote, setSelectedNote] = useState<any>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<any>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  const { data: deliveryNotes = [], isLoading } = useQuery({
+  const { data: deliveryNotes = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["delivery-notes"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -64,12 +78,24 @@ export default function DeliveryNotes() {
     },
   });
 
-  const filteredNotes = deliveryNotes.filter(
-    (n) =>
-      n.note_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      n.partner_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      n.material_description.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredNotes = deliveryNotes.filter((n) => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch =
+      n.note_id.toLowerCase().includes(term) ||
+      n.partner_name.toLowerCase().includes(term) ||
+      n.material_description.toLowerCase().includes(term);
+
+    const matchesType = typeFilter === "all" || n.type === typeFilter;
+
+    const created = new Date(n.created_at);
+    const matchesFrom = !dateFrom || created >= new Date(`${dateFrom}T00:00:00`);
+    const matchesTo = !dateTo || created <= new Date(`${dateTo}T23:59:59`);
+
+    return matchesSearch && matchesType && matchesFrom && matchesTo;
+  });
+
+  const activeFilterCount =
+    (typeFilter !== "all" ? 1 : 0) + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0);
 
   // Calculate stats
   const today = new Date();
@@ -92,20 +118,100 @@ export default function DeliveryNotes() {
     setDetailsOpen(true);
   };
 
+  // Deep link support: /delivery-notes?id=<uuid|LS-Nummer> opens that note.
+  const deepLinkId = searchParams.get("id");
+  useEffect(() => {
+    if (!deepLinkId || isLoading || isError) return;
+    const match = deliveryNotes.find(
+      (n) => n.id === deepLinkId || n.note_id === deepLinkId
+    );
+    if (match) {
+      setSelectedNote(match);
+      setDetailsOpen(true);
+    } else {
+      toast({
+        title: "Lieferschein nicht gefunden",
+        description: `Es existiert kein Lieferschein mit der Kennung ${deepLinkId}.`,
+        variant: "destructive",
+      });
+    }
+    const params = new URLSearchParams(searchParams);
+    params.delete("id");
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkId, isLoading, deliveryNotes]);
+
+  // Older rows stored a (never resolvable) public URL instead of the object
+  // path; storage.download() needs the bucket-relative path.
+  const toStoragePath = (value: string) => {
+    const marker = "/documents/";
+    const index = value.indexOf(marker);
+    return index >= 0 ? value.slice(index + marker.length) : value;
+  };
+
+  const handleDownloadPDF = async (note: any) => {
+    if (!note.pdf_url) {
+      toast({
+        title: "Kein PDF vorhanden",
+        description: `Für ${note.note_id} wurde kein PDF gespeichert.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.storage
+        .from("documents")
+        .download(toStoragePath(note.pdf_url));
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Lieferschein_${note.note_id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: "PDF konnte nicht heruntergeladen werden.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleDelete = async () => {
     if (!noteToDelete) return;
-    
+
     try {
-      if (noteToDelete.pdf_url) {
-        await supabase.storage.from("documents").remove([noteToDelete.pdf_url]);
-      }
-      
-      const { error } = await supabase
+      // Delete the row first: an RLS-filtered delete returns zero rows and no
+      // error, and the PDF must not be removed while the record survives.
+      const { data: deleted, error } = await supabase
         .from("delivery_notes")
         .delete()
-        .eq("id", noteToDelete.id);
-      
+        .eq("id", noteToDelete.id)
+        .select();
+
       if (error) throw error;
+
+      if (!deleted || deleted.length === 0) {
+        toast({
+          title: "Fehler",
+          description: "Keine Berechtigung oder Datensatz nicht gefunden.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (noteToDelete.pdf_url) {
+        const { error: storageError } = await supabase.storage
+          .from("documents")
+          .remove([toStoragePath(noteToDelete.pdf_url)]);
+        if (storageError) {
+          console.error("Storage delete error:", storageError);
+        }
+      }
 
       queryClient.invalidateQueries({ queryKey: ["delivery-notes"] });
       toast({ title: "Lieferschein gelöscht" });
@@ -182,10 +288,66 @@ export default function DeliveryNotes() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button variant="outline">
-          <Filter className="h-4 w-4" />
-          Filter
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline">
+              <Filter className="h-4 w-4" />
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 space-y-4 bg-popover">
+            <div className="space-y-2">
+              <Label>Typ</Label>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Alle Typen" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">Alle Typen</SelectItem>
+                  {Object.entries(typeConfig).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Datum von</Label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Datum bis</Label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              disabled={activeFilterCount === 0}
+              onClick={() => {
+                setTypeFilter("all");
+                setDateFrom("");
+                setDateTo("");
+              }}
+            >
+              Filter zurücksetzen
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Table */}
@@ -193,6 +355,17 @@ export default function DeliveryNotes() {
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : isError ? (
+          <div className="text-center py-12">
+            <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+            <p className="text-lg font-medium text-foreground">Lieferscheine konnten nicht geladen werden</p>
+            <p className="text-muted-foreground">
+              Möglicherweise fehlt die Berechtigung oder die Verbindung ist unterbrochen.
+            </p>
+            <Button variant="outline" className="mt-4" onClick={() => refetch()}>
+              Erneut versuchen
+            </Button>
           </div>
         ) : filteredNotes.length === 0 ? (
           <div className="text-center py-12">
@@ -255,13 +428,9 @@ export default function DeliveryNotes() {
                             <Eye className="h-4 w-4 mr-2" />
                             Anzeigen
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDownloadPDF(note)}>
                             <Download className="h-4 w-4 mr-2" />
                             PDF herunterladen
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Mail className="h-4 w-4 mr-2" />
-                            Per E-Mail senden
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
