@@ -176,13 +176,20 @@ export default function MaterialFlow() {
 
   const selectNode = (nodeId: string) => setSelectedId(nodeId);
 
-  /** Trace a record; filters that would hide the chain are lifted. */
+  /**
+   * Rückverfolgung starten. Filter, die einen Teil der Kette ausblenden, werden
+   * aufgehoben — sonst zeigt die Leiste die vollständige Kette, das Diagramm
+   * darunter aber nur Bruchstücke davon.
+   */
   const traceNode = (nodeId: string) => {
-    if (!visible.nodeIds.has(nodeId) && filterCount > 0) {
+    const chain = computeTrace(graph, nodeId);
+    const chainIds = chain ? [...chain.nodeIds] : [nodeId];
+    const partiallyHidden = chainIds.some((id) => !visible.nodeIds.has(id));
+    if (partiallyHidden && filterCount > 0) {
       resetFilters();
       toast({
         title: "Filter zurückgesetzt",
-        description: "Der gesuchte Datensatz lag außerhalb der Filter — die vollständige Kette wird angezeigt.",
+        description: "Die Kette lag teilweise außerhalb der Filter — sie wird jetzt vollständig angezeigt.",
       });
     }
     setTraceRootId(nodeId);
@@ -197,6 +204,8 @@ export default function MaterialFlow() {
   const stageInKg = (stageId: string) => stageBalances.find((entry) => entry.stage.id === stageId)?.inKg ?? 0;
   const runStage = stageBalances.find((entry) => entry.stage.id === "run");
   const fractionCount = graph.nodes.filter((node) => node.stage === "fraction" && visible.nodeIds.has(node.id)).length;
+  /** Läufe hinter der Kennzahl „In Versuchen verarbeitet“ — mit Ausgangsfraktion, Einsatzmenge auch geschätzt. */
+  const processedRuns = runBalances.filter((balance) => balance.fractionCount > 0).length;
 
   const hasData = graph.nodes.length > 0;
   const hasVisible = visible.nodeIds.size > 0;
@@ -451,8 +460,7 @@ export default function MaterialFlow() {
               {filterCount > 0 && (
                 <div className="flex items-center justify-between gap-2 mt-3">
                   <p className="text-xs text-muted-foreground">
-                    {filterCount} {filterCount === 1 ? "Filter aktiv" : "Filter aktiv"} · {visible.nodeIds.size} von{" "}
-                    {graph.nodes.length} Datensätzen sichtbar
+                    {filterCount} Filter aktiv · {visible.nodeIds.size} von {graph.nodes.length} Datensätzen sichtbar
                   </p>
                   <Button variant="ghost" size="sm" className="gap-2" onClick={resetFilters}>
                     <RotateCcw className="h-3.5 w-3.5" />
@@ -475,7 +483,7 @@ export default function MaterialFlow() {
             <StatCard
               label="In Versuchen verarbeitet"
               value={formatKg(runStage?.processedKg ?? 0)}
-              hint={`${totals.countedRuns} bilanzierte Versuche`}
+              hint={`${processedRuns} ${processedRuns === 1 ? "Versuch" : "Versuche"} mit Ausgangsfraktion`}
               icon={Factory}
               accent="violet"
             />
@@ -547,70 +555,85 @@ export default function MaterialFlow() {
               <CardTitle className="text-base">Mengenbilanz je Stufe</CardTitle>
               <CardDescription>
                 Verarbeitet = Menge, die tatsächlich an die nächste Stufe übergeben wurde. Die Differenz zu
-                „eingegangen“ liegt noch als Bestand vor. Geschätzte Mengen (≈) sind enthalten.
+                „eingegangen“ liegt noch als Bestand vor. Geschätzte Mengen (≈) sind enthalten. Der Filter bestimmt,
+                welche Datensätze gezählt werden — gerechnet wird mit deren vollständigen Mengen.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <Table className="min-w-[46rem]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Stufe</TableHead>
-                      <TableHead className="text-right">Einträge</TableHead>
-                      <TableHead className="text-right">Eingegangen</TableHead>
-                      <TableHead className="text-right">Verarbeitet</TableHead>
-                      <TableHead className="text-right">Ausgegeben</TableHead>
-                      <TableHead className="text-right">Verlust</TableHead>
-                      <TableHead className="text-right">Verlust %</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {stageBalances.map((entry) => (
-                      <TableRow key={entry.stage.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 rounded-sm shrink-0"
-                              style={{ backgroundColor: entry.stage.color }}
-                              aria-hidden
-                            />
-                            <span className="font-medium whitespace-nowrap">{entry.stage.label}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{entry.nodeCount}</TableCell>
-                        <TableCell className="text-right tabular-nums">{formatKg(entry.inKg)}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {entry.terminal ? (
-                            <span className="text-muted-foreground">—</span>
-                          ) : (
-                            <>
-                              {formatKg(entry.processedKg)}
-                              {entry.stockKg > 0.05 && (
-                                <span className="block text-[11px] text-muted-foreground">
-                                  Bestand {formatKg(entry.stockKg)}
-                                </span>
-                              )}
-                            </>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {entry.terminal ? (
-                            <span className="text-muted-foreground whitespace-nowrap">— Kettenende</span>
-                          ) : (
-                            formatKg(entry.outKg)
-                          )}
-                        </TableCell>
-                        <TableCell className={cn("text-right tabular-nums", lossTextClass(entry.lossPct))}>
-                          {entry.lossKg === null ? "—" : formatKg(entry.lossKg)}
-                        </TableCell>
-                        <TableCell className={cn("text-right tabular-nums", lossTextClass(entry.lossPct))}>
-                          {entry.terminal ? "—" : formatPct(entry.lossPct)}
-                        </TableCell>
+              {!hasVisible ? (
+                <EmptyState
+                  title="Keine Datensätze für diese Filter"
+                  description="Ohne sichtbare Datensätze lässt sich keine Mengenbilanz je Stufe rechnen."
+                  action={
+                    filterCount > 0 ? (
+                      <Button variant="outline" size="sm" onClick={resetFilters}>
+                        Filter zurücksetzen
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[46rem]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Stufe</TableHead>
+                        <TableHead className="text-right">Einträge</TableHead>
+                        <TableHead className="text-right">Eingegangen</TableHead>
+                        <TableHead className="text-right">Verarbeitet</TableHead>
+                        <TableHead className="text-right">Ausgegeben</TableHead>
+                        <TableHead className="text-right">Verlust</TableHead>
+                        <TableHead className="text-right">Verlust %</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {stageBalances.map((entry) => (
+                        <TableRow key={entry.stage.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="h-2.5 w-2.5 rounded-sm shrink-0"
+                                style={{ backgroundColor: entry.stage.color }}
+                                aria-hidden
+                              />
+                              <span className="font-medium whitespace-nowrap">{entry.stage.label}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{entry.nodeCount}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatKg(entry.inKg)}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {entry.terminal ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <>
+                                {formatKg(entry.processedKg)}
+                                {entry.stockKg > 0.05 && (
+                                  <span className="block text-[11px] text-muted-foreground">
+                                    Bestand {formatKg(entry.stockKg)}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {entry.terminal ? (
+                              <span className="text-muted-foreground whitespace-nowrap">— Kettenende</span>
+                            ) : (
+                              formatKg(entry.outKg)
+                            )}
+                          </TableCell>
+                          <TableCell className={cn("text-right tabular-nums", lossTextClass(entry.lossPct))}>
+                            {entry.lossKg === null ? "—" : formatKg(entry.lossKg)}
+                          </TableCell>
+                          <TableCell className={cn("text-right tabular-nums", lossTextClass(entry.lossPct))}>
+                            {entry.terminal ? "—" : formatPct(entry.lossPct)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -620,7 +643,8 @@ export default function MaterialFlow() {
               <CardTitle className="text-base">Mengenbilanz je Versuchslauf</CardTitle>
               <CardDescription>
                 Einsatzmenge gegen Summe der Ausgangsfraktionen. Verluste über {LOSS_WARNING_PCT} % (Feinanteil,
-                Staub, Restmengen in der Mühle) sind farblich markiert.
+                Staub, Restmengen in der Mühle) sind farblich markiert. Bilanziert wird immer der vollständige Lauf —
+                auch Fraktionen, die der Filter ausblendet.
               </CardDescription>
             </CardHeader>
             <CardContent>

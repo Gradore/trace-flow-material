@@ -656,12 +656,26 @@ function mergeFacts(target: ChainFacts, source: ChainFacts): void {
   target.dates.push(...source.dates);
 }
 
+/**
+ * Kalendertag eines Datums- oder Zeitstempelwerts in der Zeitzone des Browsers -
+ * also genau der Tag, den formatDate anzeigt. Über toISOString() gerechnet
+ * fielen Zeitstempel kurz vor Mitternacht (created_at) einen Tag zu früh und
+ * verschwanden aus einem Zeitraumfilter, obwohl die Tabelle sie im Zeitraum
+ * ausweist.
+ */
+function localDayKey(raw: string): string | null {
+  const value = new Date(raw);
+  if (Number.isNaN(value.getTime())) return null;
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
+  return `${value.getFullYear()}-${month}-${day}`;
+}
+
 function inRange(dates: string[], from: string, to: string): boolean {
   if (!from && !to) return true;
   return dates.some((raw) => {
-    const value = new Date(raw);
-    if (Number.isNaN(value.getTime())) return false;
-    const day = value.toISOString().slice(0, 10);
+    const day = localDayKey(raw);
+    if (day === null) return false;
     if (from && day < from) return false;
     if (to && day > to) return false;
     return true;
@@ -841,9 +855,14 @@ export function computeRunBalances(
   return runs
     .filter((run) => visible.nodeIds.has(nodeId("run", run.id)))
     .map((run) => {
-      const runFractions = fractions.filter(
-        (fraction) => fraction.test_run_id === run.id && visible.nodeIds.has(nodeId("fraction", fraction.id)),
-      );
+      /*
+       * Die Massenbilanz gehört zum Lauf, nicht zur Filterauswahl. Ein Filter
+       * blendet Schwesterfraktionen desselben Laufs aus (Zielfraktion, Partner,
+       * Zeitraum) - würden nur die sichtbaren Fraktionen gegengerechnet, meldete
+       * die Tabelle einen erfundenen Verlust samt Warnsymbol. Bilanziert werden
+       * deshalb immer alle Ausgangsfraktionen des Laufs.
+       */
+      const runFractions = fractions.filter((fraction) => fraction.test_run_id === run.id);
       const outputKg = sum(runFractions.map((fraction) => fraction.weight_kg));
       const node = graph.byId.get(nodeId("run", run.id));
       const inputKg = run.input_weight_kg;
@@ -917,14 +936,17 @@ export interface StageBalance {
  * left the stage and the difference. Only the run stage can lose mass
  * physically - everywhere else the difference between "eingegangen" and
  * "verarbeitet" is material that is still in stock, shown separately.
+ *
+ * Der Filter bestimmt, welche Datensätze gezählt werden - gerechnet wird immer
+ * mit deren vollständigen Mengen. Würden nur sichtbare Kanten summiert, meldete
+ * ein Filter, der eine Fraktion eines Laufs ausblendet, einen Verlust, den es
+ * physikalisch nie gab (und beim Bestand einer Charge dasselbe umgekehrt).
  */
 export function computeStageBalances(graph: FlowGraph, visible: FlowVisibility): StageBalance[] {
   return FLOW_STAGES.map((stage) => {
     const nodes = graph.nodes.filter((node) => node.stage === stage.id && visible.nodeIds.has(node.id));
-    const inOf = (node: FlowNode) =>
-      sum((graph.linksByTarget.get(node.id) ?? []).filter((link) => visible.linkIds.has(link.id)).map((link) => link.kg));
-    const outOf = (node: FlowNode) =>
-      sum((graph.linksBySource.get(node.id) ?? []).filter((link) => visible.linkIds.has(link.id)).map((link) => link.kg));
+    const inOf = (node: FlowNode) => sum((graph.linksByTarget.get(node.id) ?? []).map((link) => link.kg));
+    const outOf = (node: FlowNode) => sum((graph.linksBySource.get(node.id) ?? []).map((link) => link.kg));
 
     let inKg = 0;
     let outKg = 0;

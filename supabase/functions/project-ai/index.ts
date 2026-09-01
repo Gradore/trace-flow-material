@@ -60,7 +60,19 @@ DEIN STIL:
 - Konkrete Zahlen und Schwellwerte nennen.
 - Bei Unsicherheit sagen, was fehlt, statt zu raten.
 - Immer priorisierte Handlungsempfehlungen am Ende.
-- Wenn Daten gegen die Erwartung sprechen, das klar sagen — nicht beschönigen.`;
+- Wenn Daten gegen die Erwartung sprechen, das klar sagen — nicht beschönigen.
+
+FORMAT:
+Antworte als Markdown. Hänge GANZ AM ENDE einen Codeblock an, der die
+Handlungsempfehlungen maschinenlesbar wiederholt:
+
+\`\`\`json
+{"recommendations":[{"title":"...","detail":"...","priority":"high|medium|low",
+"category":"technical|ip|supplier|financial|regulatory|market|schedule"}],
+"confidence":"high|medium|low"}
+\`\`\`
+
+Der Codeblock ist Pflicht, auch wenn er nur einen Eintrag enthält.`;
 
 const ANALYSIS_TYPES = [
   "daily_briefing", "test_interpretation", "doe_optimization", "next_actions",
@@ -72,6 +84,36 @@ const ANTHROPIC_MODEL = "claude-sonnet-4-6";
 const GATEWAY_MODEL = "google/gemini-2.5-flash";
 
 interface AiResult { text: string; model: string; tokens: number }
+
+interface ParsedAnswer {
+  markdown: string;
+  recommendations: unknown;
+  confidence: string | null;
+}
+
+/**
+ * Splits the trailing machine-readable block off the answer so the UI can show
+ * clean markdown and still offer structured recommendations.
+ */
+function parseAnswer(text: string): ParsedAnswer {
+  const match = text.match(/```json\s*([\s\S]*?)```\s*$/);
+  if (!match) return { markdown: text.trim(), recommendations: null, confidence: null };
+
+  let recommendations: unknown = null;
+  let confidence: string | null = null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      if (Array.isArray(record.recommendations)) recommendations = record.recommendations;
+      if (typeof record.confidence === "string") confidence = record.confidence;
+    }
+  } catch (error) {
+    console.warn("Recommendation block could not be parsed:", error);
+  }
+
+  return { markdown: text.slice(0, match.index).trim(), recommendations, confidence };
+}
 
 /**
  * Calls the LLM server-side. Prefers the Anthropic API when a key is
@@ -462,6 +504,7 @@ Deno.serve(async (req) => {
 
     const { prompt, context } = await buildContext(db, analysisType, scopeId);
     const result = await callModel(prompt);
+    const answer = parseAnswer(result.text);
 
     const { data: stored, error: storeError } = await db
       .from("ai_analyses")
@@ -470,8 +513,9 @@ Deno.serve(async (req) => {
         scope_type: scopeType,
         scope_id: scopeId,
         input_context: { prompt, ...context },
-        output_md: result.text,
-        confidence: result.text.length > 400 ? "high" : "medium",
+        output_md: answer.markdown,
+        recommendations: answer.recommendations,
+        confidence: answer.confidence ?? (answer.markdown.length > 400 ? "high" : "medium"),
         model: result.model,
         tokens_used: result.tokens,
         created_for_user: user.id,
@@ -485,12 +529,12 @@ Deno.serve(async (req) => {
     // in context, not only in the AI log.
     if (analysisType === "test_interpretation" && scopeId) {
       await db.from("test_runs")
-        .update({ ai_interpretation: result.text, ai_interpreted_at: new Date().toISOString() })
+        .update({ ai_interpretation: answer.markdown, ai_interpreted_at: new Date().toISOString() })
         .eq("id", scopeId);
     }
     if (analysisType === "spec_conformity" && scopeId) {
       await db.from("fraction_analyses")
-        .update({ ai_interpretation: result.text, ai_interpreted_at: new Date().toISOString() })
+        .update({ ai_interpretation: answer.markdown, ai_interpreted_at: new Date().toISOString() })
         .eq("output_fraction_id", scopeId);
     }
 

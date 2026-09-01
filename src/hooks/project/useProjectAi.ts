@@ -47,14 +47,20 @@ export function useAcknowledgeAiAnalysis() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, actedUpon }: { id: string; actedUpon?: boolean }) => {
-      const { error } = await supabase
+      // ai_analyses UPDATE is gated on is_internal_staff(); a filtered row
+      // returns zero rows and no error, so the write has to be read back.
+      const { data, error } = await supabase
         .from("ai_analyses")
         .update({
           acknowledged_at: new Date().toISOString(),
           ...(actedUpon === undefined ? {} : { acted_upon: actedUpon }),
         })
-        .eq("id", id);
+        .eq("id", id)
+        .select("id");
       if (error) throw new Error(error.message);
+      if (!data || data.length === 0) {
+        throw new Error("Keine Berechtigung oder Auswertung nicht gefunden.");
+      }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: projectKeys.ai }),
     onError: (error: Error) =>

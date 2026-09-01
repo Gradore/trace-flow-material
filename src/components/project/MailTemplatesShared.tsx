@@ -44,6 +44,14 @@ export function normalizePlaceholderKey(raw: string): string {
   return raw.replace(/[{}]/g, "").trim();
 }
 
+/**
+ * Only keys matching the token pattern can ever be substituted in a text - a
+ * declared "{{Menge in kg}}" would render an input that never replaces anything.
+ */
+export function isValidPlaceholderKey(key: string): boolean {
+  return /^[A-Za-z0-9_.-]+$/.test(key);
+}
+
 /** All placeholder keys occurring in the given texts, in order of appearance. */
 export function extractPlaceholderKeys(...texts: (string | null | undefined)[]): string[] {
   const keys: string[] = [];
@@ -67,7 +75,8 @@ export function templatePlaceholderKeys(
   const keys = extractPlaceholderKeys(template.subject, template.body_md);
   (template.placeholders ?? []).forEach((raw) => {
     const key = normalizePlaceholderKey(raw);
-    if (key && !keys.includes(key)) keys.push(key);
+    /* Keys the token pattern cannot match would become inputs without effect. */
+    if (key && isValidPlaceholderKey(key) && !keys.includes(key)) keys.push(key);
   });
   return keys;
 }
@@ -82,7 +91,9 @@ export function applyPlaceholders(text: string, values: Record<string, string>):
 
 export function buildMailtoHref(email: string, subject: string, body: string): string {
   const params = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  return `mailto:${encodeURIComponent(email)}?${params}`;
+  /* "@" stays literal - a percent-encoded address trips up several mail clients. */
+  const address = encodeURIComponent(email).replace(/%40/g, "@");
+  return `mailto:${address}?${params}`;
 }
 
 /** Clipboard API with a textarea/execCommand fallback for non-secure contexts. */

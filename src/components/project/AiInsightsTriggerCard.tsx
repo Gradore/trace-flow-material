@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Play, Clock, Crosshair } from "lucide-react";
+import { AlertTriangle, Clock, Crosshair, Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -30,6 +30,9 @@ export interface ScopeConfig {
   emptyHint: string;
   options: ScopeOption[];
   isLoading: boolean;
+  /** The list could not be loaded - an empty list would be a lie here. */
+  isError: boolean;
+  onRetry: () => void;
 }
 
 interface AiInsightsTriggerCardProps {
@@ -58,13 +61,16 @@ export function AiInsightsTriggerCard({
   const [scopeId, setScopeId] = useState<string>("");
   const request = useRequestAiAnalysis();
 
-  const hasOptions = !scope || scope.options.length > 0;
-  const scopeMissing = Boolean(scope) && !scopeId;
-  const disabled = request.isPending || scopeMissing || !hasOptions;
+  // Ohne geladene Auswahl gibt es keine gültige scope_id - dann bleibt der
+  // Start gesperrt. Ein Ladefehler darf nicht als "nichts vorhanden" erscheinen.
+  const scopeReady = scope ? !scope.isLoading && !scope.isError && scope.options.length > 0 : true;
+  // Nach einem Refetch kann eine zuvor gewählte Option verschwunden sein.
+  const scopeChosen = scope ? scope.options.some((option) => option.value === scopeId) : true;
+  const disabled = request.isPending || !scopeReady || !scopeChosen;
 
   const handleRun = () => {
     if (scope) {
-      if (!scopeId) return;
+      if (!scopeReady || !scopeChosen) return;
       request.mutate({ analysisType: type, scopeType: scope.scopeType, scopeId });
       return;
     }
@@ -110,6 +116,20 @@ export function AiInsightsTriggerCard({
             </Label>
             {scope.isLoading ? (
               <Skeleton className="h-10 w-full" />
+            ) : scope.isError ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <p className="flex items-start gap-1.5">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>Auswahl konnte nicht geladen werden.</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={scope.onRetry}
+                  className="mt-1 underline underline-offset-2"
+                >
+                  Erneut versuchen
+                </button>
+              </div>
             ) : scope.options.length === 0 ? (
               <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
                 {scope.emptyHint}
@@ -145,7 +165,7 @@ export function AiInsightsTriggerCard({
               </>
             )}
           </Button>
-          {scopeMissing && hasOptions && !scope?.isLoading && (
+          {scope && scopeReady && !scopeChosen && (
             <p className="mt-1.5 text-xs text-muted-foreground">
               Bitte zuerst einen Bezug auswählen.
             </p>

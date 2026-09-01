@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { Markdown, ToneBadge, formatDateTime, formatNumber } from "@/components/project/ProjectUI";
 import { useAcknowledgeAiAnalysis } from "@/hooks/project/useProjectAi";
@@ -40,16 +41,44 @@ export function AiInsightsEntryCard({ analysis, typeLabel, scopeLabel }: AiInsig
     ? CONFIDENCE_META[analysis.confidence] ?? { label: `Konfidenz ${analysis.confidence}`, tone: "muted" }
     : null;
 
-  const mark = (action: "read" | "acted") => {
+  const mark = async (action: "read" | "acted") => {
     setPendingAction(action);
-    acknowledge.mutate(
-      action === "acted" ? { id: analysis.id, actedUpon: true } : { id: analysis.id },
-      {
-        onSuccess: () =>
-          toast({ title: action === "acted" ? "Als umgesetzt markiert" : "Als gelesen markiert" }),
-        onSettled: () => setPendingAction(null),
-      },
-    );
+    try {
+      await acknowledge.mutateAsync(
+        action === "acted" ? { id: analysis.id, actedUpon: true } : { id: analysis.id },
+      );
+
+      // Das UPDATE im Hook läuft ohne .select(): filtert RLS die Zeile still
+      // heraus, meldet Supabase weder einen Fehler noch betroffene Zeilen.
+      // Ohne diese Nachkontrolle hätten wir Erfolg gemeldet, obwohl nichts
+      // gespeichert wurde.
+      const { data: saved, error } = await supabase
+        .from("ai_analyses")
+        .select("acknowledged_at, acted_upon")
+        .eq("id", analysis.id)
+        .maybeSingle();
+
+      const stored =
+        !error && saved !== null && Boolean(saved.acknowledged_at) &&
+        (action !== "acted" || saved.acted_upon);
+
+      if (!stored) {
+        toast({
+          variant: "destructive",
+          title: "Nicht gespeichert",
+          description:
+            error?.message ??
+            "Die Markierung wurde nicht übernommen (fehlende Berechtigung oder Auswertung nicht gefunden).",
+        });
+        return;
+      }
+
+      toast({ title: action === "acted" ? "Als umgesetzt markiert" : "Als gelesen markiert" });
+    } catch {
+      // Der Fehler-Toast kommt bereits aus useAcknowledgeAiAnalysis.
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   return (
@@ -129,8 +158,8 @@ export function AiInsightsEntryCard({ analysis, typeLabel, scopeLabel }: AiInsig
             variant="outline"
             size="sm"
             className="w-full sm:w-auto"
-            disabled={isRead || acknowledge.isPending}
-            onClick={() => mark("read")}
+            disabled={isRead || acknowledge.isPending || pendingAction !== null}
+            onClick={() => void mark("read")}
           >
             {pendingAction === "read" ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -144,8 +173,8 @@ export function AiInsightsEntryCard({ analysis, typeLabel, scopeLabel }: AiInsig
             variant={isActed ? "secondary" : "default"}
             size="sm"
             className="w-full sm:w-auto"
-            disabled={isActed || acknowledge.isPending}
-            onClick={() => mark("acted")}
+            disabled={isActed || acknowledge.isPending || pendingAction !== null}
+            onClick={() => void mark("acted")}
           >
             {pendingAction === "acted" ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

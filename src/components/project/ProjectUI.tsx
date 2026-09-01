@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -67,8 +67,19 @@ export function ProjectPageHeader({ title, description, icon: Icon, actions }: P
  * Phase 2+ activities must not start before the patent application (P0-2)
  * is filed - a manufacturer demo before filing destroys novelty.
  */
+/** German labels for the raw task status values stored in the database. */
+const TASK_STATUS_LABELS: Record<string, string> = {
+  todo: "Offen",
+  doing: "In Arbeit",
+  blocked: "Blockiert",
+  done: "Erledigt",
+  skipped: "Übersprungen",
+};
+
 export function IpGateBanner({ compact = false }: { compact?: boolean }) {
   const { isFiled, isLoading, patentTask } = usePatentFiled();
+  const location = useLocation();
+  const onTaskPage = location.pathname.startsWith("/projekt/aufgaben");
   if (isLoading) return null;
 
   if (isFiled) {
@@ -91,9 +102,16 @@ export function IpGateBanner({ compact = false }: { compact?: boolean }) {
       <AlertDescription className="text-sm">
         Aufgabe {PATENT_TASK_CODE}
         {patentTask ? ` („${patentTask.title}“)` : ""} steht auf{" "}
-        <strong>{patentTask?.status ?? "unbekannt"}</strong>. Solange die Anmeldung nicht eingereicht ist,
-        gefährdet jede Herstellerdemo oder Veröffentlichung die Neuheit des Verfahrens.{" "}
-        <Link to="/projekt/aufgaben" className="underline underline-offset-2">Zu den Aufgaben</Link>
+        <strong>
+          {patentTask ? (TASK_STATUS_LABELS[patentTask.status] ?? patentTask.status) : "unbekannt"}
+        </strong>
+        . Solange die Anmeldung nicht eingereicht ist, gefährdet jede Herstellerdemo oder
+        Veröffentlichung die Neuheit des Verfahrens.{" "}
+        {!onTaskPage && (
+          <Link to="/projekt/aufgaben" className="underline underline-offset-2">
+            Zu den Aufgaben
+          </Link>
+        )}
       </AlertDescription>
     </Alert>
   );

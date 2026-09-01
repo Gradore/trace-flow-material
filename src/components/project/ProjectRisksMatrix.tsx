@@ -54,7 +54,9 @@ export function ProjectRisksMatrix({ risks, selected, onSelect }: Props) {
                       key={`cell-${probability}-${impact}`}
                       type="button"
                       aria-pressed={isSelected}
-                      title={`Wahrscheinlichkeit ${probability} (${PROBABILITY_LABELS[probability]}) × Auswirkung ${impact} (${IMPACT_LABELS[impact]}) – Schwere ${severity} – ${count} Risiko(s)`}
+                      title={`Wahrscheinlichkeit ${probability} (${PROBABILITY_LABELS[probability]}) × Auswirkung ${impact} (${IMPACT_LABELS[impact]}) – Schwere ${severity} – ${count} ${
+                        count === 1 ? "Risiko" : "Risiken"
+                      }`}
                       onClick={() => onSelect(isSelected ? null : { probability, impact })}
                       className={cn(
                         "aspect-square rounded-md border flex flex-col items-center justify-center transition-colors",

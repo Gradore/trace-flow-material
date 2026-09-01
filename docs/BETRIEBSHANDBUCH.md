@@ -64,11 +64,13 @@ Setzen unter *Supabase Dashboard → Edge Functions → Secrets*. Ist
 
 ## 3. KI-Auswertungen zeitgesteuert (optional)
 
-Das Projekt-Cockpit fordert das Tages-Briefing automatisch an, sobald für den
-laufenden Tag noch keines existiert. Wer die Auswertungen unabhängig vom
-Seitenaufruf laufen lassen will, richtet sie mit `pg_cron` + `pg_net` ein.
-Das SQL steht bewusst nicht in einer Migration, weil es einen Service-Role-Key
-enthält:
+Das Projekt-Cockpit fordert das Tages-Briefing beim ersten Aufruf des Tages
+automatisch an, sofern für den laufenden Tag noch keines gespeichert ist —
+höchstens ein Modellaufruf pro Tag. Wer die Auswertungen unabhängig vom
+Seitenaufruf laufen lassen will (und die übrigen Typen wie Wochenbericht,
+Risiko-Scan und Partner-Nachfassen ohnehin braucht), richtet sie mit
+`pg_cron` + `pg_net` ein. Das SQL steht bewusst nicht in einer Migration, weil
+es einen Service-Role-Key enthält:
 
 ```sql
 -- einmalig im SQL-Editor, mit echten Werten

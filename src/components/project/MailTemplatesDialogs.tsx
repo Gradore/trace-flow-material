@@ -33,6 +33,7 @@ import {
   COMMUNICATION_CHANNELS,
   COMMUNICATION_DIRECTIONS,
   extractPlaceholderKeys,
+  isValidPlaceholderKey,
   isoDateToday,
   localDateTimeInputValue,
   normalizePlaceholderKey,
@@ -161,6 +162,14 @@ export function TemplateDialog({
   const addPlaceholder = (raw: string) => {
     const key = normalizePlaceholderKey(raw);
     if (!key) return;
+    if (!isValidPlaceholderKey(key)) {
+      toast({
+        variant: "destructive",
+        title: "Ungültiger Platzhalter",
+        description: "Erlaubt sind nur Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich - z. B. menge_kg.",
+      });
+      return;
+    }
     setForm((current) =>
       current.placeholders.includes(key)
         ? current
@@ -318,7 +327,7 @@ export function TemplateDialog({
                 type="button"
                 variant="outline"
                 onClick={() => addPlaceholder(newPlaceholder)}
-                disabled={!normalizePlaceholderKey(newPlaceholder)}
+                disabled={!isValidPlaceholderKey(normalizePlaceholderKey(newPlaceholder))}
               >
                 <Plus className="h-4 w-4" />
                 <span className="sr-only">Platzhalter hinzufügen</span>
@@ -605,8 +614,9 @@ export function CommunicationDialog({
             />
           </div>
 
-          <label className="flex items-start gap-2 text-sm">
+          <div className="flex items-start gap-2 text-sm">
             <Checkbox
+              id="comm-touch-contact"
               checked={form.touchContact}
               disabled={form.contactId === NO_CONTACT}
               onCheckedChange={(checked) =>
@@ -614,10 +624,13 @@ export function CommunicationDialog({
               }
               className="mt-0.5"
             />
-            <span className="text-muted-foreground">
+            <Label
+              htmlFor="comm-touch-contact"
+              className="cursor-pointer text-sm font-normal leading-snug text-muted-foreground"
+            >
               Letzten Kontakt beim Ansprechpartner auf heute setzen
-            </span>
-          </label>
+            </Label>
+          </div>
         </div>
 
         <DialogFooter className="gap-2">

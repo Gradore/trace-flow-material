@@ -49,6 +49,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
   useAiAnalyses,
@@ -82,6 +83,13 @@ import type { Database } from "@/integrations/supabase/types";
 import type { ProjectRisk } from "@/lib/project/types";
 
 type RiskWrite = Database["public"]["Tables"]["project_risks"]["Insert"];
+
+/** ai_analyses.confidence stores the raw model verdict in English. */
+const CONFIDENCE_LABELS: Record<string, string> = {
+  high: "hoch",
+  medium: "mittel",
+  low: "niedrig",
+};
 
 const MIN_SEVERITY_OPTIONS = [
   { value: "0", label: "Jede Schwere" },
@@ -263,6 +271,19 @@ export default function ProjectRisks() {
     setMatrixCell(null);
   };
 
+  /**
+   * The register's phase column and the dialog's phase picker both come from
+   * usePhases(); a failing phase query must surface instead of silently
+   * rendering "—" for every row.
+   */
+  const registerLoading = risksQuery.isLoading || phasesQuery.isLoading;
+  const registerError =
+    (risksQuery.error as Error | null) ?? (phasesQuery.error as Error | null);
+  const retryRegister = () => {
+    void risksQuery.refetch();
+    void phasesQuery.refetch();
+  };
+
   const openCreateDialog = () => {
     aiSourceRef.current = null;
     setEditingRisk(null);
@@ -293,10 +314,16 @@ export default function ProjectRisks() {
     requestAi.mutate({ analysisType: "risk_scan", scopeType: "global", scopeId: null });
   };
 
+  /**
+   * The confirmation must not fire before the write came back - the hook toasts
+   * its own error, so an unconditional toast would contradict it.
+   */
   const handleAcknowledge = () => {
     if (!latestScan) return;
-    acknowledgeAi.mutate({ id: latestScan.id });
-    toast({ title: "Scan als gelesen markiert" });
+    acknowledgeAi.mutate(
+      { id: latestScan.id },
+      { onSuccess: () => toast({ title: "Scan als gelesen markiert" }) },
+    );
   };
 
   const stats = useMemo(() => {
@@ -305,6 +332,13 @@ export default function ProjectRisks() {
     const ai = risks.filter((risk) => risk.ai_suggested).length;
     return { total: risks.length, high, open, ai };
   }, [risks]);
+
+  /** Counters must not claim "0" while the register is still loading or failed. */
+  const statValue = (value: number) => {
+    if (risksQuery.isLoading) return <Skeleton className="h-6 w-10" />;
+    if (risksQuery.isError) return "—";
+    return value;
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -331,21 +365,26 @@ export default function ProjectRisks() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Risiken gesamt" value={stats.total} icon={ShieldAlert} accent="violet" />
+        <StatCard
+          label="Risiken gesamt"
+          value={statValue(stats.total)}
+          icon={ShieldAlert}
+          accent="violet"
+        />
         <StatCard
           label="Hohe Schwere (≥ 15)"
-          value={stats.high}
+          value={statValue(stats.high)}
           icon={AlertTriangle}
           accent="rose"
           hint="Sofortige Maßnahmen nötig"
         />
         <StatCard
           label="Offen / in Bearbeitung"
-          value={stats.open}
+          value={statValue(stats.open)}
           icon={ShieldCheck}
           accent="amber"
         />
-        <StatCard label="KI-Vorschläge" value={stats.ai} icon={Sparkles} accent="sky" />
+        <StatCard label="KI-Vorschläge" value={statValue(stats.ai)} icon={Sparkles} accent="sky" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -379,7 +418,11 @@ export default function ProjectRisks() {
             <CardDescription>
               {latestScan
                 ? `Letzter Scan: ${formatDateTime(latestScan.created_at)}${
-                    latestScan.confidence ? ` · Konfidenz: ${latestScan.confidence}` : ""
+                    latestScan.confidence
+                      ? ` · Konfidenz: ${
+                          CONFIDENCE_LABELS[latestScan.confidence] ?? latestScan.confidence
+                        }`
+                      : ""
                   }`
                 : "Noch kein Risikoscan vorhanden."}
             </CardDescription>
@@ -395,9 +438,9 @@ export default function ProjectRisks() {
             ) : !latestScan ? (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Der Scan prüft Aufgaben, Versuche, Analysen und Partner auf neue Risiken —
-                  etwa Faserlänge unter 0,3 mm, Energiebedarf über 350 kWh/t oder eine noch nicht
-                  eingereichte Patentanmeldung.
+                  Der Scan prüft das bestehende Risikoregister, die Aufgaben und die Versuchsläufe
+                  auf neue oder verschärfte Risiken — etwa Werkzeugverschleiß, Energiebedarf über
+                  350 kWh/t oder eine noch nicht eingereichte Patentanmeldung.
                 </p>
                 <Button variant="outline" size="sm" onClick={handleScan} disabled={requestAi.isPending}>
                   {requestAi.isPending ? (
@@ -491,7 +534,9 @@ export default function ProjectRisks() {
             <div>
               <CardTitle className="text-base">Risikoregister</CardTitle>
               <CardDescription>
-                {filteredRisks.length} von {risks.length} Risiken · absteigend nach Schwere
+                {registerLoading
+                  ? "Risiken werden geladen…"
+                  : `${filteredRisks.length} von ${risks.length} Risiken · absteigend nach Schwere`}
               </CardDescription>
             </div>
             {activeFilterCount > 0 && (
@@ -575,10 +620,10 @@ export default function ProjectRisks() {
             )}
           </div>
 
-          {risksQuery.isLoading ? (
+          {registerLoading ? (
             <LoadingRows rows={6} />
-          ) : risksQuery.isError ? (
-            <ErrorState error={risksQuery.error as Error} onRetry={() => void risksQuery.refetch()} />
+          ) : registerError ? (
+            <ErrorState error={registerError} onRetry={retryRegister} />
           ) : risks.length === 0 ? (
             <EmptyState
               title="Noch keine Risiken erfasst"

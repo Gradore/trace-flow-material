@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
@@ -49,6 +49,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { severityTone } from "@/components/project/ProjectRisksShared";
 
 import {
   ConformityBadge,
@@ -223,9 +224,19 @@ function runDateOf(run: TestRun): string | null {
   return run.actual_date ?? run.planned_date;
 }
 
+/** Marks the day the automatic briefing request was already fired. */
+const AUTO_BRIEFING_KEY = "rekuflow.projekt.autoBriefing";
+
 function riskSeverity(risk: ProjectRisk): number {
   return risk.severity ?? risk.probability * risk.impact;
 }
+
+/** Same thresholds as the risk register - severityTone() is the single source. */
+const SEVERITY_BADGE_CLASSES: Record<string, string> = {
+  destructive: "bg-destructive/15 text-destructive",
+  warning: "bg-warning/15 text-warning",
+  success: "bg-muted text-muted-foreground",
+};
 
 /**
  * ai_analyses.recommendations is free-form jsonb - it is nullable and the model
@@ -407,6 +418,37 @@ export default function ProjectCockpit() {
   const latestBriefing = briefingQuery.data?.[0] ?? null;
   const briefingUnread = latestBriefing !== null && latestBriefing.acknowledged_at === null;
   const briefingRecommendations = stringList(latestBriefing?.recommendations);
+
+  // The specification asks for a daily briefing without user action. It is
+  // requested at most once per day: the newest stored briefing decides, and a
+  // local marker keeps a reload from firing a second paid model call while the
+  // first is still in flight.
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const briefingIsFromToday =
+    latestBriefing !== null && latestBriefing.created_at.slice(0, 10) === todayKey;
+
+  useEffect(() => {
+    if (briefingQuery.isLoading || briefingQuery.error) return;
+    if (briefingIsFromToday || requestBriefing.isPending) return;
+
+    let alreadyTried = false;
+    try {
+      alreadyTried = window.localStorage.getItem(AUTO_BRIEFING_KEY) === todayKey;
+    } catch {
+      // storage unavailable - fall back to requesting once per mount
+    }
+    if (alreadyTried) return;
+
+    try {
+      window.localStorage.setItem(AUTO_BRIEFING_KEY, todayKey);
+    } catch {
+      /* ignore */
+    }
+    requestBriefing.mutate({ analysisType: "daily_briefing" });
+    // requestBriefing is a stable mutation object; re-running on its state
+    // would re-trigger the request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [briefingQuery.isLoading, briefingQuery.error, briefingIsFromToday, todayKey]);
 
   /* --------------------------------------------------------- next action */
 
@@ -1374,11 +1416,7 @@ export default function ProjectCockpit() {
                     <span
                       className={cn(
                         "shrink-0 rounded-md px-2 py-0.5 text-xs font-bold",
-                        riskSeverity(risk) >= 15
-                          ? "bg-destructive/15 text-destructive"
-                          : riskSeverity(risk) >= 8
-                            ? "bg-warning/15 text-warning"
-                            : "bg-muted text-muted-foreground",
+                        SEVERITY_BADGE_CLASSES[severityTone(riskSeverity(risk))],
                       )}
                     >
                       {formatNumber(riskSeverity(risk), 0)}

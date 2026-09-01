@@ -8,6 +8,29 @@ import { supabase } from "@/integrations/supabase/client";
 import type { FractionAnalysis, MaterialBatch, OutputFraction, Partner } from "./types";
 import { MATERIAL_CLASSES } from "./constants";
 
+/**
+ * An UPDATE that RLS filters out returns zero rows and no error. Every link
+ * write has to read the row back, otherwise the caller reports a success that
+ * never happened.
+ */
+async function assertLinked(
+  table: "project_partners" | "material_batches" | "output_fractions" | "fraction_analyses",
+  id: string,
+  column: string,
+  expected: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from(table)
+    .select(column)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const actual = (data as unknown as Record<string, unknown> | null)?.[column];
+  if (actual !== expected) {
+    throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+  }
+}
+
 const COMPANY_TYPE_BY_CATEGORY: Record<string, string> = {
   machine_manufacturer: "supplier",
   material_supplier: "supplier",
@@ -59,8 +82,10 @@ export async function linkPartnerToCompany(partner: Partner): Promise<string> {
   const { error: linkError } = await supabase
     .from("project_partners")
     .update({ company_id: companyId })
-    .eq("id", partner.id);
+    .eq("id", partner.id)
+    .select("id");
   if (linkError) throw new Error(linkError.message);
+  await assertLinked("project_partners", partner.id, "company_id", companyId);
 
   return companyId;
 }
@@ -97,8 +122,10 @@ export async function linkBatchToMaterialInput(
   const { error: linkError } = await supabase
     .from("material_batches")
     .update({ material_input_id: created.id })
-    .eq("id", batch.id);
+    .eq("id", batch.id)
+    .select("id");
   if (linkError) throw new Error(linkError.message);
+  await assertLinked("material_batches", batch.id, "material_input_id", created.id);
 
   return created.id;
 }
@@ -134,8 +161,10 @@ export async function linkFractionToOutputMaterial(fraction: OutputFraction): Pr
   const { error: linkError } = await supabase
     .from("output_fractions")
     .update({ output_material_id: created.id })
-    .eq("id", fraction.id);
+    .eq("id", fraction.id)
+    .select("id");
   if (linkError) throw new Error(linkError.message);
+  await assertLinked("output_fractions", fraction.id, "output_material_id", created.id);
 
   return created.id;
 }
@@ -171,8 +200,10 @@ export async function linkAnalysisToSample(
   const { error: linkError } = await supabase
     .from("fraction_analyses")
     .update({ sample_id: created.id })
-    .eq("id", analysis.id);
+    .eq("id", analysis.id)
+    .select("id");
   if (linkError) throw new Error(linkError.message);
+  await assertLinked("fraction_analyses", analysis.id, "sample_id", created.id);
 
   return created.id;
 }

@@ -172,9 +172,22 @@ export default function AiInsights() {
     return map;
   }, [testRuns.data, doeSeries.data, fractions.data, partners.data, phases.data, productTests.data]);
 
+  /** Die Nachschlagequellen laden unabhängig vom Protokoll. */
+  const scopeLoading: Record<string, boolean> = {
+    test_run: testRuns.isLoading,
+    doe_series: doeSeries.isLoading,
+    output_fraction: fractions.isLoading,
+    partner: partners.isLoading,
+    phase: phases.isLoading,
+    product_test: productTests.isLoading,
+  };
+
   const scopeLabelFor = (scopeType: string, scopeId: string | null): string => {
     if (scopeType === "global" || !scopeId) return "Gesamtprojekt";
-    return scopeLabels.get(`${scopeType}:${scopeId}`) ?? `${scopeType} (${scopeId.slice(0, 8)}…)`;
+    const label = scopeLabels.get(`${scopeType}:${scopeId}`);
+    if (label) return label;
+    if (scopeLoading[scopeType]) return "wird geladen …";
+    return `${scopeType} (${scopeId.slice(0, 8)}…)`;
   };
 
   const scopeConfigFor = (type: AiAnalysisType): ScopeConfig | undefined => {
@@ -184,6 +197,10 @@ export default function AiInsights() {
       return {
         ...base,
         isLoading: testRuns.isLoading,
+        isError: testRuns.isError,
+        onRetry: () => {
+          void testRuns.refetch();
+        },
         options: (testRuns.data ?? []).map((run) => ({
           value: run.id,
           label: `${run.run_code} — ${run.title}`,
@@ -194,6 +211,10 @@ export default function AiInsights() {
       return {
         ...base,
         isLoading: doeSeries.isLoading,
+        isError: doeSeries.isError,
+        onRetry: () => {
+          void doeSeries.refetch();
+        },
         options: (doeSeries.data ?? []).map((series) => ({
           value: series.id,
           label: `${series.code} — ${series.name}`,
@@ -203,6 +224,10 @@ export default function AiInsights() {
     return {
       ...base,
       isLoading: fractions.isLoading,
+      isError: fractions.isError,
+      onRetry: () => {
+        void fractions.refetch();
+      },
       options: (fractions.data ?? []).map((fraction) => ({
         value: fraction.id,
         label: fraction.target_fraction_id
@@ -224,6 +249,9 @@ export default function AiInsights() {
     [analyses, typeFilter, onlyUnread],
   );
 
+  // Solange das Protokoll lädt oder fehlgeschlagen ist, wäre jede Kennzahl eine
+  // erfundene Null - dann steht in den Karten „—“.
+  const statsReady = !analysesQuery.isLoading && !analysesQuery.isError;
   const unreadCount = analyses.filter((entry) => !entry.acknowledged_at).length;
   const actedCount = analyses.filter((entry) => entry.acted_upon).length;
   const tokenSum = analyses.reduce((sum, entry) => sum + (entry.tokens_used ?? 0), 0);
@@ -277,18 +305,28 @@ export default function AiInsights() {
 
       {/* ------------------------------------------------------- stat cards */}
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Auswertungen" value={formatNumber(analyses.length, 0)} icon={BrainCircuit} accent="violet" />
+        <StatCard
+          label="Auswertungen"
+          value={formatNumber(statsReady ? analyses.length : null, 0)}
+          icon={BrainCircuit}
+          accent="violet"
+        />
         <StatCard
           label="Ungelesen"
-          value={formatNumber(unreadCount, 0)}
+          value={formatNumber(statsReady ? unreadCount : null, 0)}
           icon={Inbox}
-          accent={unreadCount > 0 ? "amber" : "emerald"}
+          accent={statsReady && unreadCount > 0 ? "amber" : "emerald"}
         />
-        <StatCard label="Umgesetzt" value={formatNumber(actedCount, 0)} icon={ClipboardCheck} accent="emerald" />
+        <StatCard
+          label="Umgesetzt"
+          value={formatNumber(statsReady ? actedCount : null, 0)}
+          icon={ClipboardCheck}
+          accent="emerald"
+        />
         <StatCard
           label="Tokens gesamt"
-          value={formatNumber(tokenSum, 0)}
-          hint="über alle gespeicherten Auswertungen"
+          value={formatNumber(statsReady ? tokenSum : null, 0)}
+          hint="über die geladenen Auswertungen (max. 100)"
           icon={Coins}
           accent="sky"
         />
