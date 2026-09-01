@@ -62,45 +62,44 @@ Setzen unter *Supabase Dashboard → Edge Functions → Secrets*. Ist
 
 ---
 
-## 3. KI-Auswertungen zeitgesteuert (optional)
+## 3. KI-Auswertungen zeitgesteuert
 
 Das Projekt-Cockpit fordert das Tages-Briefing beim ersten Aufruf des Tages
 automatisch an, sofern für den laufenden Tag noch keines gespeichert ist —
-höchstens ein Modellaufruf pro Tag. Wer die Auswertungen unabhängig vom
-Seitenaufruf laufen lassen will (und die übrigen Typen wie Wochenbericht,
-Risiko-Scan und Partner-Nachfassen ohnehin braucht), richtet sie mit
-`pg_cron` + `pg_net` ein. Das SQL steht bewusst nicht in einer Migration, weil
-es einen Service-Role-Key enthält:
+höchstens ein Modellaufruf pro Tag. Damit die Auswertungen unabhängig davon
+laufen (und die übrigen Typen wie Wochenbericht, Risiko-Scan und
+Partner-Nachfassen überhaupt), richtet man die Zeitpläne einmalig ein.
+
+Im SQL-Editor, mit den echten Werten:
 
 ```sql
--- einmalig im SQL-Editor, mit echten Werten
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
-select cron.schedule(
-  'rekuflow-daily-briefing',
-  '0 5 * * *',                                  -- 05:00 UTC = 06:00 MEZ
-  $$
-  select net.http_post(
-    url     := 'https://<PROJECT_REF>.supabase.co/functions/v1/project-ai',
-    headers := jsonb_build_object(
-                 'Content-Type','application/json',
-                 'Authorization','Bearer <SERVICE_ROLE_KEY>'),
-    body    := jsonb_build_object('analysisType','daily_briefing')
-  );
-  $$
-);
-
-select cron.schedule('rekuflow-weekly-report','0 6 * * 1', $$ ... 'weekly_report' ... $$);
-select cron.schedule('rekuflow-next-actions', '0 5 * * *', $$ ... 'next_actions' ... $$);
-select cron.schedule('rekuflow-partner-followup','0 6 * * 1', $$ ... 'partner_followup' ... $$);
-select cron.schedule('rekuflow-risk-scan',    '0 6 * * 1', $$ ... 'risk_scan' ... $$);
+select public.schedule_project_ai(
+  'https://<PROJECT_REF>.supabase.co',
+  '<SERVICE_ROLE_KEY>');
 ```
 
-`project-ai` verlangt einen Aufrufer mit interner Rolle; der Service-Role-Key
-erfüllt das.
+Das legt fünf Jobs an (Zeiten in UTC, 05:00 UTC = 06:00 MEZ):
 
----
+| Job | Zeitplan | Auswertung |
+|---|---|---|
+| `rekuflow-daily-briefing` | täglich 05:00 | Tages-Briefing |
+| `rekuflow-next-actions` | täglich 05:05 | Nächste Aktionen |
+| `rekuflow-weekly-report` | montags 06:00 | Wochenbericht |
+| `rekuflow-partner-followup` | montags 06:10 | Partner-Nachfassen |
+| `rekuflow-risk-scan` | montags 06:20 | Risiko-Scan |
+
+Der Aufruf ist wiederholbar — ein erneuter Aufruf ersetzt die Jobs. Entfernen:
+
+```sql
+select public.unschedule_project_ai();
+```
+
+Der Service-Role-Key steht bewusst in keiner Migration. `schedule_project_ai`
+darf nur ein Administrator ausführen. `project-ai` verlangt einen Aufrufer mit
+interner Rolle; der Service-Role-Key erfüllt das.
 
 ## 4. Rollen und Sichtbarkeiten
 
