@@ -94,12 +94,27 @@ export function IntakeDialog({ open, onOpenChange }: IntakeDialogProps) {
 
       if (error) throw error;
 
-      // Update container status if assigned
+      // Update container status if assigned. RLS can filter the row out without
+      // raising an error, so the affected rows have to be checked explicitly.
       if (formData.container && formData.container !== "new") {
-        await supabase
+        const { data: updatedContainer, error: containerError } = await supabase
           .from("containers")
           .update({ status: "filling" })
-          .eq("id", formData.container);
+          .eq("id", formData.container)
+          .select();
+
+        if (containerError || !updatedContainer || updatedContainer.length === 0) {
+          toast({
+            title: "Container-Status nicht aktualisiert",
+            description:
+              containerError?.message ||
+              "Keine Berechtigung oder Container nicht gefunden. Der Materialeingang wurde trotzdem erfasst.",
+            variant: "destructive",
+          });
+        } else {
+          queryClient.invalidateQueries({ queryKey: ["containers"] });
+          queryClient.invalidateQueries({ queryKey: ["containers-empty"] });
+        }
       }
 
       // Log event

@@ -63,9 +63,11 @@ export function CompleteProcessingDialog({
   const { logEvent } = useMaterialFlowHistory();
   const { role, isLoading: isRoleLoading } = useUserRole();
 
-  // Only these roles hold the samples INSERT policy. Without it the step would be
-  // marked completed while the mandatory samples could never be written.
-  const canCreateSamples = role === "admin" || role === "production" || role === "qa";
+  // Completing needs BOTH policies: samples INSERT (admin/production/qa) and
+  // processing_steps UPDATE (admin/production/betriebsleiter). Only the intersection
+  // can finish the flow - a qa user would otherwise write the three samples and then
+  // fail on the status update, leaving orphaned samples behind on every attempt.
+  const canCompleteProcessing = role === "admin" || role === "production";
 
   // Fetch pending/in_production orders for customer assignment
   const { data: orders = [] } = useQuery({
@@ -121,10 +123,11 @@ export function CompleteProcessingDialog({
       return;
     }
 
-    if (!canCreateSamples) {
+    if (!canCompleteProcessing) {
       toast({
         title: "Keine Berechtigung",
-        description: "Sie haben keine Berechtigung, Proben zu erstellen.",
+        description:
+          "Sie haben keine Berechtigung, eine Verarbeitung abzuschließen und Proben zu erstellen.",
         variant: "destructive",
       });
       return;
@@ -292,13 +295,19 @@ export function CompleteProcessingDialog({
         throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
       }
 
-      // 4. Update material input status
-      const { error: materialError } = await supabase
+      // 4. Update material input status. An RLS-filtered update returns zero rows and no
+      // error, so the affected row is requested back - the step itself is already
+      // completed at this point, so this is reported as a warning instead of a failure.
+      const { data: updatedInput, error: materialError } = await supabase
         .from("material_inputs")
         .update({ status: "processed" })
-        .eq("id", processingStep.material_input_id);
+        .eq("id", processingStep.material_input_id)
+        .select("id");
 
-      if (materialError) {
+      const materialStatusUpdated =
+        !materialError && !!updatedInput && updatedInput.length > 0;
+
+      if (!materialStatusUpdated) {
         console.warn("Could not update material input status:", materialError);
       }
 
@@ -333,10 +342,19 @@ export function CompleteProcessingDialog({
           : `${processingStep.processing_id} wurde abgeschlossen. Probe wurde erstellt.`,
       });
 
+      if (!materialStatusUpdated) {
+        toast({
+          title: "Materialstatus nicht aktualisiert",
+          description:
+            "Der Materialeingang konnte nicht auf \"Verarbeitet\" gesetzt werden. Keine Berechtigung oder Datensatz nicht gefunden.",
+          variant: "destructive",
+        });
+      }
+
       queryClient.invalidateQueries({ queryKey: ["processing-steps"] });
       queryClient.invalidateQueries({ queryKey: ["samples"] });
       queryClient.invalidateQueries({ queryKey: ["material-inputs"] });
-      
+
       onOpenChange(false);
     } catch (error: any) {
       console.error("CompleteProcessingDialog error:", error);
@@ -370,10 +388,10 @@ export function CompleteProcessingDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {!isRoleLoading && !canCreateSamples && (
+          {!isRoleLoading && !canCompleteProcessing && (
             <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
-              Sie haben keine Berechtigung, Proben zu erstellen. Die Verarbeitung kann daher nicht
-              abgeschlossen werden.
+              Sie haben keine Berechtigung, eine Verarbeitung abzuschließen und Proben zu erstellen.
+              Diese Aktion ist Administratoren und der Produktion vorbehalten.
             </div>
           )}
 
@@ -514,7 +532,7 @@ export function CompleteProcessingDialog({
           </Button>
           <Button 
             onClick={handleComplete} 
-            disabled={isSubmitting || isRoleLoading || !canCreateSamples || !samplerName.trim() || (createRetentionSamples && (!warehouseLocation.trim() || !labLocation.trim()))}
+            disabled={isSubmitting || isRoleLoading || !canCompleteProcessing || !samplerName.trim() || (createRetentionSamples && (!warehouseLocation.trim() || !labLocation.trim()))}
           >
             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             Abschließen & Proben erstellen

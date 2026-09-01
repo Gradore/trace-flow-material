@@ -271,7 +271,7 @@ export default function MaterialFlow() {
                   </button>
                 )}
                 {term.trim() && (
-                  <div className="absolute z-30 mt-1 w-full rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
+                  <div className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg">
                     {results.length ? (
                       results.map((entry) => (
                         <button

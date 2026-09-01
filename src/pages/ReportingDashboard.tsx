@@ -2,10 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, FlaskConical, ClipboardList, Truck, CheckCircle, Clock, AlertTriangle, TrendingUp, ShieldOff } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
-import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
-import { de } from "date-fns/locale";
+import { Package, FlaskConical, ClipboardList, CheckCircle, Clock, AlertTriangle, TrendingUp, ShieldOff } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { useUserPermissions } from "@/hooks/useUserPermissions";
 
 // Same status vocabulary as src/pages/Orders.tsx
@@ -165,7 +163,6 @@ export default function ReportingDashboard() {
       }))
     : [];
 
-  const isLoading = intakeLoading || samplesLoading || ordersLoading || processingLoading || outputLoading;
   const hasLoadError = intakeError || samplesError || ordersError || processingError || outputError;
 
   if (!permissionsLoading && hasCustomPermissions && !canView("can_view_reporting")) {
@@ -301,12 +298,20 @@ export default function ReportingDashboard() {
             <CardTitle className="text-sm font-medium text-green-800 dark:text-green-300">Abgeschlossen</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-700 dark:text-green-400">
-              {processingStats?.completionRate || 0}%
-            </div>
-            <p className="text-xs text-green-600 dark:text-green-500">
-              Verarbeitungsschritte abgeschlossen
-            </p>
+            {processingLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : processingError ? (
+              <p className="text-sm text-destructive">Nicht verfügbar</p>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-green-700 dark:text-green-400">
+                  {processingStats?.completionRate || 0}%
+                </div>
+                <p className="text-xs text-green-600 dark:text-green-500">
+                  Verarbeitungsschritte abgeschlossen
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -316,12 +321,20 @@ export default function ReportingDashboard() {
             <CardTitle className="text-sm font-medium text-amber-800 dark:text-amber-300">Ausstehend</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">
-              {sampleStats?.pending || 0}
-            </div>
-            <p className="text-xs text-amber-600 dark:text-amber-500">
-              Proben warten auf Analyse
-            </p>
+            {samplesLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : samplesError ? (
+              <p className="text-sm text-destructive">Nicht verfügbar</p>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                  {sampleStats?.pending || 0}
+                </div>
+                <p className="text-xs text-amber-600 dark:text-amber-500">
+                  Proben warten auf Analyse
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -331,12 +344,20 @@ export default function ReportingDashboard() {
             <CardTitle className="text-sm font-medium text-red-800 dark:text-red-300">Überfällig</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-700 dark:text-red-400">
-              {orderStats?.overdue || 0}
-            </div>
-            <p className="text-xs text-red-600 dark:text-red-500">
-              Aufträge überschritten Deadline
-            </p>
+            {ordersLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : ordersError ? (
+              <p className="text-sm text-destructive">Nicht verfügbar</p>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-red-700 dark:text-red-400">
+                  {orderStats?.overdue || 0}
+                </div>
+                <p className="text-xs text-red-600 dark:text-red-500">
+                  Aufträge überschritten Deadline
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

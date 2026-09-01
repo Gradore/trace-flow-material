@@ -101,7 +101,9 @@ export default function Containers() {
   // Deep link support: /containers?id=<uuid|Container-ID> opens that container.
   const deepLinkId = searchParams.get("id");
   useEffect(() => {
-    if (!deepLinkId || isLoading) return;
+    // Wait for the list; on a failed query there is nothing to resolve against,
+    // so do not claim the container does not exist.
+    if (!deepLinkId || isLoading || isError) return;
     const match = containers.find((c) => c.id === deepLinkId || c.container_id === deepLinkId);
     if (match) {
       setSelectedContainer(match);
@@ -117,7 +119,7 @@ export default function Containers() {
     params.delete("id");
     setSearchParams(params, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deepLinkId, isLoading, containers]);
+  }, [deepLinkId, isLoading, isError, containers]);
 
   const handlePrintQR = async (container: typeof containers[0]) => {
     try {

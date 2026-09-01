@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { de } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
+import { useUserRole } from "@/hooks/useUserRole";
+import { hasAccess } from "@/components/layout/navigation";
 
 const statusConfig = {
   pending: { label: "Ausstehend", icon: Clock, class: "status-badge-warning" },
@@ -16,6 +18,12 @@ const statusConfig = {
 
 export function PendingSamples() {
   const navigate = useNavigate();
+  const { role, isAdmin } = useUserRole();
+  // Only offer the jump when the route guard would let this role in.
+  const canOpenSampling = hasAccess("/sampling", role, isAdmin);
+  const openSampling = () => {
+    if (canOpenSampling) navigate("/sampling");
+  };
 
   const { data: samples = [], isLoading, isError } = useQuery({
     queryKey: ["pending-samples"],
@@ -49,9 +57,11 @@ export function PendingSamples() {
     <div className="glass-card rounded-xl p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-foreground">Offene Proben</h3>
-        <Button variant="ghost" size="sm" className="text-primary" onClick={() => navigate("/sampling")}>
-          Alle anzeigen
-        </Button>
+        {canOpenSampling && (
+          <Button variant="ghost" size="sm" className="text-primary" onClick={openSampling}>
+            Alle anzeigen
+          </Button>
+        )}
       </div>
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
@@ -77,16 +87,19 @@ export function PendingSamples() {
             return (
               <div
                 key={sample.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer"
-                role="button"
-                tabIndex={0}
-                onClick={() => navigate("/sampling")}
-                onKeyDown={(e) => {
+                className={cn(
+                  "flex items-center justify-between p-3 rounded-lg bg-secondary/30 transition-colors",
+                  canOpenSampling && "hover:bg-secondary/50 cursor-pointer"
+                )}
+                role={canOpenSampling ? "button" : undefined}
+                tabIndex={canOpenSampling ? 0 : undefined}
+                onClick={canOpenSampling ? openSampling : undefined}
+                onKeyDown={canOpenSampling ? (e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    navigate("/sampling");
+                    openSampling();
                   }
-                }}
+                } : undefined}
               >
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-warning/10">

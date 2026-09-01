@@ -133,7 +133,9 @@ export default function MaterialIntake() {
   // Deep link support: /intake?id=<uuid|Eingangs-ID> opens that intake.
   const deepLinkId = searchParams.get("id");
   useEffect(() => {
-    if (!deepLinkId || isLoading) return;
+    // Wait for the list; on a failed query there is nothing to resolve against,
+    // so do not claim the intake does not exist.
+    if (!deepLinkId || isLoading || isError) return;
     const match = intakes.find((i) => i.id === deepLinkId || i.input_id === deepLinkId);
     if (match) {
       setDetailIntake(match);
@@ -149,7 +151,7 @@ export default function MaterialIntake() {
     params.delete("id");
     setSearchParams(params, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deepLinkId, isLoading, intakes]);
+  }, [deepLinkId, isLoading, isError, intakes]);
 
   const todayIntakes = intakes.filter(
     (i) => new Date(i.received_at).toDateString() === new Date().toDateString()
@@ -233,11 +235,21 @@ export default function MaterialIntake() {
       queryClient.invalidateQueries({ queryKey: ["material-inputs"] });
       toast({ title: "Materialeingang gelöscht" });
     } catch (error: any) {
-      toast({
-        title: "Fehler",
-        description: error.message || "Materialeingang konnte nicht gelöscht werden.",
-        variant: "destructive",
-      });
+      // Not every referencing table cascades (e.g. samples.material_input_id),
+      // so a foreign key violation must not surface as raw Postgres text.
+      if (error?.code === "23503") {
+        toast({
+          title: "Materialeingang in Verwendung",
+          description: "Dieser Eingang ist mit anderen Datensätzen verknüpft und kann nicht gelöscht werden.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Fehler",
+          description: error.message || "Materialeingang konnte nicht gelöscht werden.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setDeleteDialogOpen(false);
       setIntakeToDelete(null);
@@ -470,6 +482,10 @@ export default function MaterialIntake() {
                     <TableRow 
                       key={intake.id} 
                       className={cn("cursor-pointer", isRejected && "bg-destructive/5")}
+                      onClick={() => {
+                        setDetailIntake(intake);
+                        setDetailDialogOpen(true);
+                      }}
                     >
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -520,7 +536,7 @@ export default function MaterialIntake() {
                           </SelectContent>
                         </Select>
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon-sm">

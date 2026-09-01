@@ -4,11 +4,12 @@ import { Loader2, Wrench, AlertTriangle, CheckCircle2, Clock, Calendar } from "l
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { format, isPast, isToday, addDays } from "date-fns";
+import { format, isPast, addDays } from "date-fns";
 import { de } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { useUserRole } from "@/hooks/useUserRole";
+import { hasAccess } from "@/components/layout/navigation";
 
 interface Equipment {
   id: string;
@@ -31,15 +32,16 @@ interface MaintenanceRecord {
   equipment?: Equipment;
 }
 
-// Roles that may open /maintenance (see nav definition)
-const MAINTENANCE_PAGE_ROLES = ["admin", "betriebsleiter", "production"];
-
 export function MaintenanceOverview() {
-  const { role } = useUserRole();
-  const canOpenMaintenancePage = MAINTENANCE_PAGE_ROLES.includes(role || "");
+  const { role, isAdmin } = useUserRole();
+  // Derived from the nav definition, so the link can never offer a page the
+  // route guard would reject.
+  const canOpenMaintenancePage = hasAccess("/maintenance", role, isAdmin);
 
   const { data: equipment = [], isLoading: loadingEquipment, isError: equipmentError } = useQuery({
-    queryKey: ["equipment-list"],
+    // Same key as the Maintenance page, so the equipment dialogs'
+    // invalidateQueries({ queryKey: ["equipment"] }) also refreshes this widget.
+    queryKey: ["equipment"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("equipment")
@@ -219,10 +221,7 @@ export function MaintenanceOverview() {
                         <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <span className="truncate">{m.title}</span>
                       </div>
-                      <Badge 
-                        variant={isPast(new Date(m.next_due_date!)) ? "destructive" : "secondary"}
-                        className="shrink-0 text-xs"
-                      >
+                      <Badge variant="secondary" className="shrink-0 text-xs">
                         {format(new Date(m.next_due_date!), "dd.MM.", { locale: de })}
                       </Badge>
                     </div>

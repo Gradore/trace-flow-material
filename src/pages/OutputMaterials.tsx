@@ -153,23 +153,17 @@ export default function OutputMaterials() {
   const handleDelete = async () => {
     if (!outputToDelete) return;
     try {
-      // Retention samples reference the batch without ON DELETE, so detach them first
-      const { data: linkedSamples, error: samplesLoadError } = await supabase
+      // samples.output_material_id is ON DELETE SET NULL, so the database detaches
+      // retention samples on its own. Try it up front anyway (older databases may
+      // still carry the restricting constraint), but never let it block the delete:
+      // output_materials DELETE is open to betriebsleiter, samples UPDATE is not.
+      const { data: detachedSamples, error: samplesError } = await supabase
         .from("samples")
-        .select("id")
-        .eq("output_material_id", outputToDelete.id);
-      if (samplesLoadError) throw samplesLoadError;
-
-      if (linkedSamples && linkedSamples.length > 0) {
-        const { data: detachedSamples, error: samplesError } = await supabase
-          .from("samples")
-          .update({ output_material_id: null })
-          .eq("output_material_id", outputToDelete.id)
-          .select("id");
-        if (samplesError) throw samplesError;
-        if (!detachedSamples || detachedSamples.length < linkedSamples.length) {
-          throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
-        }
+        .update({ output_material_id: null })
+        .eq("output_material_id", outputToDelete.id)
+        .select("id");
+      if (samplesError || !detachedSamples) {
+        console.warn("Could not detach linked samples:", samplesError);
       }
 
       // Delete related batch allocations and documents
@@ -216,6 +210,7 @@ export default function OutputMaterials() {
       
       queryClient.invalidateQueries({ queryKey: ["output-materials"] });
       queryClient.invalidateQueries({ queryKey: ["retention-samples"] });
+      queryClient.invalidateQueries({ queryKey: ["samples"] });
       toast({ title: "Ausgangsmaterial gelöscht", description: `${outputToDelete.output_id} wurde gelöscht.` });
     } catch (error: any) {
       toast({ title: "Fehler beim Löschen", description: error.message || "Material konnte nicht gelöscht werden.", variant: "destructive" });
@@ -463,7 +458,7 @@ export default function OutputMaterials() {
                 const type = outputTypes[output.output_type] || { label: output.output_type, color: "bg-secondary" };
                 const status = statusConfig[output.status] || { label: output.status, class: "status-badge" };
                 return (
-                  <TableRow key={output.id} className="cursor-pointer">
+                  <TableRow key={output.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <FileOutput className="h-4 w-4 text-primary" />

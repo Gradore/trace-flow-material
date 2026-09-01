@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Package, Inbox, FlaskConical, FileOutput, Truck, AlertTriangle, Loader2 } from "lucide-react";
+import { Package, Inbox, FlaskConical, FileOutput, Truck, AlertTriangle } from "lucide-react";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { StockOverviewCard } from "@/components/dashboard/StockOverviewCard";
@@ -10,8 +10,9 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserRole } from "@/hooks/useUserRole";
+import { hasAccess } from "@/components/layout/navigation";
 import { cn } from "@/lib/utils";
-import { isToday, startOfMonth, endOfMonth } from "date-fns";
+import { startOfMonth, endOfMonth } from "date-fns";
 
 // Roles that RLS allows to read equipment / maintenance_records
 const MAINTENANCE_DATA_ROLES = ["admin", "betriebsleiter", "production", "intake"];
@@ -19,8 +20,11 @@ const MAINTENANCE_DATA_ROLES = ["admin", "betriebsleiter", "production", "intake
 export default function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const { user } = useAuth();
-  const { role } = useUserRole();
+  const { role, isAdmin } = useUserRole();
   const canViewMaintenance = MAINTENANCE_DATA_ROLES.includes(role || "");
+  // A KPI card only links to a page the route guard would actually open for
+  // this role - otherwise the click lands on "Kein Zugriff".
+  const linkFor = (path: string) => (hasAccess(path, role, isAdmin) ? path : undefined);
   
   const today = new Date();
   const monthStart = startOfMonth(today);
@@ -207,14 +211,14 @@ export default function Dashboard() {
           value={containerStats?.active ?? "-"}
           icon={Package}
           variant="primary"
-          href="/containers"
+          href={linkFor("/containers")}
         />
         <StatCard
           title="Offene Eingänge"
           value={intakeStats?.open ?? "-"}
           icon={Inbox}
           variant="warning"
-          href="/intake"
+          href={linkFor("/intake")}
         />
         <StatCard
           title="In Verarbeitung"
@@ -222,14 +226,14 @@ export default function Dashboard() {
           subtitle={processingStats?.batches ? `${processingStats.batches} Chargen` : undefined}
           icon={FlaskConical}
           variant="default"
-          href="/processing"
+          href={linkFor("/processing")}
         />
         <StatCard
           title="Offene Proben"
           value={sampleStats?.open ?? "-"}
           icon={FlaskConical}
           variant="warning"
-          href="/sampling"
+          href={linkFor("/sampling")}
         />
         <StatCard
           title="Ausgangsmaterial"
@@ -237,7 +241,7 @@ export default function Dashboard() {
           subtitle="diesen Monat"
           icon={FileOutput}
           variant="success"
-          href="/output"
+          href={linkFor("/output")}
         />
         <StatCard
           title="Lieferscheine"
@@ -245,7 +249,7 @@ export default function Dashboard() {
           subtitle="diesen Monat"
           icon={Truck}
           variant="default"
-          href="/delivery-notes"
+          href={linkFor("/delivery-notes")}
         />
       </div>
 

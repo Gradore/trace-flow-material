@@ -128,12 +128,16 @@ export default function Sampling() {
 
       // CRITICAL: If sample is rejected, also reject the associated material input (batch)
       if (newStatus === "rejected" && materialInputId) {
-        const { error: materialError } = await supabase
+        // .select() so an RLS-filtered (zero row) update is not reported as a rejection
+        const { data: rejectedBatch, error: materialError } = await supabase
           .from("material_inputs")
           .update({ status: "rejected" })
-          .eq("id", materialInputId);
+          .eq("id", materialInputId)
+          .select("id");
 
-        if (materialError) {
+        const batchRejected = !materialError && !!rejectedBatch && rejectedBatch.length > 0;
+
+        if (!batchRejected) {
           console.warn("Could not update material input status:", materialError);
         } else {
           // Also cancel any running processing steps for this material
@@ -148,9 +152,11 @@ export default function Sampling() {
           }
         }
 
-        toast({ 
-          title: "Probe und Charge abgelehnt",
-          description: "Die zugehörige Charge wurde ebenfalls als abgelehnt markiert. Keine weiteren Verarbeitungsschritte möglich.",
+        toast({
+          title: batchRejected ? "Probe und Charge abgelehnt" : "Probe abgelehnt",
+          description: batchRejected
+            ? "Die zugehörige Charge wurde ebenfalls als abgelehnt markiert. Keine weiteren Verarbeitungsschritte möglich."
+            : "Die zugehörige Charge konnte nicht abgelehnt werden (keine Berechtigung). Bitte manuell prüfen.",
           variant: "destructive"
         });
       } else {
@@ -182,21 +188,29 @@ export default function Sampling() {
         throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
       }
 
-      // Also revert the material input status back to in_processing
+      // Also revert the material input status back to in_processing.
+      // .select() so an RLS-filtered (zero row) update is not reported as reverted.
+      let batchReverted = false;
       if (sampleToRevert.material_input_id) {
-        const { error: materialError } = await supabase
+        const { data: revertedBatch, error: materialError } = await supabase
           .from("material_inputs")
           .update({ status: "in_processing" })
-          .eq("id", sampleToRevert.material_input_id);
+          .eq("id", sampleToRevert.material_input_id)
+          .select("id");
 
-        if (materialError) {
+        batchReverted = !materialError && !!revertedBatch && revertedBatch.length > 0;
+        if (!batchReverted) {
           console.warn("Could not revert material input status:", materialError);
         }
       }
 
-      toast({ 
+      toast({
         title: "Ablehnung zurückgenommen",
-        description: "Die Probe wurde auf 'In Analyse' zurückgesetzt."
+        description:
+          sampleToRevert.material_input_id && !batchReverted
+            ? "Die Probe wurde auf 'In Analyse' zurückgesetzt. Die zugehörige Charge konnte nicht freigegeben werden (keine Berechtigung)."
+            : "Die Probe wurde auf 'In Analyse' zurückgesetzt.",
+        variant: sampleToRevert.material_input_id && !batchReverted ? "destructive" : undefined,
       });
 
       queryClient.invalidateQueries({ queryKey: ["samples"] });

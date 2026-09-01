@@ -59,6 +59,10 @@ export function useUserPermissions() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Guards against a slow response of a previous user/role overwriting the
+    // permissions of the current one - they now gate page access.
+    let cancelled = false;
+
     async function fetchPermissions() {
       if (!user) {
         setPermissions(defaultPermissions);
@@ -74,6 +78,8 @@ export function useUserPermissions() {
           .select("*")
           .eq("user_id", user.id)
           .single();
+
+        if (cancelled) return;
 
         if (customError && customError.code !== "PGRST116") {
           console.error("Error fetching permissions:", customError);
@@ -111,6 +117,8 @@ export function useUserPermissions() {
           const { data: rolePerms } = await supabase
             .rpc("get_default_permissions_for_role", { role_name: role });
 
+          if (cancelled) return;
+
           if (rolePerms && typeof rolePerms === 'object' && !Array.isArray(rolePerms)) {
             setPermissions(rolePerms as unknown as UserPermissions);
           }
@@ -118,13 +126,17 @@ export function useUserPermissions() {
       } catch (err) {
         console.error("Error fetching permissions:", err);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
 
     if (!isRoleLoading) {
       fetchPermissions();
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, role, isRoleLoading]);
 
   return {

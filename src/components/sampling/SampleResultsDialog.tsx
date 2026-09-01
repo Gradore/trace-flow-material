@@ -113,15 +113,18 @@ export function SampleResultsDialog({ open, onOpenChange, sample }: SampleResult
       // CRITICAL: a rejected sample also rejects its batch and stops its processing steps
       let batchRejected = false;
       if (newStatus === "rejected" && sample.materialInputId) {
-        const { error: materialError } = await supabase
+        // .select() so an RLS-filtered (zero row) update is not reported as a rejection
+        const { data: rejectedBatch, error: materialError } = await supabase
           .from("material_inputs")
           .update({ status: "rejected" })
-          .eq("id", sample.materialInputId);
+          .eq("id", sample.materialInputId)
+          .select("id");
 
-        if (materialError) {
+        batchRejected = !materialError && !!rejectedBatch && rejectedBatch.length > 0;
+
+        if (!batchRejected) {
           console.warn("Could not update material input status:", materialError);
         } else {
-          batchRejected = true;
           const { error: processingError } = await supabase
             .from("processing_steps")
             .update({ status: "completed", notes: "Automatisch beendet wegen Proben-Ablehnung" })
