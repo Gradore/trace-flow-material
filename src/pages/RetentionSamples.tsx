@@ -38,7 +38,6 @@ import {
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 interface RetentionSample {
   id: string;
@@ -254,9 +253,10 @@ export default function RetentionSamples() {
   const activeFilterCount =
     (purposeFilter !== "all" ? 1 : 0) + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0);
 
-  // Group samples by output_material_id for paired display
-  const warehouseSamples = filteredSamples.filter(s => s.retention_purpose === "warehouse");
-  const labSamples = filteredSamples.filter(s => s.retention_purpose === "lab_complaint");
+  // KPI tiles describe the whole stock, so they must not follow search/filter
+  // (the "Gesamt" and "Chargen" tiles below count retentionSamples as well).
+  const warehouseSamples = retentionSamples.filter(s => s.retention_purpose === "warehouse");
+  const labSamples = retentionSamples.filter(s => s.retention_purpose === "lab_complaint");
 
   const getPurposeBadge = (purpose: string | null) => {
     if (purpose === "warehouse") {

@@ -280,12 +280,24 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
         deliveryNoteId: savedNote?.id,
       }).catch(console.error);
 
-      // Update output material status if outgoing
+      // Update output material status if outgoing. An RLS-filtered update
+      // returns zero rows and no error, so check the affected rows instead of
+      // assuming the status change happened.
       if (formData.type === 'outgoing' && formData.linkedId) {
-        await supabase
+        const { data: updatedOutputs, error: statusError } = await supabase
           .from('output_materials')
           .update({ status: 'shipped' })
-          .eq('id', formData.linkedId);
+          .eq('id', formData.linkedId)
+          .select('id');
+
+        if (statusError || !updatedOutputs || updatedOutputs.length === 0) {
+          console.error('Output material status update failed:', statusError);
+          toast({
+            title: "Status nicht aktualisiert",
+            description: "Der Lieferschein wurde gespeichert, das Ausgangsmaterial konnte jedoch nicht auf \"versendet\" gesetzt werden.",
+            variant: "destructive",
+          });
+        }
       }
       
       // Download PDF

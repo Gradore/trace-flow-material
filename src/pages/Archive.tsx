@@ -73,7 +73,12 @@ export default function ArchivePage() {
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
 
   // Fetch containers for label archive
-  const { data: containers = [], isLoading: containersLoading, isError: containersError } = useQuery({
+  const {
+    data: containers = [],
+    isLoading: containersLoading,
+    isError: containersError,
+    refetch: refetchContainers,
+  } = useQuery({
     queryKey: ["archive-containers"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -86,7 +91,12 @@ export default function ArchivePage() {
   });
 
   // Fetch output materials for label archive
-  const { data: outputMaterials = [], isLoading: outputsLoading, isError: outputsError } = useQuery({
+  const {
+    data: outputMaterials = [],
+    isLoading: outputsLoading,
+    isError: outputsError,
+    refetch: refetchOutputs,
+  } = useQuery({
     queryKey: ["archive-outputs"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -318,6 +328,16 @@ export default function ArchivePage() {
                   <p className="text-sm mt-1">
                     Möglicherweise fehlt die Berechtigung oder die Verbindung ist unterbrochen.
                   </p>
+                  <Button
+                    variant="outline"
+                    className="mt-4"
+                    onClick={() => {
+                      refetchContainers();
+                      refetchOutputs();
+                    }}
+                  >
+                    Erneut versuchen
+                  </Button>
                 </div>
               ) : filteredLabels.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">

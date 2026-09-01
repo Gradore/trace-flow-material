@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { Search, FolderOpen, FileText, Image, File, MoreVertical, Upload, Trash2, Download, Tag, Loader2, Sparkles, AlertCircle } from "lucide-react";
+import { useState } from "react";
+import { Search, FolderOpen, FileText, Image, File, MoreVertical, Upload, Trash2, Download, Loader2, Sparkles, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -78,11 +78,19 @@ export default function Documents() {
     return matchesSearch && matchesTag;
   });
 
+  // Older rows stored a (never resolvable) public URL instead of the object
+  // path; storage.download()/remove() need the bucket-relative path.
+  const toStoragePath = (value: string) => {
+    const marker = "/documents/";
+    const index = value.indexOf(marker);
+    return index >= 0 ? value.slice(index + marker.length) : value;
+  };
+
   const handleDownload = async (doc: typeof documents[0]) => {
     try {
       const { data, error } = await supabase.storage
         .from("documents")
-        .download(doc.file_url);
+        .download(toStoragePath(doc.file_url));
       
       if (error) throw error;
 
@@ -124,9 +132,10 @@ export default function Documents() {
       // Delete from storage
       const { error: storageError } = await supabase.storage
         .from("documents")
-        .remove([fileUrl]);
+        .remove([toStoragePath(fileUrl)]);
 
       queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["sample-documents"] });
 
       if (storageError) {
         console.error("Storage delete error:", storageError);

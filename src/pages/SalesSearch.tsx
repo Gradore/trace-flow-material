@@ -123,9 +123,16 @@ export default function SalesSearch() {
         throw new Error('Bitte geben Sie einen Suchbegriff oder ein Datenblatt ein.');
       }
       setIsSearching(true);
+      // `query` is the reduced keyword list used for the internal company match; the
+      // untouched input still goes along so the external AI search keeps its context.
+      const searchContext = [searchQuery.trim(), datasheetText.trim()]
+        .filter(Boolean)
+        .join('\n\n')
+        .slice(0, 4000);
       const { data, error } = await supabase.functions.invoke('search-manufacturers', {
         body: {
           searchQuery: query,
+          searchContext,
           materialProperties: analysisResult?.composition,
           includeExternal
         }
@@ -137,6 +144,9 @@ export default function SalesSearch() {
       setSearchResults(data.results || []);
       if (data.internalError) {
         toast.warning(data.internalError);
+      }
+      if (data.externalError) {
+        toast.warning(data.externalError);
       }
       toast.success(`${data.internalCount} interne, ${data.externalCount} externe Ergebnisse`);
     },
@@ -446,13 +456,18 @@ export default function SalesSearch() {
                             <p className="text-xs text-muted-foreground italic">{result.notes}</p>
                           )}
 
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
+                          <Button
+                            size="sm"
+                            variant="outline"
                             className="w-full mt-2"
+                            disabled={saveMatchMutation.isPending}
                             onClick={() => saveMatchMutation.mutate(result)}
                           >
-                            <Save className="h-3 w-3 mr-1" />
+                            {saveMatchMutation.isPending ? (
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            ) : (
+                              <Save className="h-3 w-3 mr-1" />
+                            )}
                             Speichern
                           </Button>
                         </CardContent>

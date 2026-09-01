@@ -293,6 +293,15 @@ export default function DatasheetUpload() {
   };
 
   const startUpload = () => {
+    if (!user) {
+      toast({
+        title: "Nicht angemeldet",
+        description: "Bitte melden Sie sich erneut an, um Datenblätter hochzuladen.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const pendingFiles = files.filter((f) => f.status === "pending");
     pendingFiles.forEach((file) => {
       uploadAndAnalyze(file);

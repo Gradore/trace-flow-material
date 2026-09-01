@@ -42,7 +42,7 @@ serve(async (req) => {
   if (!gate.ok) return gate.response;
 
   try {
-    const { materialProperties, searchQuery, includeExternal } = await req.json();
+    const { materialProperties, searchQuery, searchContext, includeExternal } = await req.json();
 
     let searchTerms = extractSearchTerms(searchQuery);
     // Short queries like "PP" are filtered out by the token rules - keep them as one term.
@@ -65,8 +65,15 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // The client reduces a pasted datasheet to a few keywords for the internal match; the
+    // external AI still needs the original text to produce useful company suggestions.
+    const aiSubject = typeof searchContext === 'string' && searchContext.trim()
+      ? searchContext.trim().slice(0, 4000)
+      : searchTerms.join(' ');
+
     const results: any[] = [];
     let internalError: string | null = null;
+    let externalError: string | null = null;
 
     // 1. Interne Suche in der companies-Tabelle
     console.log('Searching internal companies...');
@@ -133,11 +140,17 @@ serve(async (req) => {
     if (includeExternal) {
       console.log('Performing external AI search...');
       const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-      
-      if (LOVABLE_API_KEY) {
-        const searchPrompt = `Suche nach Herstellern und Unternehmen, die folgendes Material oder Produkt verwenden könnten:
 
-${searchQuery}
+      if (!LOVABLE_API_KEY) {
+        console.error('LOVABLE_API_KEY is not configured - skipping external search');
+        externalError = 'Die externe KI-Suche ist nicht konfiguriert.';
+      } else {
+        // A failing external search must not discard the internal results, so it is
+        // reported back to the client instead of bubbling up to the 500 handler.
+        try {
+          const searchPrompt = `Suche nach Herstellern und Unternehmen, die folgendes Material oder Produkt verwenden könnten:
+
+${aiSubject}
 
 ${materialProperties ? `Materialeigenschaften: ${JSON.stringify(materialProperties)}` : ''}
 
@@ -150,75 +163,87 @@ Nenne konkrete Unternehmen mit:
 
 Fokussiere auf den deutschsprachigen Raum (DACH) und Europa.`;
 
-        const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-pro',
-            messages: [
-              { 
-                role: 'system', 
-                content: 'Du bist ein Experte für B2B-Vertrieb in der Kunststoffindustrie. Nenne konkrete, existierende Unternehmen.' 
-              },
-              { role: 'user', content: searchPrompt }
-            ],
-            tools: [{
-              type: "function",
-              function: {
-                name: "list_manufacturers",
-                description: "Liste von potenziellen Herstellern/Kunden",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    manufacturers: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          company_name: { type: "string" },
-                          industry: { type: "string" },
-                          products: { type: "array", items: { type: "string" } },
-                          location: { type: "string" },
-                          website: { type: "string" },
-                          relevance_reason: { type: "string" }
-                        },
-                        required: ["company_name", "industry"]
+          const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'google/gemini-2.5-pro',
+              messages: [
+                { 
+                  role: 'system', 
+                  content: 'Du bist ein Experte für B2B-Vertrieb in der Kunststoffindustrie. Nenne konkrete, existierende Unternehmen.' 
+                },
+                { role: 'user', content: searchPrompt }
+              ],
+              tools: [{
+                type: "function",
+                function: {
+                  name: "list_manufacturers",
+                  description: "Liste von potenziellen Herstellern/Kunden",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      manufacturers: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            company_name: { type: "string" },
+                            industry: { type: "string" },
+                            products: { type: "array", items: { type: "string" } },
+                            location: { type: "string" },
+                            website: { type: "string" },
+                            relevance_reason: { type: "string" }
+                          },
+                          required: ["company_name", "industry"]
+                        }
                       }
-                    }
-                  },
-                  required: ["manufacturers"]
+                    },
+                    required: ["manufacturers"]
+                  }
                 }
-              }
-            }],
-            tool_choice: { type: "function", function: { name: "list_manufacturers" } }
-          }),
-        });
+              }],
+              tool_choice: { type: "function", function: { name: "list_manufacturers" } }
+            }),
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-          
-          if (toolCall) {
-            const aiResult = JSON.parse(toolCall.function.arguments);
-            
-            for (const mfr of aiResult.manufacturers || []) {
-              results.push({
-                manufacturer_name: mfr.company_name,
-                source: 'ai_search',
-                confidence_score: 0.7,
-                application_areas: mfr.products,
-                address: mfr.location,
-                website: mfr.website,
-                notes: mfr.relevance_reason,
-                industry: mfr.industry
-              });
+          if (response.ok) {
+            const data = await response.json();
+            const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+
+            if (toolCall) {
+              const aiResult = JSON.parse(toolCall.function.arguments);
+
+              for (const mfr of aiResult.manufacturers || []) {
+                results.push({
+                  manufacturer_name: mfr.company_name,
+                  source: 'ai_search',
+                  confidence_score: 0.7,
+                  application_areas: mfr.products,
+                  address: mfr.location,
+                  website: mfr.website,
+                  notes: mfr.relevance_reason,
+                  industry: mfr.industry
+                });
+              }
+            } else {
+              console.error('AI search returned no structured result');
+              externalError = 'Die externe KI-Suche lieferte kein verwertbares Ergebnis.';
             }
+          } else if (response.status === 429) {
+            externalError = 'Externe KI-Suche: Rate Limit erreicht. Bitte später erneut versuchen.';
+          } else if (response.status === 402) {
+            externalError = 'Externe KI-Suche: Guthaben erschöpft.';
+          } else {
+            console.error('AI search failed:', response.status);
+            externalError = `Die externe KI-Suche ist fehlgeschlagen (Status ${response.status}).`;
           }
-        } else {
-          console.error('AI search failed:', response.status);
+        } catch (aiError) {
+          console.error('External AI search failed:', aiError);
+          externalError = 'Die externe KI-Suche ist fehlgeschlagen.';
         }
       }
     }
@@ -230,6 +255,7 @@ Fokussiere auf den deutschsprachigen Raum (DACH) und Europa.`;
       success: true,
       results,
       internalError,
+      externalError,
       internalCount: results.filter(r => r.source === 'internal').length,
       externalCount: results.filter(r => r.source !== 'internal').length
     }), {

@@ -58,16 +58,27 @@ interface ProjectTasksDialogProps {
 
 type ParseResult = { ok: true; value: number | null } | { ok: false };
 
-/** Accepts German (1.234,50) and plain (1234.5) decimal input. */
+/** Accepts German (1.234,50 / 12.500) and plain (1234.5) decimal input. */
 function parseDecimal(raw: string): ParseResult {
   const trimmed = raw.trim();
   if (!trimmed) return { ok: true, value: null };
-  const normalised = trimmed.includes(",")
-    ? trimmed.replace(/\./g, "").replace(",", ".")
-    : trimmed;
+  let normalised = trimmed;
+  if (normalised.includes(",")) {
+    // German notation: dots group the thousands, the comma is the decimal mark.
+    normalised = normalised.replace(/\./g, "").replace(",", ".");
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(normalised)) {
+    // "12.500" means twelve thousand five hundred, not 12.5.
+    normalised = normalised.replace(/\./g, "");
+  }
   const parsed = Number(normalised);
   if (!Number.isFinite(parsed) || parsed < 0) return { ok: false };
   return { ok: true, value: parsed };
+}
+
+/** Renders a stored amount with the German decimal comma the parser expects. */
+function toDecimalInput(value: number | null): string {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(".", ",");
 }
 
 function toDateInput(value: string | null): string {
@@ -174,8 +185,8 @@ export default function ProjectTasksDialog({
         dueDate: toDateInput(task.due_date),
         assignee: task.assignee ?? "",
         partnerId: task.partner_id ?? NONE,
-        estimatedCost: task.estimated_cost_eur === null ? "" : String(task.estimated_cost_eur),
-        actualCost: task.actual_cost_eur === null ? "" : String(task.actual_cost_eur),
+        estimatedCost: toDecimalInput(task.estimated_cost_eur),
+        actualCost: toDecimalInput(task.actual_cost_eur),
         blockerReason: task.blocker_reason ?? "",
       });
     } else {

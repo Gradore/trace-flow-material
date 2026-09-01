@@ -194,7 +194,9 @@ export default function OutputMaterials() {
           .select("id");
         if (notesError) throw notesError;
         if (!deletedNotes || deletedNotes.length < linkedNotes.length) {
-          throw new Error("Keine Berechtigung oder Datensatz nicht gefunden.");
+          throw new Error(
+            "Keine Berechtigung oder Datensatz nicht gefunden. Die verknüpften Lieferscheine konnten nicht gelöscht werden."
+          );
         }
       }
 

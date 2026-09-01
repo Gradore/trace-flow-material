@@ -88,6 +88,13 @@ type SortDirection = "asc" | "desc";
 /** Statuses that mean "this task has been started or finished". */
 const STARTING_STATUSES = new Set(["doing", "done"]);
 
+/**
+ * A predecessor in one of these statuses no longer holds its successors back:
+ * "übersprungen" tasks are deliberately never completed, so treating them as
+ * open would block the rest of the plan for good.
+ */
+const SATISFIED_STATUSES = new Set(["done", "skipped"]);
+
 interface Violation {
   blockers: ProjectTask[];
   ipBlocked: boolean;
@@ -197,7 +204,7 @@ export default function ProjectTasks() {
   ): Violation | null => {
     if (!STARTING_STATUSES.has(nextStatus)) return null;
     const blockers = taskId
-      ? resolve(predecessorIds.get(taskId)).filter((task) => task.status !== "done")
+      ? resolve(predecessorIds.get(taskId)).filter((entry) => !SATISFIED_STATUSES.has(entry.status))
       : [];
     const ipBlocked = !patentFiled && taskCode !== PATENT_TASK_CODE && isPhaseTwoPlus(phaseId);
     if (blockers.length === 0 && !ipBlocked) return null;
@@ -206,14 +213,16 @@ export default function ProjectTasks() {
 
   /* ---------------------------------------------------------------- writes */
 
+  /**
+   * completed_at is stamped by the BEFORE UPDATE trigger stamp_task_completion()
+   * and is therefore never part of an update payload - writing it from here
+   * would only overwrite the database value with a possibly stale cached one.
+   */
   const statusMutation = useProjectMutation<{ task: ProjectTask; status: string }>(
     async ({ task, status }) => {
       const { data, error } = await supabase
         .from("project_tasks")
-        .update({
-          status,
-          completed_at: status === "done" ? (task.completed_at ?? new Date().toISOString()) : null,
-        })
+        .update({ status })
         .eq("id", task.id)
         .select("id");
       if (error) throw new Error(error.message);
@@ -230,9 +239,6 @@ export default function ProjectTasks() {
     payload: TaskFormPayload;
   }>(
     async ({ mode, task, payload }) => {
-      const completedAt =
-        payload.status === "done" ? (task?.completed_at ?? new Date().toISOString()) : null;
-
       if (mode === "create") {
         const { data, error } = await supabase
           .from("project_tasks")
@@ -249,7 +255,9 @@ export default function ProjectTasks() {
             estimated_cost_eur: payload.estimated_cost_eur,
             actual_cost_eur: payload.actual_cost_eur,
             blocker_reason: payload.blocker_reason,
-            completed_at: completedAt,
+            // The completion trigger only fires on UPDATE, so a task that is
+            // created as "done" has to carry its timestamp itself.
+            completed_at: payload.status === "done" ? new Date().toISOString() : null,
           })
           .select("id");
         if (error) {
@@ -280,7 +288,6 @@ export default function ProjectTasks() {
           estimated_cost_eur: payload.estimated_cost_eur,
           actual_cost_eur: payload.actual_cost_eur,
           blocker_reason: payload.blocker_reason,
-          completed_at: completedAt,
         })
         .eq("id", task.id)
         .select("id");
@@ -492,11 +499,16 @@ export default function ProjectTasks() {
   const ipLockedFor = (task: ProjectTask) =>
     !patentFiled && task.code !== PATENT_TASK_CODE && isPhaseTwoPlus(task.phase_id);
 
+  /** Only the row whose status is currently being written is locked, not the whole table. */
+  const statusPendingTaskId = statusMutation.isPending
+    ? statusMutation.variables?.task.id ?? null
+    : null;
+
   const renderStatusSelect = (task: ProjectTask, className?: string) => (
     <Select
       value={task.status}
       onValueChange={(value) => requestStatusChange(task, value)}
-      disabled={statusMutation.isPending}
+      disabled={statusPendingTaskId === task.id}
     >
       <SelectTrigger className={cn("h-8 text-xs", className)} aria-label={`Status von ${task.code}`}>
         <SelectValue />
@@ -518,7 +530,7 @@ export default function ProjectTasks() {
         description="Phasenplan mit Abhängigkeitsprüfung, IP-Sperre und Kostenrollup."
         icon={ListChecks}
         actions={
-          <Button onClick={openCreate} size="sm">
+          <Button onClick={openCreate} size="sm" disabled={isLoading || loadError !== null}>
             <Plus className="h-4 w-4 mr-1.5" />
             Neue Aufgabe
           </Button>
@@ -712,7 +724,7 @@ export default function ProjectTasks() {
                         const overdue = isOverdue(task, today);
                         const ipLocked = ipLockedFor(task);
                         const openPredecessors = resolve(predecessorIds.get(task.id)).filter(
-                          (entry) => entry.status !== "done",
+                          (entry) => !SATISFIED_STATUSES.has(entry.status),
                         );
                         return (
                           <TableRow key={task.id} className={cn(ipLocked && "bg-destructive/5")}>

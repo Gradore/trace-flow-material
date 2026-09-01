@@ -299,7 +299,7 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
             >
               <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <p className="text-sm font-medium">Dateien auswählen oder hierher ziehen</p>
-              <p className="text-xs text-muted-foreground mt-1">PDF, JPG, PNG - Mehrfachauswahl möglich</p>
+              <p className="text-xs text-muted-foreground mt-1">PDF, JPG, PNG, CSV, TXT - Mehrfachauswahl möglich</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -377,7 +377,7 @@ export function BulkUploadDialog({ open, onOpenChange }: BulkUploadDialogProps) 
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept=".pdf,.jpg,.jpeg,.png,.csv"
+            accept=".pdf,.jpg,.jpeg,.png,.csv,.txt"
             multiple
             onChange={handleFileSelect}
           />

@@ -148,6 +148,13 @@ const CONFORMITY_DOT: Record<ConformityLevel, string> = {
   unknown: "bg-muted-foreground",
 };
 
+/** ai_analyses.confidence stores the raw model verdict in English. */
+const CONFIDENCE_LABELS: Record<string, string> = {
+  high: "hoch",
+  medium: "mittel",
+  low: "niedrig",
+};
+
 /** project_risks.status is free text (default 'open') - translate what we know. */
 const RISK_STATUS_LABELS: Record<string, string> = {
   open: "Offen",
@@ -200,6 +207,18 @@ function compareTasks(a: ProjectTask, b: ProjectTask): number {
   return a.code.localeCompare(b.code, "de");
 }
 
+/**
+ * Sollfenster of a parameter. Most specs are one-sided (only a maximum for
+ * moisture, fines and energy), so an open end has to read as "≤ x" / "≥ x"
+ * instead of a half-empty range.
+ */
+function specWindowLabel(min: number | null, max: number | null): string {
+  if (min === null && max === null) return "—";
+  if (min !== null && max !== null) return `${formatNumber(min)} – ${formatNumber(max)}`;
+  if (max !== null) return `≤ ${formatNumber(max)}`;
+  return `≥ ${formatNumber(min)}`;
+}
+
 function runDateOf(run: TestRun): string | null {
   return run.actual_date ?? run.planned_date;
 }
@@ -208,9 +227,23 @@ function riskSeverity(risk: ProjectRisk): number {
   return risk.severity ?? risk.probability * risk.impact;
 }
 
+/**
+ * ai_analyses.recommendations is free-form jsonb - it is nullable and the model
+ * writes either plain strings or small objects. Read it defensively.
+ */
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((entry): entry is string => typeof entry === "string");
+  return value.flatMap((entry) => {
+    if (typeof entry === "string") return entry.trim() ? [entry.trim()] : [];
+    if (entry && typeof entry === "object") {
+      const record = entry as Record<string, unknown>;
+      for (const key of ["title", "text", "recommendation", "action"]) {
+        const candidate = record[key];
+        if (typeof candidate === "string" && candidate.trim()) return [candidate.trim()];
+      }
+    }
+    return [];
+  });
 }
 
 /* ------------------------------------------------------------- primitives */
@@ -603,6 +636,13 @@ export default function ProjectCockpit() {
   const kpi = (query: QueryLike, value: string): string =>
     query.isLoading ? "…" : query.error ? "—" : value;
 
+  /**
+   * Totals in a tile hint or a card headline are derived from `data ?? []` and
+   * would read as a factual "0" while the query is still loading or has failed.
+   * They are only shown once the query really delivered.
+   */
+  const loaded = (query: QueryLike): boolean => !query.isLoading && query.error === null;
+
   const phaseNote = activePhase ? `Gefiltert auf Phase ${activePhase.code} — ${activePhase.name}` : null;
   const phaseRunWindow = activePhase ? phaseWindow(activePhase) : null;
 
@@ -684,7 +724,7 @@ export default function ProjectCockpit() {
         <StatCard
           label="Offene Aufgaben"
           value={kpi(tasksQuery, formatNumber(openTasks.length, 0))}
-          hint={`von ${formatNumber(tasks.length, 0)} gesamt`}
+          hint={loaded(tasksQuery) ? `von ${formatNumber(tasks.length, 0)} gesamt` : undefined}
           icon={ListChecks}
           accent="violet"
           to="/projekt/aufgaben"
@@ -692,7 +732,7 @@ export default function ProjectCockpit() {
         <StatCard
           label="Kosten Ist / Plan"
           value={kpi(tasksQuery, formatEur(costTotals.actual))}
-          hint={`geplant ${formatEur(costTotals.planned)}`}
+          hint={loaded(tasksQuery) ? `geplant ${formatEur(costTotals.planned)}` : undefined}
           icon={Euro}
           accent="amber"
           to="/projekt/aufgaben"
@@ -708,7 +748,11 @@ export default function ProjectCockpit() {
         <StatCard
           label="Freigegebene Fraktionen"
           value={kpi(fractionsQuery, formatNumber(releasedFractionCount, 0))}
-          hint={`${formatNumber(releasedForProductTest, 0)} für Produkttests frei`}
+          hint={
+            loaded(fractionsQuery)
+              ? `${formatNumber(releasedForProductTest, 0)} für Produkttests frei`
+              : undefined
+          }
           icon={PackageCheck}
           accent="emerald"
           to="/projekt/fraktionen"
@@ -776,11 +820,21 @@ export default function ProjectCockpit() {
                 )}
               </CardTitle>
               <CardDescription className="mt-1 text-xs">
-                {latestBriefing
-                  ? `Erstellt ${formatDateTime(latestBriefing.created_at)}${
-                      latestBriefing.model ? ` · ${latestBriefing.model}` : ""
-                    }${latestBriefing.confidence ? ` · Konfidenz ${latestBriefing.confidence}` : ""}`
-                  : "Noch kein Tages-Briefing vorhanden"}
+                {briefingQuery.isLoading
+                  ? "Briefing wird geladen …"
+                  : briefingQuery.error
+                    ? "Briefing konnte nicht geladen werden"
+                    : latestBriefing
+                      ? `Erstellt ${formatDateTime(latestBriefing.created_at)}${
+                          latestBriefing.model ? ` · ${latestBriefing.model}` : ""
+                        }${
+                          latestBriefing.confidence
+                            ? ` · Konfidenz ${
+                                CONFIDENCE_LABELS[latestBriefing.confidence] ?? latestBriefing.confidence
+                              }`
+                            : ""
+                        }`
+                      : "Noch kein Tages-Briefing vorhanden"}
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -789,7 +843,7 @@ export default function ProjectCockpit() {
                   variant="outline"
                   size="sm"
                   className="h-8 text-xs"
-                  onClick={() => acknowledgeBriefing.mutate({ id: latestBriefing.id, actedUpon: true })}
+                  onClick={() => acknowledgeBriefing.mutate({ id: latestBriefing.id })}
                   disabled={acknowledgeBriefing.isPending}
                 >
                   {acknowledgeBriefing.isPending ? (
@@ -961,7 +1015,9 @@ export default function ProjectCockpit() {
         {/* 5 — Materialbestand je Materialklasse */}
         <WidgetCard
           title="Materialbestand"
-          description={`Verfügbare Chargen je Materialklasse · ${formatKg(materialTotalKg)}`}
+          description={`Verfügbare Chargen je Materialklasse${
+            loaded(batchesQuery) ? ` · ${formatKg(materialTotalKg)}` : ""
+          }`}
           icon={Boxes}
           to="/projekt/chargen"
           linkLabel="Chargen"
@@ -1200,11 +1256,7 @@ export default function ProjectCockpit() {
                           : result.value_text ?? "—"}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                        {verdict.specMin === null && verdict.specMax === null
-                          ? "—"
-                          : `${verdict.specMin !== null ? formatNumber(verdict.specMin) : "≤"} – ${
-                              verdict.specMax !== null ? formatNumber(verdict.specMax) : "∞"
-                            }`}
+                        {specWindowLabel(verdict.specMin, verdict.specMax)}
                       </TableCell>
                       <TableCell>
                         <ConformityBadge level={level} />
@@ -1223,7 +1275,9 @@ export default function ProjectCockpit() {
         {/* 9 — Partner-Pipeline */}
         <WidgetCard
           title="Partner-Pipeline"
-          description={`${formatNumber(partnerTotal, 0)} Partner nach Status`}
+          description={
+            loaded(partnersQuery) ? `${formatNumber(partnerTotal, 0)} Partner nach Status` : "Partner nach Status"
+          }
           icon={Users}
           to="/projekt/partner"
           linkLabel="Partner"

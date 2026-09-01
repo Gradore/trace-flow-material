@@ -286,6 +286,15 @@ export default function RecipeMatching() {
     const resultsText = sample.sample_results
       .map((r: any) => `${r.parameter_name}: ${r.parameter_value}${r.unit ? ` ${r.unit}` : ''}`)
       .join('\n');
+    // Start from a clean wizard - leftovers from a previous run (components, selected order)
+    // would otherwise be saved as part of this sample's recipe.
+    resetWizard();
+    // This entry point skips the first step, so prefill the name the save button requires.
+    setRecipeName(
+      sample.material_input?.material_type
+        ? `${sample.material_input.material_type} (${sample.sample_id})`
+        : `Rezeptur ${sample.sample_id}`
+    );
     setDatasheetText(resultsText);
     setMaterialContext(`Material: ${sample.material_input?.material_type || 'Unbekannt'}, Lieferant: ${sample.material_input?.supplier || 'Unbekannt'}`);
     setActiveView("wizard");
