@@ -19,19 +19,59 @@ DELETE FROM public.project_tasks WHERE code IN ('P0-1', 'P0-2')
 
 DROP FUNCTION IF EXISTS public.is_patent_filed();
 
--- ---------------------------------------------------------------- 2. P0 neu nummerieren
--- Aufsteigend umbenennen: jedes Ziel ist zum Zeitpunkt der Umbenennung frei.
-UPDATE public.project_tasks SET code = 'P0-1',
-       title = 'NDA-Template erstellen',
-       description = 'Gegenseitige Geheimhaltung mit Technikums- und Laborpartnern, bevor Material und Verfahrensdetails herausgehen.'
- WHERE code = 'P0-3';
+-- ---------------------------------------------------------------- 2. Umnummerierung
+-- Die Codes werden anhand des Titels vergeben, nicht anhand des alten Codes.
+-- Dadurch ist der Schritt beliebig oft wiederholbar, auch wenn der Seed
+-- zwischendurch erneut läuft.
 
-UPDATE public.project_tasks SET code = 'P0-2',
-       description = 'Einheitliche Dokumentation für alle Technikumsversuche — Grundlage für die Vergleichbarkeit der Maschinen.'
- WHERE code = 'P0-4';
+-- 2a. Doppelte Seed-Aufgaben entfernen (entstehen, wenn der Seed nach der
+--     Umnummerierung erneut läuft und einen frei gewordenen Code neu belegt).
+DELETE FROM public.project_tasks t
+USING public.project_tasks keep
+WHERE t.title = keep.title
+  AND t.id <> keep.id
+  AND t.code ~ '^P[0-7]-'
+  AND keep.code ~ '^P[0-7]-'
+  AND (t.created_at, t.id) > (keep.created_at, keep.id);
 
-UPDATE public.project_tasks SET code = 'P0-3' WHERE code = 'P0-5';
-UPDATE public.project_tasks SET code = 'P0-4' WHERE code = 'P0-6';
+-- 2b. Betroffene Aufgaben auf temporäre Codes parken, damit die Zielcodes frei sind.
+UPDATE public.project_tasks
+   SET code = 'TMP-' || left(replace(id::text, '-', ''), 12)
+ WHERE title IN (
+   'NDA-Template erstellen',
+   'Versuchsprotokoll-Template entwickeln',
+   'Externes Analytik-Labor auswählen',
+   'Fraktions-Spezifikationsblätter definieren (F1–F5)',
+   'Material-Maschinen-Matrix vervollständigen',
+   'Anlagenspezifikation 32 t/Tag ableiten',
+   'CAPEX-Modell aus Testdaten',
+   'Förderantrag vorbereiten',
+   'Investoren-/Kundenpräsentation aus Testdaten generieren'
+ );
+
+-- 2c. Zielcodes anhand des Titels setzen.
+UPDATE public.project_tasks t SET code = v.code
+FROM (VALUES
+  ('NDA-Template erstellen','P0-1'),
+  ('Versuchsprotokoll-Template entwickeln','P0-2'),
+  ('Externes Analytik-Labor auswählen','P0-3'),
+  ('Fraktions-Spezifikationsblätter definieren (F1–F5)','P0-4'),
+  ('Material-Maschinen-Matrix vervollständigen','P7-1'),
+  ('Anlagenspezifikation 32 t/Tag ableiten','P7-4'),
+  ('CAPEX-Modell aus Testdaten','P7-5'),
+  ('Förderantrag vorbereiten','P7-6'),
+  ('Investoren-/Kundenpräsentation aus Testdaten generieren','P7-7')
+) AS v(title, code)
+WHERE t.title = v.title;
+
+-- 2d. Beschreibungen an den neuen Zuschnitt anpassen.
+UPDATE public.project_tasks SET
+  description = 'Gegenseitige Geheimhaltung mit Technikums- und Laborpartnern, bevor Material und Verfahrensdetails herausgehen.'
+ WHERE code = 'P0-1';
+
+UPDATE public.project_tasks SET
+  description = 'Einheitliche Dokumentation für alle Technikumsversuche — Grundlage für die Vergleichbarkeit der Maschinen.'
+ WHERE code = 'P0-2';
 
 -- ---------------------------------------------------------------- 3. Phasen umbenennen
 UPDATE public.project_phases SET
@@ -70,13 +110,6 @@ UPDATE public.project_tasks SET
   title = 'Materialbedarf und Bezugsquellen je Materialklasse festlegen',
   description = 'Welche Menge je Materialklasse M1–M7 wird für die Versuchsreihen gebraucht, und von wem.'
  WHERE code = 'P1-4';
-
--- ---------------------------------------------------------------- 4. P7 neu nummerieren
--- Absteigend umbenennen, damit Platz für die beiden neuen Aufgaben entsteht.
-UPDATE public.project_tasks SET code = 'P7-7' WHERE code = 'P7-5';
-UPDATE public.project_tasks SET code = 'P7-6' WHERE code = 'P7-4';
-UPDATE public.project_tasks SET code = 'P7-5' WHERE code = 'P7-3';
-UPDATE public.project_tasks SET code = 'P7-4' WHERE code = 'P7-2';
 
 -- ---------------------------------------------------------------- 5. Neue Aufgaben
 INSERT INTO public.project_tasks
