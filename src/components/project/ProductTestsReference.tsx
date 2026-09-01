@@ -65,9 +65,10 @@ export function ProductTestReferenceCard({
   const baseline = hasMeasured ? referenceBaseline : DOCUMENTED.baselineMpa;
   const withFibreMin = hasMeasured ? Math.min(...fibreValues) : DOCUMENTED.withFibreMinMpa;
   const withFibreMax = hasMeasured ? Math.max(...fibreValues) : DOCUMENTED.withFibreMaxMpa;
-  const ageDays =
-    (hasMeasured ? flexural.find((row) => row.age_days !== null)?.age_days ?? null : null) ??
-    DOCUMENTED.ageDays;
+  const measuredAgeDays = hasMeasured
+    ? flexural.map((row) => row.age_days).find((days) => days != null)
+    : undefined;
+  const ageDays = measuredAgeDays ?? DOCUMENTED.ageDays;
 
   const gainMin = ((withFibreMin - baseline) / baseline) * 100;
   const gainMax = ((withFibreMax - baseline) / baseline) * 100;
