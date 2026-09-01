@@ -1,14 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
-import { Search, Package, Inbox, FlaskConical, FileOutput, Truck, X, Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Search, Package, Inbox, FlaskConical, FileOutput, Truck, X, Loader2, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { useUserRole } from "@/hooks/useUserRole";
+import { hasAccess } from "./navigation";
+
+type ResultType = "container" | "intake" | "sample" | "output" | "delivery";
 
 interface SearchResult {
   id: string;
-  type: "container" | "intake" | "sample" | "output" | "delivery";
+  type: ResultType;
   title: string;
   subtitle: string;
   icon: typeof Package;
@@ -22,12 +25,33 @@ const typeConfig = {
   delivery: { icon: Truck, label: "Lieferschein", route: "/delivery-notes" },
 };
 
+const RESULT_TYPES = Object.keys(typeConfig) as ResultType[];
+
+/**
+ * PostgREST parses `or=(...)` as a comma separated list of filter items, so a
+ * raw `,`, `(`, `)` or quote in the term breaks the grammar and the request
+ * fails with 400. Wildcards are dropped as well so the term cannot widen its
+ * own match.
+ */
+function sanitizeFilterTerm(term: string): string {
+  return term.replace(/[,()"'\\%*]/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { role, isAdmin, isLoading: isRoleLoading } = useUserRole();
+
+  // Only search the modules this role may open - the SELECT policies of the
+  // underlying tables are permissive, so the scoping has to happen here.
+  const allowedTypes = useMemo(
+    () => RESULT_TYPES.filter((type) => hasAccess(typeConfig[type].route, role, isAdmin)),
+    [role, isAdmin],
+  );
 
   // Keyboard shortcut
   useEffect(() => {
@@ -46,107 +70,133 @@ export function GlobalSearch() {
   }, []);
 
   const search = useCallback(async (searchQuery: string) => {
-    if (!searchQuery.trim()) {
+    const term = sanitizeFilterTerm(searchQuery);
+
+    if (!term) {
       setResults([]);
+      setSearchError(null);
       return;
     }
 
     setIsSearching(true);
+    setSearchError(null);
     const allResults: SearchResult[] = [];
 
     try {
       // Search containers
-      const { data: containers } = await supabase
-        .from("containers")
-        .select("id, container_id, type, location")
-        .or(`container_id.ilike.%${searchQuery}%,type.ilike.%${searchQuery}%,location.ilike.%${searchQuery}%`)
-        .limit(5);
+      if (allowedTypes.includes("container")) {
+        const { data: containers, error } = await supabase
+          .from("containers")
+          .select("id, container_id, type, location")
+          .or(`container_id.ilike.%${term}%,type.ilike.%${term}%,location.ilike.%${term}%`)
+          .limit(5);
 
-      containers?.forEach((c) => {
-        allResults.push({
-          id: c.id,
-          type: "container",
-          title: c.container_id,
-          subtitle: `${c.type}${c.location ? ` • ${c.location}` : ""}`,
-          icon: Package,
+        if (error) throw error;
+
+        containers?.forEach((c) => {
+          allResults.push({
+            id: c.id,
+            type: "container",
+            title: c.container_id,
+            subtitle: `${c.type}${c.location ? ` • ${c.location}` : ""}`,
+            icon: Package,
+          });
         });
-      });
+      }
 
       // Search material inputs
-      const { data: inputs } = await supabase
-        .from("material_inputs")
-        .select("id, input_id, supplier, material_type")
-        .or(`input_id.ilike.%${searchQuery}%,supplier.ilike.%${searchQuery}%,material_type.ilike.%${searchQuery}%`)
-        .limit(5);
+      if (allowedTypes.includes("intake")) {
+        const { data: inputs, error } = await supabase
+          .from("material_inputs")
+          .select("id, input_id, supplier, material_type")
+          .or(`input_id.ilike.%${term}%,supplier.ilike.%${term}%,material_type.ilike.%${term}%`)
+          .limit(5);
 
-      inputs?.forEach((i) => {
-        allResults.push({
-          id: i.id,
-          type: "intake",
-          title: i.input_id,
-          subtitle: `${i.supplier} • ${i.material_type}`,
-          icon: Inbox,
+        if (error) throw error;
+
+        inputs?.forEach((i) => {
+          allResults.push({
+            id: i.id,
+            type: "intake",
+            title: i.input_id,
+            subtitle: `${i.supplier} • ${i.material_type}`,
+            icon: Inbox,
+          });
         });
-      });
+      }
 
       // Search samples
-      const { data: samples } = await supabase
-        .from("samples")
-        .select("id, sample_id, sampler_name, status")
-        .or(`sample_id.ilike.%${searchQuery}%,sampler_name.ilike.%${searchQuery}%`)
-        .limit(5);
+      if (allowedTypes.includes("sample")) {
+        const { data: samples, error } = await supabase
+          .from("samples")
+          .select("id, sample_id, sampler_name, status")
+          .or(`sample_id.ilike.%${term}%,sampler_name.ilike.%${term}%`)
+          .limit(5);
 
-      samples?.forEach((s) => {
-        allResults.push({
-          id: s.id,
-          type: "sample",
-          title: s.sample_id,
-          subtitle: `${s.sampler_name} • ${s.status}`,
-          icon: FlaskConical,
+        if (error) throw error;
+
+        samples?.forEach((s) => {
+          allResults.push({
+            id: s.id,
+            type: "sample",
+            title: s.sample_id,
+            subtitle: `${s.sampler_name} • ${s.status}`,
+            icon: FlaskConical,
+          });
         });
-      });
+      }
 
       // Search output materials
-      const { data: outputs } = await supabase
-        .from("output_materials")
-        .select("id, output_id, batch_id, output_type")
-        .or(`output_id.ilike.%${searchQuery}%,batch_id.ilike.%${searchQuery}%,output_type.ilike.%${searchQuery}%`)
-        .limit(5);
+      if (allowedTypes.includes("output")) {
+        const { data: outputs, error } = await supabase
+          .from("output_materials")
+          .select("id, output_id, batch_id, output_type")
+          .or(`output_id.ilike.%${term}%,batch_id.ilike.%${term}%,output_type.ilike.%${term}%`)
+          .limit(5);
 
-      outputs?.forEach((o) => {
-        allResults.push({
-          id: o.id,
-          type: "output",
-          title: o.output_id,
-          subtitle: `${o.batch_id} • ${o.output_type}`,
-          icon: FileOutput,
+        if (error) throw error;
+
+        outputs?.forEach((o) => {
+          allResults.push({
+            id: o.id,
+            type: "output",
+            title: o.output_id,
+            subtitle: `${o.batch_id} • ${o.output_type}`,
+            icon: FileOutput,
+          });
         });
-      });
+      }
 
       // Search delivery notes
-      const { data: deliveries } = await supabase
-        .from("delivery_notes")
-        .select("id, note_id, partner_name, type")
-        .or(`note_id.ilike.%${searchQuery}%,partner_name.ilike.%${searchQuery}%`)
-        .limit(5);
+      if (allowedTypes.includes("delivery")) {
+        const { data: deliveries, error } = await supabase
+          .from("delivery_notes")
+          .select("id, note_id, partner_name, type")
+          .or(`note_id.ilike.%${term}%,partner_name.ilike.%${term}%`)
+          .limit(5);
 
-      deliveries?.forEach((d) => {
-        allResults.push({
-          id: d.id,
-          type: "delivery",
-          title: d.note_id,
-          subtitle: `${d.partner_name} • ${d.type === "incoming" ? "Eingang" : "Ausgang"}`,
-          icon: Truck,
+        if (error) throw error;
+
+        deliveries?.forEach((d) => {
+          allResults.push({
+            id: d.id,
+            type: "delivery",
+            title: d.note_id,
+            subtitle: `${d.partner_name} • ${d.type === "incoming" ? "Eingang" : "Ausgang"}`,
+            icon: Truck,
+          });
         });
-      });
+      }
 
       setResults(allResults);
     } catch (error) {
       console.error("Search error:", error);
+      setResults([]);
+      setSearchError(error instanceof Error ? error.message : "Unbekannter Fehler");
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  }, [allowedTypes]);
 
   useEffect(() => {
     const debounce = setTimeout(() => {
@@ -162,6 +212,12 @@ export function GlobalSearch() {
     setOpen(false);
     setQuery("");
   };
+
+  // Nothing this role may search - do not offer a search box that can only
+  // ever answer "Keine Ergebnisse".
+  if (!isRoleLoading && allowedTypes.length === 0) {
+    return null;
+  }
 
   return (
     <>
@@ -198,6 +254,12 @@ export function GlobalSearch() {
             {isSearching ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : searchError ? (
+              <div className="py-8 px-4 text-center space-y-1">
+                <AlertTriangle className="h-5 w-5 text-destructive mx-auto" />
+                <p className="text-sm text-destructive">Suche fehlgeschlagen</p>
+                <p className="text-xs text-muted-foreground break-words">{searchError}</p>
               </div>
             ) : results.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground px-4">

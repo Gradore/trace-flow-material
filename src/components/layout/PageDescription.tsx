@@ -7,6 +7,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Link } from "react-router-dom";
+import { hasAccess } from "./navigation";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface WorkflowLink {
   label: string;
@@ -31,6 +33,8 @@ interface PageDescriptionProps {
  * @param workflowLinks - Links to previous/next steps in the workflow
  */
 export function PageDescription({ title, description, nextSteps, workflowLinks, className, variant = "full" }: PageDescriptionProps) {
+  const { role, isAdmin } = useUserRole();
+
   if (variant === "tooltip") {
     return (
       <TooltipProvider>
@@ -65,8 +69,11 @@ export function PageDescription({ title, description, nextSteps, workflowLinks, 
     );
   }
 
-  const previousLinks = workflowLinks?.filter(l => l.direction === "previous") || [];
-  const nextLinks = workflowLinks?.filter(l => l.direction === "next") || [];
+  // Never advertise a module the current role may not open - the route guard
+  // would answer with the "Kein Zugriff" card.
+  const visibleLinks = (workflowLinks || []).filter(l => hasAccess(l.path, role, isAdmin));
+  const previousLinks = visibleLinks.filter(l => l.direction === "previous");
+  const nextLinks = visibleLinks.filter(l => l.direction === "next");
 
   return (
     <div className={cn(
@@ -93,7 +100,7 @@ export function PageDescription({ title, description, nextSteps, workflowLinks, 
           )}
 
           {/* Workflow Links */}
-          {workflowLinks && workflowLinks.length > 0 && (
+          {visibleLinks.length > 0 && (
             <div className="pt-2 border-t border-border/50 mt-2">
               <p className="text-xs text-muted-foreground font-medium mb-2">Verknüpfte Module:</p>
               <div className="flex flex-wrap gap-2">

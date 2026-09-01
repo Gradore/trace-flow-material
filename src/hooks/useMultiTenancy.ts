@@ -28,20 +28,27 @@ export function useMultiTenancy() {
       }
 
       // Get user's role
-      const { data: roleData } = await supabase
+      const { data: roleData, error: roleError } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
+
+      if (roleError) throw roleError;
 
       const userRole = roleData?.role || null;
-      
-      // Check if internal staff
-      const internalRoles = ["admin", "intake", "production", "qa", "betriebsleiter", "logistics"];
-      const isInternalStaff = internalRoles.includes(userRole || "");
+
+      // Check if internal staff - resolved through the same function the RLS
+      // policies use, so the client can never disagree with the database.
+      const { data: staffFlag, error: staffError } = await supabase
+        .rpc("is_internal_staff", { _user_id: user.id });
+
+      if (staffError) throw staffError;
+
+      const isInternalStaff = staffFlag === true;
 
       // Get user's company from contacts
-      const { data: contactData } = await supabase
+      const { data: contactData, error: contactError } = await supabase
         .from("contacts")
         .select(`
           company_id,
@@ -51,7 +58,9 @@ export function useMultiTenancy() {
           )
         `)
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
+
+      if (contactError) throw contactError;
 
       // Handle the nested companies data
       const companyInfo = contactData?.companies as { id: string; name: string } | null;

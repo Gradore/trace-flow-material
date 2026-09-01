@@ -1,8 +1,10 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { MobileSidebar } from "./MobileSidebar";
 import { GlobalSearch } from "./GlobalSearch";
+import { Footer } from "./Footer";
+import { hasAccess } from "./navigation";
 import { NotificationDropdown } from "@/components/notifications/NotificationDropdown";
 import { Moon, Sun, Menu, LogOut, User, Settings, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useExport } from "@/hooks/useExport";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useUserRole } from "@/hooks/useUserRole";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,29 +25,74 @@ interface AppLayoutProps {
   children: ReactNode;
 }
 
+const THEME_STORAGE_KEY = "rekuflow.theme";
+const SIDEBAR_STORAGE_KEY = "rekuflow.sidebar.open";
+
+function readDarkMode(): boolean {
+  try {
+    return window.localStorage.getItem(THEME_STORAGE_KEY) !== "light";
+  } catch {
+    return true; // storage unavailable - fall back to the default dark theme
+  }
+}
+
+function readSidebarOpen(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) !== "collapsed";
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Export targets and the nav path whose access rule they share - a role that
+ * may not open the module must not be able to dump its table to CSV either.
+ */
+const EXPORT_ITEMS = [
+  { table: "material_inputs", path: "/intake", label: "Materialeingänge exportieren" },
+  { table: "containers", path: "/containers", label: "Container exportieren" },
+  { table: "samples", path: "/sampling", label: "Proben exportieren" },
+  { table: "output_materials", path: "/output", label: "Ausgangsmaterialien exportieren" },
+  { table: "delivery_notes", path: "/delivery-notes", label: "Lieferscheine exportieren" },
+] as const;
+
 export function AppLayout({ children }: AppLayoutProps) {
-  const [darkMode, setDarkMode] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [darkMode, setDarkMode] = useState(readDarkMode);
+  const [sidebarOpen, setSidebarOpen] = useState(readSidebarOpen);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { exportToCSV } = useExport();
   const isMobile = useIsMobile();
+  const { role, isAdmin } = useUserRole();
 
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-    document.documentElement.classList.toggle("dark");
-  };
+  const exportItems = EXPORT_ITEMS.filter((item) => hasAccess(item.path, role, isAdmin));
+  const canOpenSettings = hasAccess("/settings", role, isAdmin);
+
+  const toggleDarkMode = () => setDarkMode((prev) => !prev);
 
   const handleSignOut = async () => {
     await signOut();
     navigate("/auth");
   };
 
-  // Initialize dark mode
-  if (darkMode && !document.documentElement.classList.contains("dark")) {
-    document.documentElement.classList.add("dark");
-  }
+  // Apply and remember the theme - the layout remounts on every route switch
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, darkMode ? "dark" : "light");
+    } catch {
+      /* storage unavailable - the theme simply is not remembered */
+    }
+  }, [darkMode]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarOpen ? "open" : "collapsed");
+    } catch {
+      /* storage unavailable - the sidebar state simply is not remembered */
+    }
+  }, [sidebarOpen]);
 
   // Get user initials
   const userInitials = user?.user_metadata?.name
@@ -103,31 +151,23 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
 
           <div className="flex items-center gap-1 md:gap-2">
-            {/* Export menu - hidden on very small screens */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="hidden sm:flex">
-                  <Download className="h-5 w-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => exportToCSV("material_inputs")}>
-                  Materialeingänge exportieren
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportToCSV("containers")}>
-                  Container exportieren
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportToCSV("samples")}>
-                  Proben exportieren
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportToCSV("output_materials")}>
-                  Ausgangsmaterialien exportieren
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportToCSV("delivery_notes")}>
-                  Lieferscheine exportieren
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Export menu - only the modules the role may open, hidden on very small screens */}
+            {exportItems.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="hidden sm:flex">
+                    <Download className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {exportItems.map((item) => (
+                    <DropdownMenuItem key={item.table} onClick={() => exportToCSV(item.table)}>
+                      {item.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             
             <NotificationDropdown />
             
@@ -148,10 +188,12 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <User className="mr-2 h-4 w-4" />
                   Mein Profil
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate("/settings")} className="hidden md:flex">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Einstellungen
-                </DropdownMenuItem>
+                {canOpenSettings && (
+                  <DropdownMenuItem onClick={() => navigate("/settings")} className="hidden md:flex">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Einstellungen
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 {/* Mobile-only: Dark mode toggle */}
                 <DropdownMenuItem onClick={toggleDarkMode} className="sm:hidden">
@@ -173,17 +215,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           {children}
         </main>
         
-        {/* Footer */}
-        <footer className="border-t border-border bg-muted/30 py-4 px-3 md:px-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
-            <span>© {new Date().getFullYear()} RekuFLOW</span>
-            <nav className="flex items-center gap-4">
-              <a href="/impressum" className="hover:text-foreground transition-colors">Impressum</a>
-              <a href="/datenschutz" className="hover:text-foreground transition-colors">Datenschutz</a>
-              <a href="/agb" className="hover:text-foreground transition-colors">AGB</a>
-            </nav>
-          </div>
-        </footer>
+        <Footer />
       </div>
     </div>
   );

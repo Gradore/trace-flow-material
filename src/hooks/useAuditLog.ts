@@ -21,26 +21,23 @@ export const useAuditLog = () => {
     newData = null,
     changedFields = [],
   }: AuditLogParams) => {
-    try {
-      const { data, error } = await supabase.rpc('log_audit', {
-        _table_name: tableName,
-        _record_id: recordId,
-        _action: action,
-        _old_data: oldData as Json,
-        _new_data: newData as Json,
-        _changed_fields: changedFields,
-      });
+    const { data, error } = await supabase.rpc('log_audit', {
+      _table_name: tableName,
+      _record_id: recordId,
+      _action: action,
+      _old_data: oldData as Json,
+      _new_data: newData as Json,
+      _changed_fields: changedFields,
+    });
 
-      if (error) {
-        console.error('Failed to log audit:', error);
-        return null;
-      }
-
-      return data;
-    } catch (err) {
-      console.error('Audit log error:', err);
-      return null;
+    // A swallowed error means the caller reports a change as audited that was
+    // never written - surface it instead.
+    if (error) {
+      console.error('Failed to log audit:', error);
+      throw error;
     }
+
+    return data;
   };
 
   const getChangedFields = (

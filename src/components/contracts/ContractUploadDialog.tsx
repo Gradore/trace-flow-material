@@ -161,6 +161,8 @@ export function ContractUploadDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["company-contracts"] });
+      // The logistics portal reads company_contracts under its own key.
+      queryClient.invalidateQueries({ queryKey: ["logistics-contracts"] });
       toast.success("Vertrag gespeichert");
       onOpenChange(false);
       resetForm();

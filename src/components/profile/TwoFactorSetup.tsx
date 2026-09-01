@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,10 +23,45 @@ export function TwoFactorSetup() {
   const { user } = useAuth();
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [showSetupDialog, setShowSetupDialog] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [verificationCode, setVerificationCode] = useState("");
   const [factorId, setFactorId] = useState<string | null>(null);
+
+  // Without reading the current factors the card always claims "Nicht aktiviert"
+  // after a reload, even for accounts that have 2FA enabled.
+  useEffect(() => {
+    let isActive = true;
+
+    const loadStatus = async () => {
+      if (!user) {
+        if (isActive) {
+          setIsEnabled(false);
+          setIsCheckingStatus(false);
+        }
+        return;
+      }
+
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (!isActive) return;
+
+      if (error) {
+        console.error("MFA list error:", error);
+        setStatusError("Der 2FA-Status konnte nicht geladen werden.");
+      } else {
+        setStatusError(null);
+        setIsEnabled(!!data?.totp?.some(f => f.status === "verified"));
+      }
+      setIsCheckingStatus(false);
+    };
+
+    loadStatus();
+    return () => {
+      isActive = false;
+    };
+  }, [user]);
 
   const handleEnableClick = async () => {
     if (!user) return;
@@ -55,6 +90,15 @@ export function TwoFactorSetup() {
           description: "Die Zwei-Faktor-Authentifizierung ist bereits für Ihr Konto aktiviert.",
         });
         return;
+      }
+
+      // A previously aborted setup leaves an unverified factor behind; enrolling
+      // again with the same friendly name would be rejected, so it is removed first.
+      for (const staleFactor of factors.totp.filter(f => f.status !== 'verified')) {
+        const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: staleFactor.id });
+        if (unenrollError) {
+          console.error("MFA unenroll error:", unenrollError);
+        }
       }
 
       // Enroll new TOTP factor
@@ -136,6 +180,24 @@ export function TwoFactorSetup() {
     }
   };
 
+  const handleCancelSetup = async () => {
+    const pendingFactorId = factorId;
+
+    setShowSetupDialog(false);
+    setVerificationCode("");
+    setQrCodeUrl(null);
+    setFactorId(null);
+
+    // The factor created for this dialog stays enrolled (unverified) otherwise
+    // and blocks every further setup attempt.
+    if (pendingFactorId) {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: pendingFactorId });
+      if (error) {
+        console.error("MFA unenroll error:", error);
+      }
+    }
+  };
+
   const handleDisable = async () => {
     if (!user) return;
     
@@ -182,11 +244,18 @@ export function TwoFactorSetup() {
               </div>
             </div>
             <Badge variant={isEnabled ? "default" : "secondary"} className={isEnabled ? "bg-success text-success-foreground" : ""}>
-              {isEnabled ? "Aktiviert" : "Nicht aktiviert"}
+              {isCheckingStatus ? "Wird geprüft..." : isEnabled ? "Aktiviert" : "Nicht aktiviert"}
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {statusError && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 mt-0.5" />
+              <span>{statusError}</span>
+            </div>
+          )}
+
           <div className="p-4 rounded-lg bg-secondary/30 border border-border">
             <div className="flex items-start gap-3">
               <Smartphone className="h-5 w-5 text-muted-foreground mt-0.5" />
@@ -213,8 +282,8 @@ export function TwoFactorSetup() {
               </Button>
             </div>
           ) : (
-            <Button onClick={handleEnableClick} disabled={isLoading} className="w-full">
-              {isLoading ? (
+            <Button onClick={handleEnableClick} disabled={isLoading || isCheckingStatus} className="w-full">
+              {isLoading || isCheckingStatus ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <Shield className="h-4 w-4 mr-2" />
@@ -226,7 +295,7 @@ export function TwoFactorSetup() {
       </Card>
 
       {/* Setup Dialog */}
-      <Dialog open={showSetupDialog} onOpenChange={setShowSetupDialog}>
+      <Dialog open={showSetupDialog} onOpenChange={(open) => { if (!open) handleCancelSetup(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -275,10 +344,7 @@ export function TwoFactorSetup() {
               <Button 
                 variant="outline" 
                 className="flex-1"
-                onClick={() => {
-                  setShowSetupDialog(false);
-                  setVerificationCode("");
-                }}
+                onClick={handleCancelSetup}
               >
                 Abbrechen
               </Button>

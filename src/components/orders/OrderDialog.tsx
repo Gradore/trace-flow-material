@@ -136,13 +136,20 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
 
   const handleCompanyChange = (companyId: string) => {
     const company = companies?.find((c) => c.id === companyId);
-    setFormData((prev) => ({
-      ...prev,
-      company_id: companyId,
-      customer_name: company?.name || prev.customer_name,
-      customer_email: company?.email || prev.customer_email,
-      customer_phone: company?.phone || prev.customer_phone,
-    }));
+    setFormData((prev) => {
+      if (prev.company_id === companyId) return prev;
+      // Contact data always follows the selected company. Only a manual entry
+      // made before any company was picked survives - switching from Firma A to
+      // Firma B must never keep Firma A's e-mail/phone on the order.
+      const isFirstSelection = !prev.company_id;
+      return {
+        ...prev,
+        company_id: companyId,
+        customer_name: company?.name || prev.customer_name,
+        customer_email: company?.email || (isFirstSelection ? prev.customer_email : ""),
+        customer_phone: company?.phone || (isFirstSelection ? prev.customer_phone : ""),
+      };
+    });
   };
 
   const createMutation = useMutation({
@@ -321,6 +328,16 @@ export function OrderDialog({ open, onOpenChange, order }: OrderDialogProps) {
                     Erfasster Kunde: {formData.customer_name} (keiner Firma zugeordnet)
                   </p>
                 )}
+                {/* The list only holds active customers - an order pointing at an
+                    inactive company would otherwise show an empty required field. */}
+                {formData.company_id &&
+                  companies &&
+                  !companies.some((c) => c.id === formData.company_id) && (
+                    <p className="text-xs text-muted-foreground">
+                      Zugeordnete Firma: {formData.customer_name || "unbekannt"} (nicht in der
+                      Auswahl - inaktiv oder kein Kunde)
+                    </p>
+                  )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="customer_email">E-Mail</Label>

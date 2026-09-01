@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Save, Plus, Trash2, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Save, Plus, Trash2, Eye, EyeOff, Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/hooks/use-toast";
 
 interface FieldConfig {
@@ -42,91 +43,62 @@ const defaultSamplingFields: FieldConfig[] = [
   { id: "notes", name: "notes", label: "Bemerkungen", required: false, visible: true },
 ];
 
-export default function Settings() {
-  const [intakeFields, setIntakeFields] = useState<FieldConfig[]>(() => {
-    const saved = localStorage.getItem("settings_intake_fields");
-    return saved ? JSON.parse(saved) : defaultIntakeFields;
-  });
-  
-  const [containerFields, setContainerFields] = useState<FieldConfig[]>(() => {
-    const saved = localStorage.getItem("settings_container_fields");
-    return saved ? JSON.parse(saved) : defaultContainerFields;
-  });
-  
-  const [processingFields, setProcessingFields] = useState<FieldConfig[]>(() => {
-    const saved = localStorage.getItem("settings_processing_fields");
-    return saved ? JSON.parse(saved) : defaultProcessingFields;
-  });
-  
-  const [samplingFields, setSamplingFields] = useState<FieldConfig[]>(() => {
-    const saved = localStorage.getItem("settings_sampling_fields");
-    return saved ? JSON.parse(saved) : defaultSamplingFields;
-  });
+/**
+ * A corrupt localStorage entry must not take the whole page down, so the read
+ * always falls back to the defaults.
+ */
+const loadFields = (storageKey: string, fallback: FieldConfig[]): FieldConfig[] => {
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (!saved) return fallback;
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as FieldConfig[]) : fallback;
+  } catch (error) {
+    console.error(`Invalid field configuration in ${storageKey}:`, error);
+    return fallback;
+  }
+};
 
+interface FieldEditorProps {
+  title: string;
+  fields: FieldConfig[];
+  onChange: (fields: FieldConfig[]) => void;
+}
+
+/**
+ * Declared at module scope on purpose: a component defined inside Settings gets
+ * a new identity on every render, which remounts the inputs and steals the
+ * focus after each keystroke.
+ */
+function FieldEditor({ title, fields, onChange }: FieldEditorProps) {
   const [newFieldName, setNewFieldName] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
 
-  const updateField = (
-    fields: FieldConfig[],
-    setFields: React.Dispatch<React.SetStateAction<FieldConfig[]>>,
-    fieldId: string,
-    updates: Partial<FieldConfig>
-  ) => {
-    setFields(fields.map(f => f.id === fieldId ? { ...f, ...updates } : f));
+  const updateField = (fieldId: string, updates: Partial<FieldConfig>) => {
+    onChange(fields.map(f => (f.id === fieldId ? { ...f, ...updates } : f)));
   };
 
-  const addCustomField = (
-    fields: FieldConfig[],
-    setFields: React.Dispatch<React.SetStateAction<FieldConfig[]>>
-  ) => {
-    if (!newFieldName.trim()) return;
-    
+  const addCustomField = () => {
+    const label = newFieldName.trim();
+    if (!label) return;
+
     const newField: FieldConfig = {
       id: `custom_${Date.now()}`,
-      name: newFieldName.toLowerCase().replace(/\s+/g, "_"),
-      label: newFieldName,
+      name: label.toLowerCase().replace(/\s+/g, "_"),
+      label,
       required: false,
       visible: true,
       custom: true,
     };
-    
-    setFields([...fields, newField]);
+
+    onChange([...fields, newField]);
     setNewFieldName("");
   };
 
-  const removeField = (
-    fields: FieldConfig[],
-    setFields: React.Dispatch<React.SetStateAction<FieldConfig[]>>,
-    fieldId: string
-  ) => {
-    setFields(fields.filter(f => f.id !== fieldId));
+  const removeField = (fieldId: string) => {
+    onChange(fields.filter(f => f.id !== fieldId));
   };
 
-  const saveSettings = async () => {
-    setIsSaving(true);
-    try {
-      localStorage.setItem("settings_intake_fields", JSON.stringify(intakeFields));
-      localStorage.setItem("settings_container_fields", JSON.stringify(containerFields));
-      localStorage.setItem("settings_processing_fields", JSON.stringify(processingFields));
-      localStorage.setItem("settings_sampling_fields", JSON.stringify(samplingFields));
-      
-      toast({ title: "Einstellungen gespeichert" });
-    } catch (error) {
-      toast({ title: "Fehler beim Speichern", variant: "destructive" });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const FieldEditor = ({ 
-    fields, 
-    setFields,
-    title 
-  }: { 
-    fields: FieldConfig[]; 
-    setFields: React.Dispatch<React.SetStateAction<FieldConfig[]>>;
-    title: string;
-  }) => (
+  return (
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
@@ -138,53 +110,92 @@ export default function Settings() {
             <div className="flex-1">
               <Input
                 value={field.label}
-                onChange={(e) => updateField(fields, setFields, field.id, { label: e.target.value })}
+                onChange={(e) => updateField(field.id, { label: e.target.value })}
                 className="font-medium"
               />
             </div>
-            
+
             <div className="flex items-center gap-2">
               <Label className="text-xs text-muted-foreground">Pflicht</Label>
               <Switch
                 checked={field.required}
-                onCheckedChange={(checked) => updateField(fields, setFields, field.id, { required: checked })}
+                onCheckedChange={(checked) => updateField(field.id, { required: checked })}
               />
             </div>
-            
+
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => updateField(fields, setFields, field.id, { visible: !field.visible })}
+              onClick={() => updateField(field.id, { visible: !field.visible })}
             >
               {field.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
             </Button>
-            
+
             {field.custom && (
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => removeField(fields, setFields, field.id)}
+                onClick={() => removeField(field.id)}
               >
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
             )}
           </div>
         ))}
-        
+
         <div className="flex items-center gap-2 pt-4 border-t border-border">
           <Input
             placeholder="Neues Feld hinzufügen..."
             value={newFieldName}
             onChange={(e) => setNewFieldName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addCustomField(fields, setFields)}
+            onKeyDown={(e) => e.key === "Enter" && addCustomField()}
           />
-          <Button variant="outline" onClick={() => addCustomField(fields, setFields)}>
+          <Button variant="outline" onClick={addCustomField}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
       </CardContent>
     </Card>
   );
+}
+
+export default function Settings() {
+  const [intakeFields, setIntakeFields] = useState<FieldConfig[]>(
+    () => loadFields("settings_intake_fields", defaultIntakeFields)
+  );
+
+  const [containerFields, setContainerFields] = useState<FieldConfig[]>(
+    () => loadFields("settings_container_fields", defaultContainerFields)
+  );
+
+  const [processingFields, setProcessingFields] = useState<FieldConfig[]>(
+    () => loadFields("settings_processing_fields", defaultProcessingFields)
+  );
+
+  const [samplingFields, setSamplingFields] = useState<FieldConfig[]>(
+    () => loadFields("settings_sampling_fields", defaultSamplingFields)
+  );
+
+  const [isSaving, setIsSaving] = useState(false);
+
+  const saveSettings = async () => {
+    setIsSaving(true);
+    try {
+      localStorage.setItem("settings_intake_fields", JSON.stringify(intakeFields));
+      localStorage.setItem("settings_container_fields", JSON.stringify(containerFields));
+      localStorage.setItem("settings_processing_fields", JSON.stringify(processingFields));
+      localStorage.setItem("settings_sampling_fields", JSON.stringify(samplingFields));
+
+      toast({
+        title: "Feldkonfiguration lokal gespeichert",
+        description: "Die Konfiguration gilt nur in diesem Browser.",
+      });
+    } catch (error) {
+      toast({ title: "Fehler beim Speichern", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -199,6 +210,16 @@ export default function Settings() {
         </Button>
       </div>
 
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertTitle>Nur lokal gespeichert</AlertTitle>
+        <AlertDescription>
+          Diese Feldkonfiguration wird ausschließlich in diesem Browser abgelegt. Sie wird noch nicht auf die
+          Formulare in Materialeingang, Container, Verarbeitung und Probenahme angewendet und ist für andere
+          Benutzer nicht sichtbar.
+        </AlertDescription>
+      </Alert>
+
       <Tabs defaultValue="intake" className="space-y-4">
         <TabsList>
           <TabsTrigger value="intake">Materialeingang</TabsTrigger>
@@ -208,19 +229,19 @@ export default function Settings() {
         </TabsList>
 
         <TabsContent value="intake">
-          <FieldEditor fields={intakeFields} setFields={setIntakeFields} title="Materialeingang-Felder" />
+          <FieldEditor fields={intakeFields} onChange={setIntakeFields} title="Materialeingang-Felder" />
         </TabsContent>
 
         <TabsContent value="container">
-          <FieldEditor fields={containerFields} setFields={setContainerFields} title="Container-Felder" />
+          <FieldEditor fields={containerFields} onChange={setContainerFields} title="Container-Felder" />
         </TabsContent>
 
         <TabsContent value="processing">
-          <FieldEditor fields={processingFields} setFields={setProcessingFields} title="Verarbeitungs-Felder" />
+          <FieldEditor fields={processingFields} onChange={setProcessingFields} title="Verarbeitungs-Felder" />
         </TabsContent>
 
         <TabsContent value="sampling">
-          <FieldEditor fields={samplingFields} setFields={setSamplingFields} title="Probenahme-Felder" />
+          <FieldEditor fields={samplingFields} onChange={setSamplingFields} title="Probenahme-Felder" />
         </TabsContent>
       </Tabs>
     </div>

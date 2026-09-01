@@ -38,33 +38,35 @@ const ApiDocs = () => {
       description: "Sendet E-Mail-Benachrichtigungen",
       auth: true,
       body: {
-        to: "string - Empfänger E-Mail",
+        userId: "string (optional) - UUID des Empfängers, die Adresse wird serverseitig aufgelöst",
+        to: "string (optional) - Empfänger E-Mail, wird ignoriert wenn userId gesetzt ist",
         subject: "string - Betreff",
-        template: "string - Template-Name",
-        data: "Record<string, unknown> - Template-Variablen"
+        title: "string - Überschrift in der E-Mail",
+        message: "string - Nachrichtentext",
+        link: "string (optional) - Nur Links in die Anwendung werden übernommen",
+        type: "sample_approved | sample_rejected | order_created | deadline_approaching | registration_approved | registration_rejected | pickup_request | announcement | general"
       },
       example: `{
-  "to": "kunde@beispiel.de",
+  "userId": "550e8400-e29b-41d4-a716-446655440000",
   "subject": "Auftrag bestätigt",
-  "template": "order_confirmed",
-  "data": {
-    "order_id": "AUF-2025-0001",
-    "customer_name": "Max Mustermann"
-  }
+  "title": "Ihr Auftrag wurde bestätigt",
+  "message": "Auftrag AUF-2025-0001 befindet sich jetzt in Produktion.",
+  "link": "/orders",
+  "type": "order_created"
 }`
     },
     {
       method: "POST",
       path: "/functions/v1/extract-contract",
-      description: "Extrahiert Vertragsdaten aus PDF mittels KI",
+      description: "Extrahiert Vertragsdaten aus dem Vertragstext mittels KI",
       auth: true,
       body: {
-        file_url: "string - URL zur PDF-Datei",
-        company_id: "string - UUID der zugehörigen Firma"
+        pdfText: "string - Bereits extrahierter Textinhalt des Vertrags",
+        contractContext: "string (optional) - Zusatzkontext, z.B. Firmenname oder Materialart"
       },
       example: `{
-  "file_url": "https://storage.example.com/contracts/vertrag.pdf",
-  "company_id": "550e8400-e29b-41d4-a716-446655440000"
+  "pdfText": "Rahmenvertrag zwischen ... Zahlungsziel 30 Tage netto ...",
+  "contractContext": "Musterfirma GmbH, GFK-Abfälle"
 }`
     }
   ];
@@ -90,7 +92,7 @@ const ApiDocs = () => {
         { name: "customer_name", type: "text", description: "Kundenname" },
         { name: "product_category", type: "text", description: "UP-Harz | EP-Harz" },
         { name: "quantity_kg", type: "numeric", description: "Bestellmenge in kg" },
-        { name: "status", type: "text", description: "pending | in_production | ready | delivered" },
+        { name: "status", type: "text", description: "pending | in_production | produced | shipped | delivered | cancelled" },
       ]
     },
     {
@@ -110,7 +112,7 @@ const ApiDocs = () => {
       fields: [
         { name: "id", type: "uuid", description: "Primärschlüssel" },
         { name: "output_id", type: "text", description: "Lesbare Ausgangs-ID" },
-        { name: "output_type", type: "text", description: "glass_fiber | resin | pp_regrind | pa_regrind" },
+        { name: "output_type", type: "text", description: "glass_fiber | resin_powder | pp_regrind | pa_regrind" },
         { name: "weight_kg", type: "numeric", description: "Gewicht in kg" },
         { name: "quality_grade", type: "text", description: "Qualitätsstufe" },
       ]

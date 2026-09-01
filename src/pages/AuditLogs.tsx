@@ -11,7 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { Search, Eye, FileJson, Download, History } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { toast } from "@/hooks/use-toast";
+import { Search, Eye, FileJson, Download, History, AlertCircle } from "lucide-react";
 
 interface AuditLog {
   id: string;
@@ -26,13 +28,15 @@ interface AuditLog {
   created_at: string;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const AuditLogs = () => {
   const [search, setSearch] = useState("");
   const [tableFilter, setTableFilter] = useState<string>("all");
   const [actionFilter, setActionFilter] = useState<string>("all");
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
-  const { data: logs, isLoading } = useQuery({
+  const { data: logs, isLoading, isError, error } = useQuery({
     queryKey: ["audit-logs", search, tableFilter, actionFilter],
     queryFn: async () => {
       let query = supabase
@@ -47,8 +51,19 @@ const AuditLogs = () => {
       if (actionFilter !== "all") {
         query = query.eq("action", actionFilter);
       }
-      if (search) {
-        query = query.or(`user_email.ilike.%${search}%,record_id.eq.${search}`);
+
+      const term = search.trim();
+      if (term) {
+        if (UUID_PATTERN.test(term)) {
+          // record_id is a uuid column - only a valid uuid may be compared to it
+          query = query.or(`user_email.ilike.%${term}%,record_id.eq.${term}`);
+        } else {
+          // characters with a meaning inside the PostgREST filter grammar
+          const safeTerm = term.replace(/[,()"\\]/g, " ").trim();
+          if (safeTerm) {
+            query = query.ilike("user_email", `%${safeTerm}%`);
+          }
+        }
       }
 
       const { data, error } = await query;
@@ -57,10 +72,15 @@ const AuditLogs = () => {
     },
   });
 
+  // Tables carrying the audit_row_change trigger - every other table never
+  // produces an audit row, so offering it as a filter would only show an
+  // empty result.
   const tables = [
-    "companies", "contacts", "containers", "delivery_notes", "documents",
-    "equipment", "maintenance_records", "material_announcements", "material_inputs",
-    "orders", "output_materials", "pickup_requests", "processing_steps", "samples"
+    "companies", "containers", "delivery_notes", "documents", "equipment",
+    "fraction_analyses", "maintenance_records", "material_batches", "material_inputs",
+    "orders", "output_fractions", "output_materials", "processing_steps",
+    "product_tests", "project_partners", "project_risks", "project_tasks",
+    "samples", "test_runs"
   ];
 
   const getActionBadge = (action: string) => {
@@ -77,7 +97,14 @@ const AuditLogs = () => {
   };
 
   const exportLogs = () => {
-    if (!logs) return;
+    if (!logs || logs.length === 0) {
+      toast({
+        title: "Keine Daten zum Exportieren",
+        description: "Es sind keine Audit-Logs geladen.",
+        variant: "destructive",
+      });
+      return;
+    }
     const blob = new Blob([JSON.stringify(logs, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -107,7 +134,7 @@ const AuditLogs = () => {
             Änderungsverlauf
           </CardTitle>
           <CardDescription>
-            {logs?.length || 0} Einträge gefunden
+            {isError ? "Fehler beim Laden" : `${logs?.length || 0} Einträge gefunden`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -115,7 +142,7 @@ const AuditLogs = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Suche nach E-Mail oder Record-ID..."
+                placeholder="Suche nach E-Mail oder vollständiger Record-ID..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
@@ -147,7 +174,15 @@ const AuditLogs = () => {
             </Select>
           </div>
 
-          {isLoading ? (
+          {isError ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Audit-Logs konnten nicht geladen werden</AlertTitle>
+              <AlertDescription>
+                {error instanceof Error ? error.message : "Unbekannter Fehler."}
+              </AlertDescription>
+            </Alert>
+          ) : isLoading ? (
             <div className="text-center py-8 text-muted-foreground">Lade Audit-Logs...</div>
           ) : (
             <div className="rounded-md border overflow-hidden">
