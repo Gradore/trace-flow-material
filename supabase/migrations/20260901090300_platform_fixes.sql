@@ -471,3 +471,72 @@ WITH CHECK (public.is_internal_staff(auth.uid()));
 ALTER TABLE public.material_inputs DROP CONSTRAINT IF EXISTS material_inputs_status_check;
 ALTER TABLE public.material_inputs ADD CONSTRAINT material_inputs_status_check
   CHECK (status = ANY (ARRAY['received', 'in_processing', 'processed', 'rejected']));
+
+-- ---------------------------------------------------------------- 13. tenant writes
+-- The supplier INSERT policies correlated `c.company_id = company_id`; inside
+-- the subquery the bare column resolves to the alias `c`, so the condition was
+-- `c.company_id = c.company_id` - always true. Any supplier could therefore
+-- create announcements and pickup requests in the name of any other company.
+DROP POLICY IF EXISTS "Suppliers can create pickup requests" ON public.pickup_requests;
+CREATE POLICY "Suppliers can create pickup requests"
+ON public.pickup_requests FOR INSERT TO authenticated
+WITH CHECK (
+  public.has_role(auth.uid(), 'supplier'::app_role)
+  AND EXISTS (
+    SELECT 1 FROM public.contacts c
+    WHERE c.company_id = pickup_requests.company_id
+      AND c.user_id = auth.uid()
+  )
+);
+
+DROP POLICY IF EXISTS "Suppliers can create announcements" ON public.material_announcements;
+CREATE POLICY "Suppliers can create announcements"
+ON public.material_announcements FOR INSERT TO authenticated
+WITH CHECK (
+  public.has_role(auth.uid(), 'supplier'::app_role)
+  AND EXISTS (
+    SELECT 1 FROM public.contacts c
+    WHERE c.company_id = material_announcements.company_id
+      AND c.user_id = auth.uid()
+  )
+);
+
+-- ---------------------------------------------------------------- 14. stock catalogue
+-- "any authenticated principal may read every in_stock row" was too wide: it
+-- also covered accounts without a role. Only customers browse the catalogue.
+DROP POLICY IF EXISTS "Outputs viewable by staff or in stock" ON public.output_materials;
+DROP POLICY IF EXISTS "Outputs viewable by staff or customers in stock" ON public.output_materials;
+CREATE POLICY "Outputs viewable by staff or customers in stock"
+ON public.output_materials FOR SELECT TO authenticated
+USING (
+  public.is_internal_staff(auth.uid())
+  OR (status = 'in_stock' AND public.has_role(auth.uid(), 'customer'::app_role))
+);
+
+-- ---------------------------------------------------------------- 15. profile updates
+-- A user could update their own profiles row including the `role` column. The
+-- column is only a display copy - user_roles is authoritative - but a stale
+-- role there is confusing and any future policy reading it would be exploitable.
+CREATE OR REPLACE FUNCTION public.guard_profile_update()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NULL OR public.has_role(auth.uid(), 'admin'::app_role) THEN
+    RETURN NEW;
+  END IF;
+
+  -- Non-admins may edit their own data, never their role or their identity.
+  NEW.role := OLD.role;
+  NEW.user_id := OLD.user_id;
+  NEW.username := OLD.username;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS guard_profile_update ON public.profiles;
+CREATE TRIGGER guard_profile_update
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.guard_profile_update();

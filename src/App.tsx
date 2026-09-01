@@ -109,14 +109,17 @@ const App = () => (
                 <Route path="/agb" element={<AGB />} />
 
                 {/* Landing - each role goes to the entry point it may use */}
+                {/* The redirect has to run BEFORE the access rule: the dashboard
+                    is staff-only, so guarding first would reject customer,
+                    supplier and logistics instead of sending them to their portal. */}
                 <Route
                   path="/"
                   element={
-                    <RoleRoute>
-                      <RoleLandingRedirect>
+                    <RoleLandingRedirect>
+                      <RoleRoute>
                         <Suspense fallback={<PageFallback />}><Dashboard /></Suspense>
-                      </RoleLandingRedirect>
-                    </RoleRoute>
+                      </RoleRoute>
+                    </RoleLandingRedirect>
                   }
                 />
 

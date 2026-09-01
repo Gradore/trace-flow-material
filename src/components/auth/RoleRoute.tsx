@@ -1,4 +1,4 @@
-import { Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { Loader2, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -44,7 +44,12 @@ export function RoleRoute({ children, withLayout = true }: { children: React.Rea
 }
 
 function AccessDenied({ role }: { role: string | null }) {
-  const home = landingPathForRole(role);
+  const location = useLocation();
+  const landing = landingPathForRole(role);
+  // Never offer a link back to the page that was just denied - a user without a
+  // resolvable role would otherwise be stuck in a loop. /profile has no access
+  // rule and is open to every logged-in user.
+  const home = !role || landing === location.pathname ? "/profile" : landing;
   return (
     <div className="flex items-center justify-center py-16">
       <Card className="max-w-md w-full">
@@ -58,7 +63,7 @@ function AccessDenied({ role }: { role: string | null }) {
             Wenden Sie sich an einen Administrator, wenn Sie Zugriff benötigen.
           </p>
           <Button asChild variant="outline" className="mt-2">
-            <a href={home}>Zur Startseite</a>
+            <Link to={home}>{home === "/profile" ? "Zu meinem Profil" : "Zur Startseite"}</Link>
           </Button>
         </CardContent>
       </Card>
@@ -68,14 +73,17 @@ function AccessDenied({ role }: { role: string | null }) {
 
 /** Sends each role to the entry point it is actually allowed to use. */
 export function RoleLandingRedirect({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
   const { role, isLoading } = useUserRole();
-  if (isLoading) {
+  if (loading || (user && isLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
+  // Not signed in: let the guard below send the visitor to /auth.
+  if (!user) return <>{children}</>;
   const target = landingPathForRole(role);
   if (target !== "/") return <Navigate to={target} replace />;
   return <>{children}</>;
