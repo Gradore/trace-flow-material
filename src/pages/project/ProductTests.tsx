@@ -271,8 +271,32 @@ export default function ProductTests() {
   const resultsTest = resultsTestId ? tests.find((test) => test.id === resultsTestId) ?? null : null;
   const baselineTest = resultsTest ? findBaselineTest(resultsTest, tests) : null;
 
-  const listError = testsQuery.error instanceof Error ? testsQuery.error : null;
-  const chartError = resultsQuery.error instanceof Error ? resultsQuery.error : null;
+  /**
+   * Partner, Fraktionen und Messwerte füllen eigene Spalten der Tabelle und das
+   * Vergleichsdiagramm. Lädt oder scheitert eine dieser Abfragen, liest sich die
+   * Seite sonst wie „kein Partner“ / „keine Messwerte“ — der Lade- und
+   * Fehlerzustand gilt deshalb für alle vier Abfragen gemeinsam.
+   */
+  const asError = (value: unknown): Error | null => (value instanceof Error ? value : null);
+
+  const listLoading =
+    testsQuery.isLoading ||
+    resultsQuery.isLoading ||
+    partnersQuery.isLoading ||
+    fractionsQuery.isLoading;
+
+  const listError =
+    asError(testsQuery.error) ??
+    asError(resultsQuery.error) ??
+    asError(partnersQuery.error) ??
+    asError(fractionsQuery.error);
+
+  const retryAll = () => {
+    void testsQuery.refetch();
+    void resultsQuery.refetch();
+    void partnersQuery.refetch();
+    void fractionsQuery.refetch();
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -299,28 +323,38 @@ export default function ProductTests() {
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Produkttests"
-          value={formatNumber(tests.length, 0)}
-          hint={`${filteredTests.length} nach Filter sichtbar`}
+          value={listLoading || listError ? "—" : formatNumber(tests.length, 0)}
+          hint={
+            listError
+              ? "nicht verfügbar"
+              : listLoading
+                ? "wird geladen"
+                : `${filteredTests.length} nach Filter sichtbar`
+          }
           icon={FlaskConical}
           accent="violet"
         />
         <StatCard
           label="Abgeschlossen"
-          value={formatNumber(completedCount, 0)}
+          value={listLoading || listError ? "—" : formatNumber(completedCount, 0)}
           hint="mit Ergebnisbericht"
           icon={CheckCircle2}
           accent="emerald"
         />
         <StatCard
           label="Messwerte"
-          value={formatNumber(results.length, 0)}
+          value={listLoading || listError ? "—" : formatNumber(results.length, 0)}
           hint="erfasste Einzelwerte"
           icon={Ruler}
           accent="sky"
         />
         <StatCard
           label="Bester Zuwachs"
-          value={bestGain === null ? "—" : `+${formatNumber(bestGain, 1)} %`}
+          value={
+            listLoading || listError || bestGain === null
+              ? "—"
+              : `${bestGain > 0 ? "+" : ""}${formatNumber(bestGain, 1)} %`
+          }
           hint="gegenüber Baseline"
           icon={TrendingUp}
           accent="amber"
@@ -330,6 +364,7 @@ export default function ProductTests() {
       <ProductTestReferenceCard
         test={referenceTest}
         results={referenceResults}
+        loading={listLoading}
         onOpenResults={() => referenceTest && setResultsTestId(referenceTest.id)}
       />
 
@@ -458,22 +493,28 @@ export default function ProductTests() {
       </Card>
 
       {/* -------------------------------------------------------------- chart */}
-      {chartError ? (
-        <ErrorState error={chartError} onRetry={() => void resultsQuery.refetch()} />
+      {listLoading ? (
+        <Card>
+          <CardContent className="p-4">
+            <LoadingRows rows={4} />
+          </CardContent>
+        </Card>
       ) : (
-        <ProductTestComparisonChart tests={filteredTests} results={results} />
+        /* Bei einem Ladefehler steht die Meldung in der Tabellenkarte — ein
+           leeres Diagramm daneben würde „keine Messwerte“ suggerieren. */
+        !listError && <ProductTestComparisonChart tests={filteredTests} results={results} />
       )}
 
       {/* -------------------------------------------------------------- table */}
       <Card>
         <CardContent className="p-0">
-          {testsQuery.isLoading ? (
+          {listLoading ? (
             <div className="p-4">
               <LoadingRows rows={6} />
             </div>
           ) : listError ? (
             <div className="p-4">
-              <ErrorState error={listError} onRetry={() => void testsQuery.refetch()} />
+              <ErrorState error={listError} onRetry={retryAll} />
             </div>
           ) : tests.length === 0 ? (
             <div className="p-4">

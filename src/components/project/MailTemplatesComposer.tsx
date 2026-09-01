@@ -65,6 +65,8 @@ interface LogVars {
 interface MailComposerProps {
   templates: EmailTemplate[];
   partners: Partner[];
+  templatesLoading?: boolean;
+  partnersLoading?: boolean;
   templateId: string;
   onTemplateChange: (templateId: string) => void;
   senderName: string;
@@ -75,6 +77,8 @@ interface MailComposerProps {
 export default function MailComposer({
   templates,
   partners,
+  templatesLoading = false,
+  partnersLoading = false,
   templateId,
   onTemplateChange,
   senderName,
@@ -274,12 +278,18 @@ export default function MailComposer({
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-1.5">
             <Label htmlFor="composer-template">Vorlage</Label>
-            <Select value={templateId || NO_TEMPLATE} onValueChange={onTemplateChange}>
+            <Select
+              value={templateId || NO_TEMPLATE}
+              onValueChange={onTemplateChange}
+              disabled={templatesLoading}
+            >
               <SelectTrigger id="composer-template">
-                <SelectValue placeholder="Vorlage wählen" />
+                <SelectValue placeholder={templatesLoading ? "Wird geladen …" : "Vorlage wählen"} />
               </SelectTrigger>
               <SelectContent className="bg-popover">
-                {templates.length === 0 ? (
+                {templatesLoading ? (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">Vorlagen werden geladen …</div>
+                ) : templates.length === 0 ? (
                   <div className="px-2 py-3 text-sm text-muted-foreground">Keine Vorlagen vorhanden</div>
                 ) : (
                   templates.map((entry) => (
@@ -294,12 +304,14 @@ export default function MailComposer({
 
           <div className="space-y-1.5">
             <Label htmlFor="composer-partner">Partner</Label>
-            <Select value={partnerId} onValueChange={setPartnerId}>
+            <Select value={partnerId} onValueChange={setPartnerId} disabled={partnersLoading}>
               <SelectTrigger id="composer-partner">
-                <SelectValue placeholder="Partner wählen" />
+                <SelectValue placeholder={partnersLoading ? "Wird geladen …" : "Partner wählen"} />
               </SelectTrigger>
               <SelectContent className="bg-popover">
-                {partners.length === 0 ? (
+                {partnersLoading ? (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">Partner werden geladen …</div>
+                ) : partners.length === 0 ? (
                   <div className="px-2 py-3 text-sm text-muted-foreground">Keine Partner vorhanden</div>
                 ) : (
                   partners.map((entry) => (
@@ -317,10 +329,18 @@ export default function MailComposer({
             <Select
               value={contactId}
               onValueChange={setContactId}
-              disabled={!partnerId || contactsQuery.isLoading}
+              disabled={!partnerId || contactsQuery.isLoading || contactsQuery.isError}
             >
               <SelectTrigger id="composer-contact">
-                <SelectValue placeholder={partnerId ? "Kontakt wählen" : "Erst Partner wählen"} />
+                <SelectValue
+                  placeholder={
+                    !partnerId
+                      ? "Erst Partner wählen"
+                      : contactsQuery.isLoading
+                        ? "Wird geladen …"
+                        : "Kontakt wählen"
+                  }
+                />
               </SelectTrigger>
               <SelectContent className="bg-popover">
                 <SelectItem value={NO_CONTACT}>Ohne Ansprechpartner</SelectItem>
@@ -333,7 +353,19 @@ export default function MailComposer({
                 ))}
               </SelectContent>
             </Select>
-            {partnerId && !contactsQuery.isLoading && contacts.length === 0 && (
+            {partnerId && contactsQuery.isError && (
+              <p className="flex flex-wrap items-center gap-1.5 text-xs text-destructive">
+                Ansprechpartner konnten nicht geladen werden.
+                <button
+                  type="button"
+                  className="underline underline-offset-2"
+                  onClick={() => void contactsQuery.refetch()}
+                >
+                  Erneut versuchen
+                </button>
+              </p>
+            )}
+            {partnerId && !contactsQuery.isLoading && !contactsQuery.isError && contacts.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 Für diesen Partner ist kein Ansprechpartner hinterlegt.
               </p>

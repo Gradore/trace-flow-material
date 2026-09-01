@@ -228,25 +228,19 @@ export default function Analytics() {
   const completeSets = views.filter((view) => view.missingMandatory.length === 0).length;
   const breachCount = views.filter((view) => view.breaches.length > 0).length;
   const totalCost = views.reduce((sum, view) => sum + (view.analysis.cost_eur ?? 0), 0);
+  const statsReady = !isLoading && !loadError;
 
-  const removeAnalysis = useProjectMutation(
-    async (vars: { id: string; resultIds: string[] }) => {
-      if (vars.resultIds.length) {
-        const { data: removedResults, error: resultsError } = await supabase
-          .from("fraction_analysis_results")
-          .delete()
-          .in("id", vars.resultIds)
-          .select("id");
-        if (resultsError) throw new Error(resultsError.message);
-        if (!removedResults || removedResults.length !== vars.resultIds.length) {
-          throw new Error("Keine Berechtigung oder Datensatz nicht gefunden");
-        }
-      }
-
+  const removeAnalysis = useProjectMutation<string>(
+    async (analysisId) => {
+      // fraction_analysis_results.analysis_id hängt mit ON DELETE CASCADE an der
+      // Analyse. Die Messwerte vorab einzeln zu löschen war nicht nur überflüssig,
+      // sondern gefährlich: schlug der zweite Schritt fehl, waren sie bereits
+      // unwiederbringlich weg. Ein veralteter Cache ließ den Soll-/Ist-Vergleich
+      // der gelöschten Zeilen außerdem fälschlich als fehlende Berechtigung enden.
       const { data, error } = await supabase
         .from("fraction_analyses")
         .delete()
-        .eq("id", vars.id)
+        .eq("id", analysisId)
         .select("id");
       if (error) throw new Error(error.message);
       if (!data || data.length === 0) throw new Error("Keine Berechtigung oder Datensatz nicht gefunden");
@@ -291,24 +285,37 @@ export default function Analytics() {
         }
       />
 
+      {/* Solange die Abfragen laufen (oder fehlgeschlagen sind) stehen alle Zähler
+          auf 0 — das las sich wie ein leeres Projekt. Erst mit Daten zeigen wir Zahlen. */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCard label="Analysen" value={views.length} icon={FlaskConical} accent="violet" />
-        <StatCard label="Offen" value={openCount} icon={ClipboardList} accent="sky" hint="beauftragt / in Arbeit" />
+        <StatCard label="Analysen" value={statsReady ? views.length : "…"} icon={FlaskConical} accent="violet" />
+        <StatCard
+          label="Offen"
+          value={statsReady ? openCount : "…"}
+          icon={ClipboardList}
+          accent="sky"
+          hint="beauftragt / in Arbeit"
+        />
         <StatCard
           label="Pflichtsatz komplett"
-          value={completeSets}
+          value={statsReady ? completeSets : "…"}
           icon={ListChecks}
           accent="emerald"
           hint="alle 8 Parameter"
         />
         <StatCard
           label="Go/No-Go-Verstöße"
-          value={breachCount}
+          value={statsReady ? breachCount : "…"}
           icon={AlertTriangle}
           accent="rose"
           hint="Analysen mit Grenzwertbruch"
         />
-        <StatCard label="Analytikkosten" value={formatEur(totalCost)} icon={Euro} accent="amber" />
+        <StatCard
+          label="Analytikkosten"
+          value={statsReady ? formatEur(totalCost) : "…"}
+          icon={Euro}
+          accent="amber"
+        />
       </div>
 
       <Card>
@@ -581,6 +588,7 @@ export default function Analytics() {
         }}
         analysis={editView?.analysis ?? null}
         fractions={fractionsQuery.data ?? []}
+        fractionsLoading={fractionsQuery.isLoading}
         partners={partnersQuery.data ?? []}
         specs={specsQuery.data ?? []}
       />
@@ -634,12 +642,7 @@ export default function Analytics() {
               disabled={removeAnalysis.isPending}
               onClick={(event) => {
                 event.preventDefault();
-                if (deleteView) {
-                  removeAnalysis.mutate({
-                    id: deleteView.analysis.id,
-                    resultIds: deleteView.results.map((result) => result.id),
-                  });
-                }
+                if (deleteView) removeAnalysis.mutate(deleteView.analysis.id);
               }}
             >
               Löschen

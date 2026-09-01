@@ -276,12 +276,17 @@ export function AnalyticsResults({
           <div className="space-y-4">
             <GoNoGoAlert breaches={liveBreaches} />
 
+            {/* Der Trigger evaluate_analysis_result greift nur, wenn die Analyse über
+                eine Fraktion an einer Zielspezifikation hängt. Ohne Spec war die
+                Erfolgsmeldung ein leeres Versprechen. */}
             {saved && (
               <Alert className="border-success/30 bg-success/5">
                 <CheckCircle2 className="h-4 w-4 text-success" />
                 <AlertTitle className="text-success">Messwerte gespeichert</AlertTitle>
                 <AlertDescription className="text-sm">
-                  Sollfenster und Pass/Fail wurden von der Datenbank aus der Zielfraktion ergänzt.
+                  {view.spec
+                    ? "Sollfenster und Pass/Fail wurden von der Datenbank aus der Zielfraktion ergänzt."
+                    : "Ohne hinterlegte Zielfraktion kann die Datenbank kein Sollfenster ergänzen — die Werte sind erfasst, aber nicht gegen eine Spezifikation bewertet."}
                 </AlertDescription>
               </Alert>
             )}

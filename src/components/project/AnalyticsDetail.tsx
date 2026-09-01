@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Beaker, ExternalLink, FlaskConical, Loader2, Sparkles } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -70,7 +71,42 @@ export function AnalyticsDetail({
   const linkSample = useProjectMutation(
     async (vars: { samplerName: string }) => {
       if (!view) throw new Error("Keine Analyse ausgewählt");
+
+      // Die gecachte Zeile kann veraltet sein. Vor dem Anlegen den aktuellen
+      // Stand lesen, sonst legt ein zweiter Klick eine zweite Probe zur selben
+      // Analyse an.
+      const { data: current, error: readError } = await supabase
+        .from("fraction_analyses")
+        .select("sample_id")
+        .eq("id", view.analysis.id)
+        .maybeSingle();
+      if (readError) throw new Error(readError.message);
+      if (!current) throw new Error("Keine Berechtigung oder Analyse nicht gefunden");
+      if (current.sample_id) {
+        toast({
+          title: "Probe bereits vorhanden",
+          description: "Zu dieser Analyse ist in der Probenverwaltung bereits eine Probe angelegt.",
+        });
+        return;
+      }
+
       const sampleId = await linkAnalysisToSample(view.analysis, view.fraction, vars.samplerName);
+
+      // linkAnalysisToSample setzt sample_id per UPDATE ohne .select(); RLS kann
+      // die Zeile still herausfiltern. Ohne diese Prüfung meldeten wir Erfolg und
+      // ließen eine Probe ohne Verknüpfung zur Analyse zurück.
+      const { data: linked, error: verifyError } = await supabase
+        .from("fraction_analyses")
+        .select("sample_id")
+        .eq("id", view.analysis.id)
+        .maybeSingle();
+      if (verifyError) throw new Error(verifyError.message);
+      if (!linked || linked.sample_id !== sampleId) {
+        throw new Error(
+          "Die Probe wurde angelegt, konnte der Analyse aber nicht zugeordnet werden (fehlende Berechtigung).",
+        );
+      }
+
       const transferred = await pushResultsToSample(
         sampleId,
         view.results.map((result) => ({

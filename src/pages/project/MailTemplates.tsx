@@ -130,8 +130,12 @@ export default function MailTemplates() {
   const requestAi = useRequestAiAnalysis();
   const acknowledgeAi = useAcknowledgeAiAnalysis();
 
+  /*
+   * Own cache key: /profil uses ["profile", userId] with select("*"), and a
+   * shared key would hand whichever query mounts first to the other component.
+   */
   const profileQuery = useQuery({
-    queryKey: ["profile", user?.id ?? "anonymous"],
+    queryKey: ["mail-sender-profile", user?.id ?? "anonymous"],
     enabled: Boolean(user?.id),
     queryFn: async (): Promise<{ name: string; email: string | null } | null> => {
       const { data, error } = await supabase
@@ -331,28 +335,28 @@ export default function MailTemplates() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Vorlagen"
-          value={templatesQuery.isLoading ? "…" : templates.length}
+          value={templatesQuery.isLoading ? "…" : templatesQuery.isError ? "—" : templates.length}
           hint="Textbausteine"
           icon={FileText}
           accent="violet"
         />
         <StatCard
           label="Kommunikation"
-          value={communicationsQuery.isLoading ? "…" : communications.length}
+          value={communicationsQuery.isLoading ? "…" : communicationsQuery.isError ? "—" : communications.length}
           hint="Einträge gesamt"
           icon={MessageSquare}
           accent="sky"
         />
         <StatCard
           label="Ausgehend"
-          value={communicationsQuery.isLoading ? "…" : stats.outbound30}
+          value={communicationsQuery.isLoading ? "…" : communicationsQuery.isError ? "—" : stats.outbound30}
           hint="letzte 30 Tage"
           icon={ArrowUpRight}
           accent="amber"
         />
         <StatCard
           label="Eingehend"
-          value={communicationsQuery.isLoading ? "…" : stats.inbound30}
+          value={communicationsQuery.isLoading ? "…" : communicationsQuery.isError ? "—" : stats.inbound30}
           hint="letzte 30 Tage"
           icon={ArrowDownLeft}
           accent="emerald"
@@ -465,6 +469,8 @@ export default function MailTemplates() {
             <MailComposer
               templates={templates}
               partners={partners}
+              templatesLoading={templatesQuery.isLoading}
+              partnersLoading={partnersQuery.isLoading}
               templateId={templateId}
               onTemplateChange={setTemplateId}
               senderName={senderName}
@@ -834,6 +840,7 @@ export default function MailTemplates() {
         onOpenChange={setCommDialogOpen}
         partners={partners}
         contacts={contacts}
+        partnersLoading={partnersQuery.isLoading}
       />
 
       <AlertDialog

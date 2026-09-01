@@ -247,12 +247,14 @@ export function ProductTestResultsDialog({
                           {row.age_days === null ? "—" : `${row.age_days} d`}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-right tabular-nums">
-                          {formatNumber(row.value_numeric, 2)} {rowUnit}
+                          {row.value_numeric === null
+                            ? "—"
+                            : `${formatNumber(row.value_numeric, 2)}${rowUnit ? ` ${rowUnit}` : ""}`}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-right tabular-nums text-muted-foreground">
                           {row.baseline_value === null
                             ? "—"
-                            : `${formatNumber(row.baseline_value, 2)} ${rowUnit}`}
+                            : `${formatNumber(row.baseline_value, 2)}${rowUnit ? ` ${rowUnit}` : ""}`}
                         </TableCell>
                         <TableCell className="text-right">
                           <DeltaBadge value={row.delta_pct} className="justify-end" />
@@ -397,7 +399,8 @@ export function ProductTestResultsDialog({
                   className="h-7 px-2.5 text-xs"
                   onClick={() => setBaseline(String(baselineSuggestion))}
                 >
-                  Aus 0-%-Test: {formatNumber(baselineSuggestion, 2)} {unit}
+                  Aus 0-%-Test: {formatNumber(baselineSuggestion, 2)}
+                  {unit ? ` ${unit}` : ""}
                 </Button>
               )}
             </div>

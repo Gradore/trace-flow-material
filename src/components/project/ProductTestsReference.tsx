@@ -32,29 +32,42 @@ function Figure({ label, value, hint }: { label: string; value: string; hint: st
 export function ProductTestReferenceCard({
   test,
   results,
+  loading = false,
   onOpenResults,
 }: {
   /** The seeded reference test, or null when it is not in the database. */
   test: ProductTest | null;
   results: ProductTestResult[];
+  /** True while the product tests are still loading — suppresses the "missing" note. */
+  loading?: boolean;
   onOpenResults: () => void;
 }) {
   const flexural = results.filter(
     (row) => row.parameter_key === "flexural_strength_mpa" && row.value_numeric !== null,
   );
 
-  const baselineFromData =
-    flexural.find((row) => row.baseline_value !== null)?.baseline_value ?? null;
-  const baseline = baselineFromData ?? DOCUMENTED.baselineMpa;
+  /**
+   * Ein Baseline-Wert von 0 (oder negativ) ist keine tragfähige Bezugsgröße —
+   * der Zuwachs wäre eine Division durch null. In dem Fall gilt der
+   * dokumentierte Referenzwert.
+   */
+  const measuredBaseline =
+    flexural.find((row) => row.baseline_value !== null && row.baseline_value > 0)?.baseline_value ??
+    null;
+  const referenceBaseline = measuredBaseline ?? DOCUMENTED.baselineMpa;
 
   const fibreValues = flexural
     .map((row) => row.value_numeric)
-    .filter((value): value is number => value !== null && value > baseline);
+    .filter((value): value is number => value !== null && value > referenceBaseline);
 
-  const withFibreMin = fibreValues.length ? Math.min(...fibreValues) : DOCUMENTED.withFibreMinMpa;
-  const withFibreMax = fibreValues.length ? Math.max(...fibreValues) : DOCUMENTED.withFibreMaxMpa;
+  /** Ohne eigene Messwerte über der Baseline werden durchgängig die dokumentierten Zahlen gezeigt. */
+  const hasMeasured = fibreValues.length > 0;
+  const baseline = hasMeasured ? referenceBaseline : DOCUMENTED.baselineMpa;
+  const withFibreMin = hasMeasured ? Math.min(...fibreValues) : DOCUMENTED.withFibreMinMpa;
+  const withFibreMax = hasMeasured ? Math.max(...fibreValues) : DOCUMENTED.withFibreMaxMpa;
   const ageDays =
-    flexural.find((row) => row.age_days !== null)?.age_days ?? DOCUMENTED.ageDays;
+    (hasMeasured ? flexural.find((row) => row.age_days !== null)?.age_days ?? null : null) ??
+    DOCUMENTED.ageDays;
 
   const gainMin = ((withFibreMin - baseline) / baseline) * 100;
   const gainMax = ((withFibreMax - baseline) / baseline) * 100;
@@ -111,12 +124,22 @@ export function ProductTestReferenceCard({
           werden an diesem Referenzwert gemessen.
         </p>
 
-        {!test && (
+        {loading ? (
+          <p className="text-xs text-muted-foreground">
+            Referenzdatensatz wird geladen — bis dahin sind die dokumentierten Werte aus der
+            Verfahrensentwicklung angesetzt.
+          </p>
+        ) : !test ? (
           <p className="text-xs text-muted-foreground">
             Der Referenzdatensatz {REFERENCE_TEST_CODE} ist in dieser Datenbank nicht vorhanden. Die
             gezeigten Werte stammen aus der dokumentierten Verfahrensentwicklung.
           </p>
-        )}
+        ) : !hasMeasured ? (
+          <p className="text-xs text-muted-foreground">
+            Für {REFERENCE_TEST_CODE} sind noch keine Biegezugfestigkeiten über der Baseline erfasst.
+            Die gezeigten Werte stammen aus der dokumentierten Verfahrensentwicklung.
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );

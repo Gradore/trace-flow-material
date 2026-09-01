@@ -381,11 +381,13 @@ export function CommunicationDialog({
   onOpenChange,
   partners,
   contacts,
+  partnersLoading = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   partners: Partner[];
   contacts: PartnerContact[];
+  partnersLoading?: boolean;
 }) {
   const { user } = useAuth();
   const [form, setForm] = useState<CommunicationFormState>(emptyCommunicationForm);
@@ -486,12 +488,17 @@ export function CommunicationDialog({
                 onValueChange={(value) =>
                   setForm((c) => ({ ...c, partnerId: value, contactId: NO_CONTACT }))
                 }
+                disabled={partnersLoading}
               >
                 <SelectTrigger id="comm-partner">
-                  <SelectValue placeholder="Partner wählen" />
+                  <SelectValue placeholder={partnersLoading ? "Wird geladen …" : "Partner wählen"} />
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
-                  {partners.length === 0 ? (
+                  {partnersLoading ? (
+                    <div className="px-2 py-3 text-sm text-muted-foreground">
+                      Partner werden geladen …
+                    </div>
+                  ) : partners.length === 0 ? (
                     <div className="px-2 py-3 text-sm text-muted-foreground">
                       Keine Partner vorhanden
                     </div>

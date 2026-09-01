@@ -50,6 +50,7 @@ export function AnalyticsDialog({
   onOpenChange,
   analysis,
   fractions,
+  fractionsLoading = false,
   partners,
   specs,
 }: {
@@ -58,6 +59,8 @@ export function AnalyticsDialog({
   /** null = create a new analysis. */
   analysis: FractionAnalysis | null;
   fractions: OutputFraction[];
+  /** Still fetching - "keine Fraktionen vorhanden" would be a lie. */
+  fractionsLoading?: boolean;
   partners: Partner[];
   specs: FractionSpec[];
 }) {
@@ -67,7 +70,10 @@ export function AnalyticsDialog({
   const [code, setCode] = useState("");
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
-  const [fractionId, setFractionId] = useState<string>(NONE);
+  // Die Fraktion ist Pflicht und hat deshalb keinen "ohne"-Eintrag. Radix zeigt
+  // den Platzhalter nur bei leerem Wert an - mit NONE als Startwert blieb der
+  // Auswahlknopf einer neuen Analyse komplett leer statt "Fraktion wählen".
+  const [fractionId, setFractionId] = useState<string>("");
   const [labId, setLabId] = useState<string>(NONE);
   const [method, setMethod] = useState<string>(NONE);
   const [status, setStatus] = useState("ordered");
@@ -96,7 +102,7 @@ export function AnalyticsDialog({
     if (analysis) {
       setCode(analysis.analysis_code);
       setCodeError(null);
-      setFractionId(analysis.output_fraction_id ?? NONE);
+      setFractionId(analysis.output_fraction_id ?? "");
       setLabId(analysis.lab_partner_id ?? NONE);
       setMethod(analysis.method ?? NONE);
       setStatus(analysis.status);
@@ -107,7 +113,7 @@ export function AnalyticsDialog({
       return;
     }
     setCode("");
-    setFractionId(NONE);
+    setFractionId("");
     setLabId(NONE);
     setMethod(NONE);
     setStatus("ordered");
@@ -133,6 +139,17 @@ export function AnalyticsDialog({
     if (analysis?.method && !list.includes(analysis.method)) list.push(analysis.method);
     return list;
   }, [analysis?.method]);
+
+  // fraction_analyses.status ist ein freies Textfeld. Ein gespeicherter Wert
+  // außerhalb der Liste blieb im Auswahlknopf unsichtbar und wurde beim Speichern
+  // stillschweigend überschrieben - deshalb bleibt er als Eintrag erhalten.
+  const statusOptions = useMemo(() => {
+    const list = ANALYSIS_STATUSES.map((entry) => ({ id: entry.id as string, label: entry.label as string }));
+    if (analysis?.status && !list.some((entry) => entry.id === analysis.status)) {
+      list.push({ id: analysis.status, label: analysis.status });
+    }
+    return list;
+  }, [analysis?.status]);
 
   const selectedFraction = fractions.find((f) => f.id === fractionId) ?? null;
   const selectedSpec = selectedFraction?.target_fraction_id
@@ -202,7 +219,7 @@ export function AnalyticsDialog({
       setFormError("Es liegt keine Analysenummer vor. Bitte erneut erzeugen.");
       return;
     }
-    if (fractionId === NONE) {
+    if (!fractionId) {
       setFormError("Bitte die zu untersuchende Fraktion wählen.");
       return;
     }
@@ -271,7 +288,7 @@ export function AnalyticsDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
-                  {ANALYSIS_STATUSES.map((entry) => (
+                  {statusOptions.map((entry) => (
                     <SelectItem key={entry.id} value={entry.id}>
                       {entry.label}
                     </SelectItem>
@@ -290,7 +307,7 @@ export function AnalyticsDialog({
               <SelectContent className="bg-popover">
                 {fractions.length === 0 ? (
                   <SelectItem value={NONE} disabled>
-                    Keine Fraktionen vorhanden
+                    {fractionsLoading ? "Fraktionen werden geladen …" : "Keine Fraktionen vorhanden"}
                   </SelectItem>
                 ) : (
                   fractions.map((fraction) => (
@@ -310,7 +327,9 @@ export function AnalyticsDialog({
             )}
             {fractions.length === 0 && (
               <p className="text-xs text-muted-foreground">
-                Es existieren noch keine Fraktionen. Zuerst einen Versuch auswerten und Fraktionen erfassen.
+                {fractionsLoading
+                  ? "Fraktionen werden geladen …"
+                  : "Es existieren noch keine Fraktionen. Zuerst einen Versuch auswerten und Fraktionen erfassen."}
               </p>
             )}
           </div>
