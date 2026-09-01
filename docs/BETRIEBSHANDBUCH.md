@@ -5,6 +5,25 @@ von Hand** erledigt werden müssen, und der Konventionen, die dabei entstanden s
 
 ---
 
+## 0. Migrationen einspielen — Lovable tut das nicht von allein
+
+Lovable übernimmt Code aus GitHub, wendet aber **Migrationsdateien, die nicht
+von Lovable selbst erzeugt wurden, nicht auf die Datenbank an**. Symptom:
+`Could not find the table 'public.project_tasks' in the schema cache`.
+
+Deshalb liegen im Ordner `docs/sql/` zwei fertige Skripte für den
+*Supabase Dashboard → SQL Editor → New query*:
+
+| Datei | Zweck |
+|---|---|
+| `01_datenbank_aktualisieren.sql` | Alle sechs Migrationen in einer Datei. Beliebig oft ausführbar. |
+| `02_altdaten_loeschen.sql` | Löscht alle Datensätze vor dem Stichtag. Benutzerkonten und die Projektstammdaten bleiben. |
+
+Reihenfolge: erst `01`, dann `02`. Vor `02` ein Backup anlegen
+(*Database → Backups*) — das Löschen ist nicht umkehrbar.
+
+---
+
 ## 1. Selbstregistrierung endgültig schließen
 
 Im Code ist die Selbstregistrierung vollständig entfernt:
