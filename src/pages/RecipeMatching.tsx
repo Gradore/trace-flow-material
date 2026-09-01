@@ -55,6 +55,21 @@ const ADDITIVE_TYPES = [
   "Flammschutz", "Haftvermittler", "Gleitmittel", "Farbmasterbatch", "Schlagzähmodifizierer",
 ];
 
+// supabase-js reports every non-2xx edge function response as a generic FunctionsHttpError;
+// the handler's own German message only lives in the response body.
+const getFunctionErrorMessage = async (error: unknown): Promise<string> => {
+  const context = (error as { context?: Response })?.context;
+  if (context && typeof context.json === "function") {
+    try {
+      const body = await context.clone().json();
+      if (body?.error) return String(body.error);
+    } catch {
+      // body was not JSON - fall back to the generic message below
+    }
+  }
+  return error instanceof Error ? error.message : "Unbekannter Fehler";
+};
+
 export default function RecipeMatching() {
   const queryClient = useQueryClient();
 
@@ -85,7 +100,7 @@ export default function RecipeMatching() {
   const [selectedRecipe, setSelectedRecipe] = useState<any>(null);
 
   // Fetch orders
-  const { data: orders } = useQuery({
+  const { data: orders, isError: ordersError } = useQuery({
     queryKey: ['orders-for-matching'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -99,7 +114,7 @@ export default function RecipeMatching() {
   });
 
   // Fetch existing recipes
-  const { data: recipes } = useQuery({
+  const { data: recipes, isError: recipesError } = useQuery({
     queryKey: ['recipes'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -112,7 +127,7 @@ export default function RecipeMatching() {
   });
 
   // Fetch samples
-  const { data: samplesWithResults } = useQuery({
+  const { data: samplesWithResults, isError: samplesError } = useQuery({
     queryKey: ['samples-with-results'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -126,7 +141,7 @@ export default function RecipeMatching() {
             supplier
           )
         `)
-        .eq('status', 'completed')
+        .eq('status', 'approved')
         .order('analyzed_at', { ascending: false })
         .limit(20);
       if (error) throw error;
@@ -146,7 +161,9 @@ export default function RecipeMatching() {
         materialContext,
         compositionText && `Rezeptur: ${compositionText}`,
         processTemp && `Verarbeitungstemperatur: ${processTemp}°C`,
+        processPressure && `Druck: ${processPressure} bar`,
         processThroughput && `Durchsatz: ${processThroughput} kg/h`,
+        processNotes && `Verarbeitungshinweise: ${processNotes}`,
       ].filter(Boolean).join('\n');
 
       const { data, error } = await supabase.functions.invoke('analyze-datasheet', {
@@ -163,8 +180,8 @@ export default function RecipeMatching() {
       setAnalysisResult(data.result);
       toast.success('KI-Analyse abgeschlossen');
     },
-    onError: (error) => {
-      toast.error(`Analyse fehlgeschlagen: ${error.message}`);
+    onError: async (error) => {
+      toast.error(`Analyse fehlgeschlagen: ${await getFunctionErrorMessage(error)}`);
     },
     onSettled: () => {
       setIsAnalyzing(false);
@@ -174,28 +191,68 @@ export default function RecipeMatching() {
   // Save recipe
   const saveRecipeMutation = useMutation({
     mutationFn: async (recipe: any) => {
-      const { data: recipeId } = await supabase.rpc('generate_unique_id', { prefix: 'REZ' });
-      const { error } = await supabase
+      const { data: recipeId, error: idError } = await supabase.rpc('generate_unique_id', { prefix: 'REZ' });
+      if (idError) throw idError;
+      if (!recipeId) throw new Error('Rezeptur-ID konnte nicht erzeugt werden');
+
+      const compositionMap: Record<string, string> = recipe.composition
+        || components.reduce((acc: Record<string, string>, c) => {
+          acc[c.name] = `${c.concentration}%`;
+          return acc;
+        }, {});
+      // Store null instead of {} so the detail view shows its empty state
+      const composition = Object.keys(compositionMap).length > 0 ? compositionMap : null;
+
+      // The AI returns applications at the top level of the result, not per suggested recipe
+      const aiApplications: any[] = analysisResult?.applications ?? [];
+      const applications: string[] = recipe.applications
+        ?? aiApplications.map((a: any) => a.name).filter(Boolean);
+      const recommendedFor: string[] = recipe.recommended_for
+        ?? Array.from(new Set(aiApplications.map((a: any) => a.industry).filter(Boolean)));
+
+      const targetProperties: Record<string, string> = {
+        ...(analysisResult?.properties ?? {}),
+        ...(processTemp ? { Verarbeitungstemperatur: `${processTemp} °C` } : {}),
+        ...(processPressure ? { Druck: `${processPressure} bar` } : {}),
+        ...(processThroughput ? { Durchsatz: `${processThroughput} kg/h` } : {}),
+        ...(processNotes ? { Verarbeitungshinweise: processNotes } : {}),
+      };
+
+      const { data: inserted, error } = await supabase
         .from('recipes')
         .insert({
           recipe_id: recipeId,
           name: recipe.name || recipeName || 'Neue Rezeptur',
           description: recipe.description || recipeDescription,
-          material_composition: recipe.composition || components.reduce((acc: any, c) => {
-            acc[c.name] = `${c.concentration}%`;
-            return acc;
-          }, {}),
-          target_properties: analysisResult?.properties,
-          applications: recipe.applications || [],
-          recommended_for: recipe.recommended_for || [],
+          material_composition: composition,
+          target_properties: Object.keys(targetProperties).length > 0 ? targetProperties : null,
+          applications,
+          recommended_for: recommendedFor,
           confidence_score: recipe.match_score,
           source: 'ai_generated'
-        });
+        })
+        .select('id')
+        .single();
       if (error) throw error;
+
+      // Link the recipe to the selected order so the choice is not lost
+      if (selectedOrder && inserted?.id) {
+        const { error: matchError } = await supabase
+          .from('order_recipe_matches')
+          .insert({
+            order_id: selectedOrder,
+            recipe_id: inserted.id,
+            match_score: recipe.match_score ?? analysisResult?.confidence ?? null,
+            match_reason: recipe.reason ?? null,
+            status: 'suggested'
+          });
+        if (matchError) throw matchError;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
-      toast.success('Rezeptur gespeichert');
+      queryClient.invalidateQueries({ queryKey: ['order-recipe-matches'] });
+      toast.success(selectedOrder ? 'Rezeptur gespeichert und Auftrag zugeordnet' : 'Rezeptur gespeichert');
     },
     onError: (error) => {
       toast.error(`Fehler: ${error.message}`);
@@ -246,6 +303,7 @@ export default function RecipeMatching() {
     setProcessNotes("");
     setDatasheetText("");
     setMaterialContext("");
+    setSelectedOrder("");
     setAnalysisResult(null);
     setWizardStep("recipe");
   };
@@ -286,10 +344,19 @@ export default function RecipeMatching() {
               </TabsList>
 
               <TabsContent value="recipes">
-                {recipes?.length ? (
+                {recipesError ? (
+                  <Card className="border-destructive/40">
+                    <CardContent className="p-8 text-center">
+                      <p className="font-medium text-destructive">Rezepturen konnten nicht geladen werden</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Bitte laden Sie die Seite neu oder prüfen Sie Ihre Berechtigung.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : recipes?.length ? (
                   <div className="space-y-3">
                     {recipes.map((recipe) => {
-                      const hasComposition = !!recipe.material_composition;
+                      const hasComposition = Object.keys((recipe.material_composition ?? {}) as Record<string, unknown>).length > 0;
                       return (
                         <button
                           key={recipe.id}
@@ -354,7 +421,11 @@ export default function RecipeMatching() {
                     <CardTitle>Abgeschlossene Laborproben</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {samplesWithResults?.length ? (
+                    {samplesError ? (
+                      <p className="text-center py-8 text-destructive">
+                        Laborproben konnten nicht geladen werden.
+                      </p>
+                    ) : samplesWithResults?.length ? (
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -440,7 +511,7 @@ export default function RecipeMatching() {
                       <CardTitle className="text-sm">Zusammensetzung</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      {selectedRecipe.material_composition ? (
+                      {Object.keys((selectedRecipe.material_composition ?? {}) as Record<string, unknown>).length > 0 ? (
                         <div className="space-y-2 text-sm">
                           {Object.entries(selectedRecipe.material_composition as Record<string, string>).map(([key, value]) => (
                             <div key={key} className="flex justify-between py-1.5 border-b border-border/50 last:border-0">
@@ -487,7 +558,7 @@ export default function RecipeMatching() {
               <TabsContent value="properties">
                 <Card>
                   <CardContent className="p-6">
-                    {selectedRecipe.target_properties ? (
+                    {Object.keys((selectedRecipe.target_properties ?? {}) as Record<string, unknown>).length > 0 ? (
                       <div className="space-y-2 text-sm">
                         {Object.entries(selectedRecipe.target_properties as Record<string, string>).map(([key, value]) => (
                           value && (
@@ -759,6 +830,9 @@ export default function RecipeMatching() {
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Auftrag zuordnen (optional)</Label>
+                      {ordersError && (
+                        <p className="text-xs text-destructive">Aufträge konnten nicht geladen werden.</p>
+                      )}
                       <Select value={selectedOrder} onValueChange={setSelectedOrder}>
                         <SelectTrigger>
                           <SelectValue placeholder="Auftrag auswählen..." />
@@ -848,7 +922,12 @@ export default function RecipeMatching() {
                                       </Badge>
                                     </div>
                                     <div className="flex gap-2 mt-3">
-                                      <Button size="sm" variant="outline" onClick={() => saveRecipeMutation.mutate(recipe)}>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={saveRecipeMutation.isPending}
+                                        onClick={() => saveRecipeMutation.mutate(recipe)}
+                                      >
                                         <CheckCircle className="h-3 w-3 mr-1" /> Speichern
                                       </Button>
                                     </div>
@@ -898,16 +977,22 @@ export default function RecipeMatching() {
                 ) : (
                   <Button
                     onClick={() => {
-                      saveRecipeMutation.mutate({
-                        name: recipeName,
-                        description: recipeDescription,
-                        match_score: analysisResult?.confidence,
-                      });
-                      setActiveView("list");
+                      saveRecipeMutation.mutate(
+                        {
+                          name: recipeName,
+                          description: recipeDescription,
+                          match_score: analysisResult?.confidence,
+                        },
+                        { onSuccess: () => setActiveView("list") }
+                      );
                     }}
-                    disabled={!recipeName.trim()}
+                    disabled={!recipeName.trim() || saveRecipeMutation.isPending}
                   >
-                    Speichern & Fertig
+                    {saveRecipeMutation.isPending ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Speichern...</>
+                    ) : (
+                      "Speichern & Fertig"
+                    )}
                   </Button>
                 )}
               </div>

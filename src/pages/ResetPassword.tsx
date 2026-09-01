@@ -30,35 +30,33 @@ export default function ResetPassword() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check if we have a valid recovery session
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      // Check if this is a recovery session (user came from email link)
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // Listen first: the recovery token in the URL hash is processed
+    // asynchronously by the SDK and arrives as an auth state change.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        setIsValidSession(true);
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setIsValidSession(true);
-      } else {
-        // Listen for auth state changes (recovery token processing)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-          if (event === 'PASSWORD_RECOVERY' && session) {
-            setIsValidSession(true);
-          } else if (event === 'SIGNED_IN' && session) {
-            setIsValidSession(true);
-          }
-        });
-
-        // Give it a moment to process the URL hash
-        setTimeout(() => {
-          if (isValidSession === null) {
-            setIsValidSession(false);
-          }
-        }, 2000);
-
-        return () => subscription.unsubscribe();
+        return;
       }
-    };
 
-    checkSession();
+      // Give it a moment to process the URL hash. The functional setter reads
+      // the current value instead of the one captured when the timer was set.
+      fallbackTimer = setTimeout(() => {
+        setIsValidSession((current) => (current === null ? false : current));
+      }, 2000);
+    });
+
+    return () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -184,7 +182,7 @@ export default function ResetPassword() {
             <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
               <Recycle className="h-6 w-6 text-primary" />
             </div>
-            <span className="text-2xl font-bold">RecyTrack</span>
+            <span className="text-2xl font-bold">RekuFLOW</span>
           </div>
           <CardTitle>Neues Passwort festlegen</CardTitle>
           <CardDescription>

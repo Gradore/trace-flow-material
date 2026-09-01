@@ -7,6 +7,32 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// German/English filler words that carry no signal when matching company records.
+const STOP_WORDS = new Set([
+  'der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen',
+  'und', 'oder', 'aber', 'mit', 'ohne', 'fuer', 'für', 'von', 'vom', 'aus', 'bei', 'nach', 'auf',
+  'ist', 'sind', 'war', 'waren', 'wird', 'werden', 'kann', 'koennen', 'können', 'nicht', 'auch',
+  'sehr', 'mehr', 'sowie', 'bzw', 'ca', 'etwa', 'the', 'and', 'for', 'with', 'from',
+  'material', 'materialien', 'werkstoff', 'kunststoff', 'produkt', 'produkte', 'typ', 'type',
+  'wert', 'werte', 'einheit', 'norm', 'din', 'iso', 'astm', 'min', 'max', 'mpa', 'gpa', 'kpa',
+  'kg', 'kgh', 'bar', 'mm', 'cm', 'grad', 'celsius', 'prozent', 'gew',
+  'gmbh', 'mbh', 'kg-', 'ag', 'ohg', 'kgaa', 'ltd', 'inc', 'co', 'gesellschaft',
+]);
+
+/**
+ * Turns a free-text query (a keyword or a whole pasted datasheet) into a short list of
+ * distinctive search terms. Numbers, stop words and very short tokens are dropped so a
+ * long datasheet cannot dilute the score.
+ */
+function extractSearchTerms(query: unknown): string[] {
+  if (typeof query !== 'string') return [];
+  const tokens = query
+    .toLowerCase()
+    .split(/[^a-z0-9äöüß]+/)
+    .filter((t) => t.length >= 3 && !/^\d/.test(t) && !STOP_WORDS.has(t));
+  return Array.from(new Set(tokens)).slice(0, 25);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -17,12 +43,30 @@ serve(async (req) => {
 
   try {
     const { materialProperties, searchQuery, includeExternal } = await req.json();
-    
+
+    let searchTerms = extractSearchTerms(searchQuery);
+    // Short queries like "PP" are filtered out by the token rules - keep them as one term.
+    if (searchTerms.length === 0 && typeof searchQuery === 'string' && searchQuery.trim().length >= 2) {
+      searchTerms = [searchQuery.trim().toLowerCase()];
+    }
+    if (searchTerms.length === 0) {
+      return new Response(JSON.stringify({
+        error: 'Bitte geben Sie einen aussagekräftigen Suchbegriff ein.',
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    // At least two hits are required for long inputs (e.g. a pasted datasheet) so a single
+    // incidental word does not match every company in the address book.
+    const requiredHits = searchTerms.length > 8 ? 2 : 1;
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const results: any[] = [];
+    let internalError: string | null = null;
 
     // 1. Interne Suche in der companies-Tabelle
     console.log('Searching internal companies...');
@@ -48,19 +92,26 @@ serve(async (req) => {
         )
       `)
       .eq('status', 'active')
-      .or(`type.eq.customer,type.eq.supplier`);
+      .in('type', ['customer', 'supplier', 'both']);
 
     if (companyError) {
       console.error('Error fetching internal companies:', companyError);
+      internalError = 'Die interne Firmensuche ist fehlgeschlagen.';
     } else if (internalCompanies) {
       // Einfache Textsuche in den internen Daten
-      const searchTerms = searchQuery.toLowerCase().split(' ');
-      
       for (const company of internalCompanies) {
-        const companyText = `${company.name} ${company.notes || ''} ${company.city || ''}`.toLowerCase();
-        const matchScore = searchTerms.filter((term: string) => companyText.includes(term)).length / searchTerms.length;
-        
-        if (matchScore > 0.2) {
+        const companyText = [
+          company.name,
+          company.notes || '',
+          company.city || '',
+          company.address || '',
+          company.country || '',
+        ].join(' ').toLowerCase();
+        const matchedTerms = searchTerms.filter((term) => companyText.includes(term));
+        // Score by how many distinct terms were found, capped so a short query can reach 1.0.
+        const matchScore = Math.min(1, matchedTerms.length / Math.min(searchTerms.length, 4));
+
+        if (matchedTerms.length >= requiredHits) {
           const primaryContact = company.contacts?.find((c: any) => c.is_primary) || company.contacts?.[0];
           
           results.push({
@@ -178,6 +229,7 @@ Fokussiere auf den deutschsprachigen Raum (DACH) und Europa.`;
     return new Response(JSON.stringify({ 
       success: true,
       results,
+      internalError,
       internalCount: results.filter(r => r.source === 'internal').length,
       externalCount: results.filter(r => r.source !== 'internal').length
     }), {

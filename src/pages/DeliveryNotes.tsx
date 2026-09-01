@@ -139,7 +139,7 @@ export default function DeliveryNotes() {
     params.delete("id");
     setSearchParams(params, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deepLinkId, isLoading, deliveryNotes]);
+  }, [deepLinkId, isLoading, isError, deliveryNotes]);
 
   // Older rows stored a (never resolvable) public URL instead of the object
   // path; storage.download() needs the bucket-relative path.

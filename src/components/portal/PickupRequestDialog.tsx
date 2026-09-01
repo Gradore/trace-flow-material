@@ -21,7 +21,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { de } from "date-fns/locale";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -47,6 +47,7 @@ export function PickupRequestDialog({
 }: PickupRequestDialogProps) {
   const [formData, setFormData] = useState({
     material_description: "",
+    container_code: "",
     weight_kg: "",
     pickup_address: "",
     preferred_date: undefined as Date | undefined,
@@ -62,11 +63,29 @@ export function PickupRequestDialog({
 
   const mutation = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Resolve the printed container code to the container row; the free-text
+      // value is only ever compared against the container_id text column.
+      let containerId: string | null = null;
+      const containerCode = data.container_code.trim();
+      if (containerCode) {
+        const { data: container, error: containerError } = await supabase
+          .from("containers")
+          .select("id")
+          .eq("container_id", containerCode)
+          .maybeSingle();
+        if (containerError) throw containerError;
+        if (!container) {
+          throw new Error(`Container „${containerCode}“ wurde nicht gefunden.`);
+        }
+        containerId = container.id;
+      }
+
       const requestId = await generateRequestId();
       const { error } = await supabase.from("pickup_requests").insert({
         request_id: requestId,
         company_id: companyId,
         contact_id: contactId,
+        container_id: containerId,
         material_description: data.material_description,
         weight_kg: data.weight_kg ? parseFloat(data.weight_kg) : null,
         pickup_address: data.pickup_address || null,
@@ -90,6 +109,7 @@ export function PickupRequestDialog({
   const resetForm = () => {
     setFormData({
       material_description: "",
+      container_code: "",
       weight_kg: "",
       pickup_address: "",
       preferred_date: undefined,
@@ -126,6 +146,18 @@ export function PickupRequestDialog({
             />
           </div>
 
+          <div className="space-y-2">
+            <Label>Container-ID</Label>
+            <Input
+              value={formData.container_code}
+              onChange={(e) => setFormData({ ...formData, container_code: e.target.value })}
+              placeholder="z.B. BB-0001"
+            />
+            <p className="text-xs text-muted-foreground">
+              Optional - ID des bereitgestellten Behälters (siehe Etikett)
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Geschätztes Gewicht (kg)</Label>
@@ -160,7 +192,7 @@ export function PickupRequestDialog({
                     mode="single"
                     selected={formData.preferred_date}
                     onSelect={(date) => setFormData({ ...formData, preferred_date: date })}
-                    disabled={(date) => date < new Date()}
+                    disabled={(date) => date < startOfDay(new Date())}
                     locale={de}
                   />
                 </PopoverContent>

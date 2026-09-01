@@ -49,8 +49,9 @@ interface OutputMaterial {
   destination: string | null;
 }
 
-// There is no /delivery-notes/:id route - the list page resolves ?id=.
-const buildDeliveryNoteQRUrl = (noteId: string) =>
+// There is no /delivery-notes/:id route; the list page resolves ?id= and opens
+// the matching note, so the printed QR code lands on the record itself.
+const buildDeliveryNoteDeepLink = (noteId: string) =>
   `${window.location.origin}/delivery-notes?id=${encodeURIComponent(noteId)}`;
 
 export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogProps) {
@@ -183,7 +184,7 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
       }
       
       const noteId = noteIdData;
-      const qrUrl = buildDeliveryNoteQRUrl(noteId);
+      const qrUrl = buildDeliveryNoteDeepLink(noteId);
       
       // Generate PDF
       let pdfBlob: Blob;
@@ -446,6 +447,15 @@ export function DeliveryNoteDialog({ open, onOpenChange }: DeliveryNoteDialogPro
                 onChange={(e) => setFormData({ ...formData, wasteCode: e.target.value })}
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Chargen-Referenz</Label>
+            <Input
+              placeholder="Wird bei Verknüpfung automatisch übernommen"
+              value={formData.batchReference}
+              onChange={(e) => setFormData({ ...formData, batchReference: e.target.value })}
+            />
           </div>
 
           <div className="p-4 rounded-lg bg-info/10 border border-info/20">

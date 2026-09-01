@@ -27,6 +27,21 @@ import {
   Save
 } from "lucide-react";
 
+// supabase-js reports every non-2xx edge function response as a generic FunctionsHttpError;
+// the handler's own German message only lives in the response body.
+const getFunctionErrorMessage = async (error: unknown): Promise<string> => {
+  const context = (error as { context?: Response })?.context;
+  if (context && typeof context.json === "function") {
+    try {
+      const body = await context.clone().json();
+      if (body?.error) return String(body.error);
+    } catch {
+      // body was not JSON - fall back to the generic message below
+    }
+  }
+  return error instanceof Error ? error.message : "Unbekannter Fehler";
+};
+
 export default function SalesSearch() {
   const queryClient = useQueryClient();
   const [datasheetText, setDatasheetText] = useState("");
@@ -37,7 +52,7 @@ export default function SalesSearch() {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
 
   // Fetch saved manufacturer matches
-  const { data: savedMatches } = useQuery({
+  const { data: savedMatches, isError: savedMatchesError } = useQuery({
     queryKey: ['manufacturer-matches'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -49,6 +64,19 @@ export default function SalesSearch() {
       return data;
     }
   });
+
+  // A pasted datasheet is far too noisy as a search query - reduce it to a few distinctive
+  // terms so the internal company match can actually reach the backend's score threshold.
+  const buildSearchTerms = () => {
+    if (searchQuery.trim()) return searchQuery.trim();
+    const terms = Array.from(new Set(
+      datasheetText
+        .toLowerCase()
+        .split(/[^a-z0-9äöüß]+/)
+        .filter((t) => t.length >= 4 && !/^\d/.test(t))
+    )).slice(0, 12);
+    return terms.join(' ');
+  };
 
   // Analyze datasheet for applications
   const analyzeMutation = useMutation({
@@ -79,8 +107,8 @@ export default function SalesSearch() {
       setSearchResults(results);
       toast.success(`${results.length} potenzielle Kunden gefunden`);
     },
-    onError: (error) => {
-      toast.error(`Analyse fehlgeschlagen: ${error.message}`);
+    onError: async (error) => {
+      toast.error(`Analyse fehlgeschlagen: ${await getFunctionErrorMessage(error)}`);
     },
     onSettled: () => {
       setIsSearching(false);
@@ -90,10 +118,14 @@ export default function SalesSearch() {
   // Search manufacturers
   const searchMutation = useMutation({
     mutationFn: async () => {
+      const query = buildSearchTerms();
+      if (!query) {
+        throw new Error('Bitte geben Sie einen Suchbegriff oder ein Datenblatt ein.');
+      }
       setIsSearching(true);
       const { data, error } = await supabase.functions.invoke('search-manufacturers', {
         body: {
-          searchQuery: searchQuery || datasheetText,
+          searchQuery: query,
           materialProperties: analysisResult?.composition,
           includeExternal
         }
@@ -103,10 +135,13 @@ export default function SalesSearch() {
     },
     onSuccess: (data) => {
       setSearchResults(data.results || []);
+      if (data.internalError) {
+        toast.warning(data.internalError);
+      }
       toast.success(`${data.internalCount} interne, ${data.externalCount} externe Ergebnisse`);
     },
-    onError: (error) => {
-      toast.error(`Suche fehlgeschlagen: ${error.message}`);
+    onError: async (error) => {
+      toast.error(`Suche fehlgeschlagen: ${await getFunctionErrorMessage(error)}`);
     },
     onSettled: () => {
       setIsSearching(false);
@@ -128,7 +163,9 @@ export default function SalesSearch() {
           contact_phone: match.contact_phone,
           website: match.website,
           address: match.address,
-          notes: match.notes,
+          notes: [match.industry ? `Branche: ${match.industry}` : null, match.notes]
+            .filter(Boolean)
+            .join(' | ') || null,
           source: match.source,
           confidence_score: match.confidence_score,
           company_id: match.company_id
@@ -433,7 +470,11 @@ export default function SalesSearch() {
                 <CardTitle>Gespeicherte Kontakte</CardTitle>
               </CardHeader>
               <CardContent>
-                {savedMatches?.length ? (
+                {savedMatchesError ? (
+                  <p className="text-center py-8 text-destructive">
+                    Gespeicherte Kontakte konnten nicht geladen werden.
+                  </p>
+                ) : savedMatches?.length ? (
                   <Table>
                     <TableHeader>
                       <TableRow>

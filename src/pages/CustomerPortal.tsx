@@ -14,24 +14,37 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Package, ShoppingCart, FileText, Plus, Eye } from "lucide-react";
+import { Package, ShoppingCart, FileText, Plus, Eye, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { CustomerOrderDialog } from "@/components/portal/CustomerOrderDialog";
+
+// Same vocabulary as src/components/output/OutputMaterialDialog.tsx
+const OUTPUT_TYPE_LABELS: Record<string, string> = {
+  glass_fiber: "Recycelte Glasfasern",
+  resin_powder: "Harzpulver",
+  pp_regrind: "PP Regranulat",
+  pa_regrind: "PA Regranulat",
+};
 
 export default function CustomerPortal() {
   const { user } = useAuth();
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
 
   // Get customer's company
-  const { data: myContact } = useQuery({
+  const {
+    data: myContact,
+    isLoading: contactLoading,
+    isError: contactError,
+  } = useQuery({
     queryKey: ["my-contact", user?.id],
     queryFn: async () => {
+      // maybeSingle: a missing contact row is a valid "not linked yet" state, not an error
       const { data, error } = await supabase
         .from("contacts")
         .select("*, company:companies(*)")
         .eq("user_id", user?.id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -39,7 +52,7 @@ export default function CustomerPortal() {
   });
 
   // Get available stock (output materials in_stock)
-  const { data: stock, isLoading: stockLoading } = useQuery({
+  const { data: stock, isLoading: stockLoading, isError: stockError } = useQuery({
     queryKey: ["available-stock"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -53,7 +66,7 @@ export default function CustomerPortal() {
   });
 
   // Get customer's orders
-  const { data: orders, isLoading: ordersLoading } = useQuery({
+  const { data: orders, isLoading: ordersLoading, isError: ordersError } = useQuery({
     queryKey: ["my-orders", myContact?.company_id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -67,33 +80,41 @@ export default function CustomerPortal() {
     enabled: !!myContact?.company_id,
   });
 
-  // Get customer's documents (delivery notes)
-  const { data: documents, isLoading: docsLoading } = useQuery({
-    queryKey: ["my-documents", myContact?.company_id],
+  // Get customer's documents (delivery notes).
+  // delivery_notes has no company_id, so the free-text partner_name is matched
+  // case-insensitively; PostgREST wildcards are escaped so a company name can
+  // never widen the filter.
+  const companyName = myContact?.company?.name ?? "";
+  const { data: documents, isLoading: docsLoading, isError: docsError } = useQuery({
+    queryKey: ["my-documents", companyName],
     queryFn: async () => {
+      const escapedName = companyName.replace(/[%_]/g, "\\$&");
       const { data, error } = await supabase
         .from("delivery_notes")
         .select("*")
-        .eq("partner_name", myContact?.company?.name)
+        .ilike("partner_name", escapedName)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
-    enabled: !!myContact?.company?.name,
+    enabled: !!companyName,
   });
 
+  // Status vocabulary as written by src/pages/Orders.tsx
   const getOrderStatusBadge = (status: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
       pending: "secondary",
       in_production: "default",
-      ready: "default",
+      produced: "default",
+      shipped: "default",
       delivered: "outline",
       cancelled: "destructive",
     };
     const labels: Record<string, string> = {
       pending: "Ausstehend",
       in_production: "In Produktion",
-      ready: "Fertig",
+      produced: "Produziert",
+      shipped: "Versendet",
       delivered: "Geliefert",
       cancelled: "Storniert",
     };
@@ -110,6 +131,30 @@ export default function CustomerPortal() {
     acc[key].totalWeight += Number(item.weight_kg);
     return acc;
   }, {} as Record<string, { count: number; totalWeight: number }>);
+
+  // Only decide about access once the contact query has settled
+  if (contactLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (contactError) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle>Daten konnten nicht geladen werden</CardTitle>
+            <CardDescription>
+              Ihre Firmenzuordnung konnte nicht abgerufen werden. Bitte laden Sie die Seite neu.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
   if (!myContact) {
     return (
@@ -153,7 +198,7 @@ export default function CustomerPortal() {
             {stockByType && Object.entries(stockByType).map(([type, data]) => (
               <Card key={type}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">{type}</CardTitle>
+                  <CardTitle className="text-lg">{OUTPUT_TYPE_LABELS[type] || type}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{data.totalWeight.toLocaleString("de-DE")} kg</div>
@@ -173,6 +218,10 @@ export default function CustomerPortal() {
             <CardContent>
               {stockLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Lädt...</div>
+              ) : stockError ? (
+                <div className="text-center py-8 text-destructive">
+                  Lagerbestand konnte nicht geladen werden.
+                </div>
               ) : stock?.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Aktuell keine Materialien verfügbar
@@ -193,7 +242,9 @@ export default function CustomerPortal() {
                       {stock?.map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-mono text-sm">{item.batch_id}</TableCell>
-                          <TableCell>{item.output_type}</TableCell>
+                          <TableCell>
+                            {OUTPUT_TYPE_LABELS[item.output_type] || item.output_type}
+                          </TableCell>
                           <TableCell>
                             {item.quality_grade ? (
                               <Badge variant="outline">{item.quality_grade}</Badge>
@@ -226,6 +277,10 @@ export default function CustomerPortal() {
             <CardContent>
               {ordersLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Lädt...</div>
+              ) : ordersError ? (
+                <div className="text-center py-8 text-destructive">
+                  Aufträge konnten nicht geladen werden.
+                </div>
               ) : orders?.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Keine Aufträge vorhanden
@@ -247,7 +302,7 @@ export default function CustomerPortal() {
                       {orders?.map((order) => (
                         <TableRow key={order.id}>
                           <TableCell className="font-mono text-sm">{order.order_id}</TableCell>
-                          <TableCell>{order.product_name}</TableCell>
+                          <TableCell>{order.product_name || "-"}</TableCell>
                           <TableCell>{Number(order.quantity_kg).toLocaleString("de-DE")} kg</TableCell>
                           <TableCell>
                             {format(new Date(order.production_deadline), "dd.MM.yyyy", { locale: de })}
@@ -277,9 +332,17 @@ export default function CustomerPortal() {
             <CardContent>
               {docsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Lädt...</div>
+              ) : docsError ? (
+                <div className="text-center py-8 text-destructive">
+                  Dokumente konnten nicht geladen werden.
+                </div>
               ) : documents?.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Keine Dokumente vorhanden
+                <div className="text-center py-8 text-muted-foreground space-y-1">
+                  <p>Keine Dokumente vorhanden</p>
+                  <p className="text-sm">
+                    Lieferscheine werden über den Firmennamen „{companyName}“ zugeordnet. Fehlt ein
+                    Dokument, wenden Sie sich bitte an Ihren Ansprechpartner.
+                  </p>
                 </div>
               ) : (
                 <div className="rounded-md border overflow-x-auto">

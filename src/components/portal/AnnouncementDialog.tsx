@@ -21,7 +21,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { de } from "date-fns/locale";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -279,7 +279,7 @@ export function AnnouncementDialog({
                     mode="single"
                     selected={formData.preferred_date}
                     onSelect={(date) => setFormData({ ...formData, preferred_date: date })}
-                    disabled={(date) => date < new Date()}
+                    disabled={(date) => date < startOfDay(new Date())}
                     locale={de}
                   />
                 </PopoverContent>

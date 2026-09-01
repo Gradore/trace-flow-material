@@ -25,14 +25,8 @@ import { Archive, Tag, FlaskConical, Search, Download, Filter, Loader2, AlertCir
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { generateLabelPDF, downloadPDF } from "@/lib/pdf";
+import { buildContainerQRUrl, buildOutputMaterialQRUrl } from "@/lib/qrcode";
 import { toast } from "@/hooks/use-toast";
-
-// There are no /containers/:id or /output/:id routes. The container list
-// resolves ?id=<uuid|Container-ID>; the output list has no deep link yet, so
-// the label points at the plain list route instead of a 404.
-const buildContainerLabelUrl = (containerId: string) =>
-  `${window.location.origin}/containers?id=${encodeURIComponent(containerId)}`;
-const buildOutputLabelUrl = () => `${window.location.origin}/output`;
 
 interface LabelRecord {
   id: string;
@@ -198,10 +192,12 @@ export default function ArchivePage() {
   const handleDownloadLabel = async (label: LabelRecord) => {
     setIsGenerating(label.id);
     try {
+      // The shared builders point at /scan?code=<ID>; there are no
+      // /containers/:id or /output/:id detail routes to link to.
       const qrUrl =
         label.type === "container"
-          ? buildContainerLabelUrl(label.record_id)
-          : buildOutputLabelUrl();
+          ? buildContainerQRUrl(label.record_id)
+          : buildOutputMaterialQRUrl(label.record_id);
 
       const pdfBlob = await generateLabelPDF(
         {

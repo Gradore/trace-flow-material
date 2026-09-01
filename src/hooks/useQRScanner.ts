@@ -88,61 +88,77 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
 }
 
 /**
+ * Prefixes handed to the generate_unique_id RPC across the app, mapped to the
+ * record type the scanner resolves them against.
+ */
+const PREFIX_TYPE_MAP: Record<string, string> = {
+  BB: 'containers',
+  BX: 'containers',
+  GX: 'containers',
+  CT: 'containers',
+  ME: 'intake',
+  VRB: 'processing',
+  PRB: 'sampling',
+  RST: 'sampling',
+  OUT: 'output',
+  AUS: 'output',
+  LS: 'delivery',
+};
+
+const ID_PATTERN = new RegExp(`(${Object.keys(PREFIX_TYPE_MAP).join('|')})-\\d{4}-\\d{4}`);
+
+/**
+ * Path segments used by QR codes printed before the /scan resolver existed,
+ * normalised to the record types above.
+ */
+const PATH_TYPE_MAP: Record<string, string> = {
+  containers: 'containers',
+  intake: 'intake',
+  'material-intake': 'intake',
+  processing: 'processing',
+  sampling: 'sampling',
+  'retention-samples': 'sampling',
+  output: 'output',
+  'output-materials': 'output',
+  delivery: 'delivery',
+  'delivery-notes': 'delivery',
+};
+
+function parseDirectId(value: string): { type: string; id: string } | null {
+  const idMatch = value.match(ID_PATTERN);
+  if (!idMatch) return null;
+
+  return {
+    type: PREFIX_TYPE_MAP[idMatch[1]] || 'unknown',
+    id: idMatch[0],
+  };
+}
+
+/**
  * Parse a RekuFLOW QR code URL to extract the type and ID
  */
 export function parseRekuFLOWQRCode(url: string): { type: string; id: string } | null {
   try {
     const urlObj = new URL(url);
+
+    // Current QR codes point at /scan?code=<id>
+    const code = urlObj.searchParams.get('code');
+    if (code) {
+      return parseDirectId(code);
+    }
+
+    // Legacy QR codes point at /<type>/<id>
     const pathParts = urlObj.pathname.split('/').filter(Boolean);
-    
     if (pathParts.length >= 2) {
-      return {
-        type: pathParts[0],
-        id: pathParts[1],
-      };
+      const type = PATH_TYPE_MAP[pathParts[0]];
+      if (type) {
+        return { type, id: decodeURIComponent(pathParts[1]) };
+      }
     }
-    
-    // Handle direct IDs (e.g., BB-2024-0001)
-    const idMatch = url.match(/(BB|GX|BX|ME|VRB|PRB|OUT|LS)-\d{4}-\d{4}/);
-    if (idMatch) {
-      const prefix = idMatch[1];
-      const typeMap: Record<string, string> = {
-        BB: 'containers',
-        GX: 'containers',
-        BX: 'containers',
-        ME: 'intake',
-        VRB: 'processing',
-        PRB: 'sampling',
-        OUT: 'output',
-        LS: 'delivery-notes',
-      };
-      return {
-        type: typeMap[prefix] || 'unknown',
-        id: idMatch[0],
-      };
-    }
-    
-    return null;
+
+    return parseDirectId(url);
   } catch {
-    // Try to parse as direct ID
-    const idMatch = url.match(/(BB|GX|BX|ME|VRB|PRB|OUT|LS)-\d{4}-\d{4}/);
-    if (idMatch) {
-      const prefix = idMatch[1];
-      const typeMap: Record<string, string> = {
-        BB: 'containers',
-        GX: 'containers',
-        BX: 'containers',
-        ME: 'intake',
-        VRB: 'processing',
-        PRB: 'sampling',
-        OUT: 'output',
-        LS: 'delivery-notes',
-      };
-      return {
-        type: typeMap[prefix] || 'unknown',
-        id: idMatch[0],
-      };
-    }
-    return null;
+    // Not a URL - try to parse as direct ID (e.g., BB-2024-0001)
+    return parseDirectId(url);
   }
 }

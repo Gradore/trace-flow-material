@@ -1,9 +1,8 @@
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -20,19 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { UserCheck, UserX, Users, Clock, Check, X, Building2 } from "lucide-react";
+import { Users, Clock, Building2, Info, ShieldAlert, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
+import { useUserRole } from "@/hooks/useUserRole";
 
 type PendingRegistration = {
   id: string;
@@ -43,13 +35,15 @@ type PendingRegistration = {
   company_name: string | null;
   company_id: string | null;
   status: string;
+  rejection_reason: string | null;
+  reviewed_at: string | null;
   created_at: string;
 };
 
 type Profile = {
   id: string;
   user_id: string;
-  email: string;
+  email: string | null;
   name: string;
   role: string;
   created_at: string;
@@ -62,29 +56,63 @@ type UserRole = {
   created_at: string;
 };
 
-export default function AdminUsers() {
-  const [selectedRegistration, setSelectedRegistration] = useState<PendingRegistration | null>(null);
-  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState("");
-  const [assignCompanyId, setAssignCompanyId] = useState("");
-  const queryClient = useQueryClient();
+type AppRole =
+  | "admin"
+  | "betriebsleiter"
+  | "intake"
+  | "production"
+  | "qa"
+  | "customer"
+  | "supplier"
+  | "logistics";
 
-  // Get pending registrations
-  const { data: pendingRegistrations, isLoading: pendingLoading } = useQuery({
+const roleOptions: { value: AppRole; label: string }[] = [
+  { value: "admin", label: "Admin" },
+  { value: "betriebsleiter", label: "Betriebsleiter" },
+  { value: "intake", label: "Annahme" },
+  { value: "production", label: "Produktion" },
+  { value: "qa", label: "QS/Labor" },
+  { value: "customer", label: "Kunde" },
+  { value: "supplier", label: "Lieferant" },
+  { value: "logistics", label: "Logistik" },
+];
+
+const registrationStatusLabels: Record<string, string> = {
+  pending: "Offen",
+  approved: "Freigegeben",
+  rejected: "Abgelehnt",
+};
+
+export default function AdminUsers() {
+  const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
+  const { isAdmin, isLoading: roleLoading } = useUserRole();
+
+  // Historical registration requests. Self-registration is switched off, so no
+  // new rows can arrive here - the table is kept for documentation only.
+  const {
+    data: registrations,
+    isLoading: registrationsLoading,
+    isError: registrationsError,
+  } = useQuery({
     queryKey: ["pending-registrations"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("pending_registrations")
         .select("*")
-        .eq("status", "pending")
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return data as PendingRegistration[];
     },
+    enabled: isAdmin,
   });
 
   // Get all profiles
-  const { data: profiles, isLoading: profilesLoading } = useQuery({
+  const {
+    data: profiles,
+    isLoading: profilesLoading,
+    isError: profilesError,
+  } = useQuery({
     queryKey: ["all-profiles"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -94,10 +122,11 @@ export default function AdminUsers() {
       if (error) throw error;
       return data as Profile[];
     },
+    enabled: isAdmin,
   });
 
   // Get all user roles
-  const { data: userRoles } = useQuery({
+  const { data: userRoles, isError: userRolesError } = useQuery({
     queryKey: ["user-roles"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -106,136 +135,24 @@ export default function AdminUsers() {
       if (error) throw error;
       return data as UserRole[];
     },
+    enabled: isAdmin,
   });
 
-  // Get companies for assignment
-  const { data: companies } = useQuery({
-    queryKey: ["companies-list"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("companies")
-        .select("id, name, type")
-        .eq("status", "active")
-        .order("name");
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const approveMutation = useMutation({
-    mutationFn: async ({ registration, companyId }: { registration: PendingRegistration; companyId?: string }) => {
-      // Get current user for reviewer
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: reviewerProfile } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("user_id", user?.id)
-        .single();
-
-      // Update registration status
-      const { error: updateError } = await supabase
-        .from("pending_registrations")
-        .update({
-          status: "approved",
-          reviewed_by: reviewerProfile?.id,
-          reviewed_at: new Date().toISOString(),
-          company_id: companyId || null,
-        })
-        .eq("id", registration.id);
-      if (updateError) throw updateError;
-
-      // Add user role
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert({
-          user_id: registration.user_id,
-          role: registration.requested_role as "admin" | "intake" | "production" | "qa" | "customer" | "supplier" | "logistics",
-        });
-      if (roleError) throw roleError;
-
-      // If company assigned, create contact entry
-      if (companyId) {
-        const nameParts = registration.name.split(" ");
-        const firstName = nameParts[0] || registration.name;
-        const lastName = nameParts.slice(1).join(" ") || "";
-        
-        const { error: contactError } = await supabase
-          .from("contacts")
-          .insert({
-            company_id: companyId,
-            user_id: registration.user_id,
-            first_name: firstName,
-            last_name: lastName,
-            email: registration.email,
-            is_primary: false,
-          });
-        if (contactError) throw contactError;
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pending-registrations"] });
-      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
-      toast.success("Benutzer freigegeben");
-      setSelectedRegistration(null);
-      setAssignCompanyId("");
-    },
-    onError: (error) => {
-      toast.error("Fehler: " + error.message);
-    },
-  });
-
-  const rejectMutation = useMutation({
-    mutationFn: async ({ registration, reason }: { registration: PendingRegistration; reason: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: reviewerProfile } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("user_id", user?.id)
-        .single();
-
-      const { error } = await supabase
-        .from("pending_registrations")
-        .update({
-          status: "rejected",
-          reviewed_by: reviewerProfile?.id,
-          reviewed_at: new Date().toISOString(),
-          rejection_reason: reason,
-        })
-        .eq("id", registration.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pending-registrations"] });
-      toast.success("Anfrage abgelehnt");
-      setRejectDialogOpen(false);
-      setSelectedRegistration(null);
-      setRejectionReason("");
-    },
-    onError: (error) => {
-      toast.error("Fehler: " + error.message);
-    },
-  });
-
+  // The role swap runs in a single SECURITY DEFINER transaction. Deleting and
+  // re-inserting from the client left the acting admin without any role when
+  // RLS rejected the follow-up insert.
   const updateRoleMutation = useMutation({
-    mutationFn: async ({ userId, newRole }: { userId: string; newRole: string }) => {
-      // Delete existing role
-      const { error: deleteError } = await supabase
-        .from("user_roles")
-        .delete()
-        .eq("user_id", userId);
-      if (deleteError) throw deleteError;
-
-      // Insert new role
-      const { error: insertError } = await supabase
-        .from("user_roles")
-        .insert({
-          user_id: userId,
-          role: newRole as "admin" | "intake" | "production" | "qa" | "customer" | "supplier" | "logistics",
-        });
-      if (insertError) throw insertError;
+    mutationFn: async ({ userId, newRole }: { userId: string; newRole: AppRole }) => {
+      const { error } = await supabase.rpc("set_user_role", {
+        _user_id: userId,
+        _role: newRole,
+      });
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["all-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["profiles-with-roles"] });
       toast.success("Rolle aktualisiert");
     },
     onError: (error) => {
@@ -243,9 +160,10 @@ export default function AdminUsers() {
     },
   });
 
-  const getRoleBadge = (role: string) => {
+  const getRoleBadge = (role: string | null) => {
     const colors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
       admin: "destructive",
+      betriebsleiter: "default",
       intake: "default",
       production: "default",
       qa: "secondary",
@@ -253,38 +171,74 @@ export default function AdminUsers() {
       supplier: "outline",
       logistics: "secondary",
     };
-    const labels: Record<string, string> = {
-      admin: "Admin",
-      intake: "Annahme",
-      production: "Produktion",
-      qa: "QS/Labor",
-      customer: "Kunde",
-      supplier: "Lieferant",
-      logistics: "Logistik",
-    };
-    return <Badge variant={colors[role] || "outline"}>{labels[role] || role}</Badge>;
+    if (!role) {
+      return <Badge variant="outline">Unbekannt</Badge>;
+    }
+    const label = roleOptions.find((r) => r.value === role)?.label;
+    return <Badge variant={colors[role] || "outline"}>{label || role}</Badge>;
   };
 
-  const getUserRole = (userId: string) => {
-    const role = userRoles?.find((r) => r.user_id === userId);
-    return role?.role || "customer";
+  const getStatusBadge = (status: string) => {
+    const variant: "default" | "secondary" | "destructive" | "outline" =
+      status === "approved" ? "default" : status === "rejected" ? "destructive" : "secondary";
+    return <Badge variant={variant}>{registrationStatusLabels[status] || status}</Badge>;
   };
+
+  // No fallback role: a missing row means the role is unknown, not "Kunde".
+  const getUserRole = (userId: string): string | null => {
+    const role = userRoles?.find((r) => r.user_id === userId);
+    return role?.role || null;
+  };
+
+  if (roleLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Benutzerverwaltung</h1>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+            <ShieldAlert className="h-8 w-8 text-destructive" />
+            <div>
+              <p className="font-medium">Kein Zugriff</p>
+              <p className="text-sm text-muted-foreground">
+                Diese Seite ist ausschließlich für Administratoren.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const openRequests = registrations?.filter((r) => r.status === "pending").length || 0;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Benutzerverwaltung</h1>
-        <p className="text-muted-foreground">Benutzer und Registrierungsanfragen verwalten</p>
+        <p className="text-muted-foreground">Benutzerrollen verwalten und Registrierungsarchiv einsehen</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Offene Anfragen</CardTitle>
+            <CardTitle className="text-sm font-medium">Registrierungsarchiv</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{pendingRegistrations?.length || 0}</div>
+            <div className="text-2xl font-bold">{registrations?.length || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {openRequests > 0 ? `davon ${openRequests} unbearbeitet` : "keine offenen Altanfragen"}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -309,85 +263,11 @@ export default function AdminUsers() {
         </Card>
       </div>
 
-      <Tabs defaultValue="pending">
+      <Tabs defaultValue="users">
         <TabsList>
-          <TabsTrigger value="pending">
-            Offene Anfragen
-            {(pendingRegistrations?.length || 0) > 0 && (
-              <Badge variant="secondary" className="ml-2">{pendingRegistrations?.length}</Badge>
-            )}
-          </TabsTrigger>
           <TabsTrigger value="users">Alle Benutzer</TabsTrigger>
+          <TabsTrigger value="registrations">Registrierungsarchiv</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="pending" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UserCheck className="h-5 w-5" />
-                Registrierungsanfragen
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {pendingLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Lädt...</div>
-              ) : pendingRegistrations?.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Keine offenen Anfragen
-                </div>
-              ) : (
-                <div className="rounded-md border overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>E-Mail</TableHead>
-                        <TableHead>Gewünschte Rolle</TableHead>
-                        <TableHead>Firma</TableHead>
-                        <TableHead>Datum</TableHead>
-                        <TableHead className="text-right">Aktionen</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pendingRegistrations?.map((reg) => (
-                        <TableRow key={reg.id}>
-                          <TableCell className="font-medium">{reg.name}</TableCell>
-                          <TableCell>{reg.email}</TableCell>
-                          <TableCell>{getRoleBadge(reg.requested_role)}</TableCell>
-                          <TableCell>{reg.company_name || "-"}</TableCell>
-                          <TableCell>
-                            {format(new Date(reg.created_at), "dd.MM.yyyy HH:mm", { locale: de })}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => setSelectedRegistration(reg)}
-                              >
-                                <Check className="h-4 w-4 mr-1" />
-                                Freigeben
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => {
-                                  setSelectedRegistration(reg);
-                                  setRejectDialogOpen(true);
-                                }}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         <TabsContent value="users" className="space-y-4">
           <Card>
@@ -398,8 +278,16 @@ export default function AdminUsers() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {profilesLoading ? (
+              {profilesError || userRolesError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    Benutzerdaten konnten nicht geladen werden. Bitte laden Sie die Seite neu.
+                  </AlertDescription>
+                </Alert>
+              ) : profilesLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Lädt...</div>
+              ) : profiles?.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">Keine Benutzer vorhanden</div>
               ) : (
                 <div className="rounded-md border overflow-x-auto">
                   <Table>
@@ -413,34 +301,115 @@ export default function AdminUsers() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {profiles?.map((profile) => (
-                        <TableRow key={profile.id}>
-                          <TableCell className="font-medium">{profile.name}</TableCell>
-                          <TableCell>{profile.email}</TableCell>
-                          <TableCell>{getRoleBadge(getUserRole(profile.user_id))}</TableCell>
+                      {profiles?.map((profile) => {
+                        const isSelf = profile.user_id === currentUser?.id;
+                        return (
+                          <TableRow key={profile.id}>
+                            <TableCell className="font-medium">{profile.name}</TableCell>
+                            <TableCell>{profile.email || "-"}</TableCell>
+                            <TableCell>{getRoleBadge(getUserRole(profile.user_id))}</TableCell>
+                            <TableCell>
+                              {format(new Date(profile.created_at), "dd.MM.yyyy", { locale: de })}
+                            </TableCell>
+                            <TableCell>
+                              {isSelf ? (
+                                <span className="text-xs text-muted-foreground">
+                                  Eigene Rolle nicht änderbar
+                                </span>
+                              ) : (
+                                <Select
+                                  value={getUserRole(profile.user_id) || ""}
+                                  disabled={updateRoleMutation.isPending}
+                                  onValueChange={(value) =>
+                                    updateRoleMutation.mutate({
+                                      userId: profile.user_id,
+                                      newRole: value as AppRole,
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="w-[150px]">
+                                    <SelectValue placeholder="Rolle wählen" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {roleOptions.map((role) => (
+                                      <SelectItem key={role.value} value={role.value}>
+                                        {role.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="registrations" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Registrierungsarchiv
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Die Selbstregistrierung ist deaktiviert. Neue Benutzer werden ausschließlich unter
+                  „Benutzer“ von Administratoren angelegt. Diese Liste ist ein reines Archiv der
+                  früheren Anfragen und kann nicht mehr bearbeitet werden.
+                </AlertDescription>
+              </Alert>
+
+              {registrationsError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    Das Registrierungsarchiv konnte nicht geladen werden. Bitte laden Sie die Seite neu.
+                  </AlertDescription>
+                </Alert>
+              ) : registrationsLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Lädt...</div>
+              ) : registrations?.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Keine Registrierungsanfragen vorhanden
+                </div>
+              ) : (
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>E-Mail</TableHead>
+                        <TableHead>Gewünschte Rolle</TableHead>
+                        <TableHead>Firma</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Eingegangen</TableHead>
+                        <TableHead>Bearbeitet</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {registrations?.map((reg) => (
+                        <TableRow key={reg.id}>
+                          <TableCell className="font-medium">{reg.name}</TableCell>
+                          <TableCell>{reg.email}</TableCell>
+                          <TableCell>{getRoleBadge(reg.requested_role)}</TableCell>
+                          <TableCell>{reg.company_name || "-"}</TableCell>
+                          <TableCell>{getStatusBadge(reg.status)}</TableCell>
                           <TableCell>
-                            {format(new Date(profile.created_at), "dd.MM.yyyy", { locale: de })}
+                            {format(new Date(reg.created_at), "dd.MM.yyyy HH:mm", { locale: de })}
                           </TableCell>
                           <TableCell>
-                            <Select
-                              value={getUserRole(profile.user_id)}
-                              onValueChange={(value) =>
-                                updateRoleMutation.mutate({ userId: profile.user_id, newRole: value })
-                              }
-                            >
-                              <SelectTrigger className="w-[150px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="admin">Admin</SelectItem>
-                                <SelectItem value="intake">Annahme</SelectItem>
-                                <SelectItem value="production">Produktion</SelectItem>
-                                <SelectItem value="qa">QS/Labor</SelectItem>
-                                <SelectItem value="customer">Kunde</SelectItem>
-                                <SelectItem value="supplier">Lieferant</SelectItem>
-                                <SelectItem value="logistics">Logistik</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            {reg.reviewed_at
+                              ? format(new Date(reg.reviewed_at), "dd.MM.yyyy HH:mm", { locale: de })
+                              : "-"}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -452,112 +421,6 @@ export default function AdminUsers() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Approve Dialog */}
-      <Dialog open={!!selectedRegistration && !rejectDialogOpen} onOpenChange={() => setSelectedRegistration(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Benutzer freigeben</DialogTitle>
-          </DialogHeader>
-          {selectedRegistration && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <Label className="text-muted-foreground">Name</Label>
-                  <p className="font-medium">{selectedRegistration.name}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">E-Mail</Label>
-                  <p className="font-medium">{selectedRegistration.email}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Gewünschte Rolle</Label>
-                  <p>{getRoleBadge(selectedRegistration.requested_role)}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Angegebene Firma</Label>
-                  <p className="font-medium">{selectedRegistration.company_name || "-"}</p>
-                </div>
-              </div>
-
-              {(selectedRegistration.requested_role === "customer" || 
-                selectedRegistration.requested_role === "supplier") && (
-                <div className="space-y-2">
-                  <Label>Firma zuweisen</Label>
-                  <Select value={assignCompanyId} onValueChange={setAssignCompanyId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Firma auswählen..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {companies?.filter((c) => 
-                        selectedRegistration.requested_role === "customer" 
-                          ? c.type === "customer" || c.type === "both"
-                          : c.type === "supplier" || c.type === "both"
-                      ).map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setSelectedRegistration(null)}>
-                  Abbrechen
-                </Button>
-                <Button
-                  onClick={() => approveMutation.mutate({
-                    registration: selectedRegistration,
-                    companyId: assignCompanyId || undefined,
-                  })}
-                  disabled={approveMutation.isPending}
-                >
-                  {approveMutation.isPending ? "Freigeben..." : "Freigeben"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Reject Dialog */}
-      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Anfrage ablehnen</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Grund für Ablehnung</Label>
-              <Textarea
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="Optional: Grund angeben..."
-                rows={3}
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>
-                Abbrechen
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  if (selectedRegistration) {
-                    rejectMutation.mutate({
-                      registration: selectedRegistration,
-                      reason: rejectionReason,
-                    });
-                  }
-                }}
-                disabled={rejectMutation.isPending}
-              >
-                {rejectMutation.isPending ? "Ablehnen..." : "Ablehnen"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

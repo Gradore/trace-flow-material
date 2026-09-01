@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, History, Package, Inbox, Settings, FlaskConical, FileOutput, FileText, CheckCircle, ChevronRight, AlertCircle, Loader2 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -7,6 +8,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { PageDescription } from "@/components/layout/PageDescription";
+import { toast } from "@/hooks/use-toast";
+import { generateTraceabilityPDF, downloadPDF } from "@/lib/pdf";
+import { buildMaterialInputQRUrl } from "@/lib/qrcode";
 
 interface TimelineEvent {
   id: string;
@@ -55,39 +59,212 @@ const statusColors: Record<string, string> = {
   error: "bg-destructive text-destructive-foreground",
 };
 
+/**
+ * Free text is spliced into a PostgREST .or() filter string, where , ( ) and "
+ * are grammar characters - a raw value breaks the request with a 400.
+ */
+const sanitizeFilterValue = (value: string): string =>
+  value.replace(/[,()"\\%*]/g, " ").replace(/\s+/g, " ").trim();
+
+const formatEventDetails = (details: unknown): string | undefined => {
+  if (!details || typeof details !== 'object') return undefined;
+
+  const entries = Object.entries(details as Record<string, unknown>).filter(
+    ([key]) => !['created_by', 'step_labels'].includes(key)
+  );
+
+  if (entries.length === 0) return undefined;
+
+  return entries.map(([key, value]) => `${key}: ${String(value)}`).join(' • ');
+};
+
+/**
+ * Collect the flow history of a material input. output_created and outgoing
+ * delivery_note_created events carry no material_input_id, so the related
+ * processing steps, samples, output materials and delivery notes are followed
+ * as well - otherwise the timeline stops before output and shipment.
+ */
+const fetchTimelineEvents = async (materialInputId: string): Promise<TimelineEvent[]> => {
+  const events = new Map<string, TimelineEvent>();
+
+  const collect = (rows: TimelineEvent[] | null) => {
+    (rows || []).forEach((row) => events.set(row.id, row));
+  };
+
+  const { data: directEvents, error: directError } = await supabase
+    .from('material_flow_history')
+    .select('*')
+    .eq('material_input_id', materialInputId);
+  if (directError) throw directError;
+  collect(directEvents);
+
+  const { data: steps, error: stepsError } = await supabase
+    .from('processing_steps')
+    .select('id')
+    .eq('material_input_id', materialInputId);
+  if (stepsError) throw stepsError;
+  const stepIds = (steps || []).map((step) => step.id);
+
+  const sampleIds = new Set<string>();
+  const { data: samplesByInput, error: samplesByInputError } = await supabase
+    .from('samples')
+    .select('id')
+    .eq('material_input_id', materialInputId);
+  if (samplesByInputError) throw samplesByInputError;
+  (samplesByInput || []).forEach((sample) => sampleIds.add(sample.id));
+
+  if (stepIds.length > 0) {
+    const { data: samplesByStep, error: samplesByStepError } = await supabase
+      .from('samples')
+      .select('id')
+      .in('processing_step_id', stepIds);
+    if (samplesByStepError) throw samplesByStepError;
+    (samplesByStep || []).forEach((sample) => sampleIds.add(sample.id));
+  }
+
+  const outputIds = new Set<string>();
+  if (stepIds.length > 0) {
+    const { data: outputsByStep, error: outputsByStepError } = await supabase
+      .from('output_materials')
+      .select('id')
+      .in('processing_step_id', stepIds);
+    if (outputsByStepError) throw outputsByStepError;
+    (outputsByStep || []).forEach((output) => outputIds.add(output.id));
+  }
+  if (sampleIds.size > 0) {
+    const { data: outputsBySample, error: outputsBySampleError } = await supabase
+      .from('output_materials')
+      .select('id')
+      .in('sample_id', Array.from(sampleIds));
+    if (outputsBySampleError) throw outputsBySampleError;
+    (outputsBySample || []).forEach((output) => outputIds.add(output.id));
+  }
+
+  const noteIds = new Set<string>();
+  const { data: notesByInput, error: notesByInputError } = await supabase
+    .from('delivery_notes')
+    .select('id')
+    .eq('material_input_id', materialInputId);
+  if (notesByInputError) throw notesByInputError;
+  (notesByInput || []).forEach((note) => noteIds.add(note.id));
+
+  if (outputIds.size > 0) {
+    const { data: notesByOutput, error: notesByOutputError } = await supabase
+      .from('delivery_notes')
+      .select('id')
+      .in('output_material_id', Array.from(outputIds));
+    if (notesByOutputError) throw notesByOutputError;
+    (notesByOutput || []).forEach((note) => noteIds.add(note.id));
+  }
+
+  const relations: Array<{
+    column: 'processing_step_id' | 'sample_id' | 'output_material_id' | 'delivery_note_id';
+    ids: string[];
+  }> = [
+    { column: 'processing_step_id', ids: stepIds },
+    { column: 'sample_id', ids: Array.from(sampleIds) },
+    { column: 'output_material_id', ids: Array.from(outputIds) },
+    { column: 'delivery_note_id', ids: Array.from(noteIds) },
+  ];
+
+  for (const relation of relations) {
+    if (relation.ids.length === 0) continue;
+
+    const { data, error } = await supabase
+      .from('material_flow_history')
+      .select('*')
+      .in(relation.column, relation.ids);
+    if (error) throw error;
+    collect(data);
+  }
+
+  return Array.from(events.values()).sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+};
+
 export default function Traceability() {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('search') ?? "");
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialInput | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [searchResults, setSearchResults] = useState<MaterialInput[]>([]);
   const [samplesCount, setSamplesCount] = useState(0);
   const [containerInfo, setContainerInfo] = useState<{ container_id: string; location: string } | null>(null);
+  const initialSearchHandled = useRef(false);
 
-  const handleSearch = async () => {
-    if (!searchTerm.trim()) return;
-    
+  const runSearch = async (term: string) => {
+    const cleanTerm = sanitizeFilterValue(term);
+    if (!cleanTerm) {
+      toast({
+        title: "Ungültiger Suchbegriff",
+        description: "Bitte geben Sie eine Materialeingangs-ID, einen Lieferanten oder eine Container-ID ein.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('material_inputs')
         .select('*')
-        .or(`input_id.ilike.%${searchTerm}%,supplier.ilike.%${searchTerm}%`)
+        .or(`input_id.ilike.%${cleanTerm}%,supplier.ilike.%${cleanTerm}%`)
         .order('created_at', { ascending: false })
         .limit(10);
 
       if (error) throw error;
-      setSearchResults(data || []);
-      
-      if (data && data.length === 1) {
-        selectMaterial(data[0]);
+
+      let results: MaterialInput[] = data || [];
+
+      // Container IDs (BB-/BX-/GX-/CT-...) resolve via the linked container
+      if (results.length === 0) {
+        const { data: containers, error: containersError } = await supabase
+          .from('containers')
+          .select('id')
+          .ilike('container_id', `%${cleanTerm}%`)
+          .limit(10);
+
+        if (containersError) throw containersError;
+
+        if (containers && containers.length > 0) {
+          const { data: byContainer, error: byContainerError } = await supabase
+            .from('material_inputs')
+            .select('*')
+            .in('container_id', containers.map((container) => container.id))
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+          if (byContainerError) throw byContainerError;
+          results = byContainer || [];
+        }
+      }
+
+      setSearchResults(results);
+
+      if (results.length === 1) {
+        selectMaterial(results[0]);
+      } else if (results.length === 0) {
+        toast({
+          title: "Keine Treffer",
+          description: `Zu "${cleanTerm}" wurde kein Materialeingang gefunden.`,
+        });
       }
     } catch (error) {
       console.error('Error searching:', error);
+      toast({
+        title: "Suche fehlgeschlagen",
+        description: error instanceof Error ? error.message : "Die Suche konnte nicht ausgeführt werden.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleSearch = () => runSearch(searchTerm);
 
   const selectMaterial = async (material: MaterialInput) => {
     setSelectedMaterial(material);
@@ -96,39 +273,94 @@ export default function Traceability() {
 
     try {
       // Fetch timeline events
-      const { data: events, error: eventsError } = await supabase
-        .from('material_flow_history')
-        .select('*')
-        .eq('material_input_id', material.id)
-        .order('created_at', { ascending: true });
-
-      if (eventsError) throw eventsError;
-      setTimeline(events || []);
+      const events = await fetchTimelineEvents(material.id);
+      setTimeline(events);
 
       // Fetch samples count
-      const { count } = await supabase
+      const { count, error: countError } = await supabase
         .from('samples')
         .select('*', { count: 'exact', head: true })
         .eq('material_input_id', material.id);
 
+      if (countError) throw countError;
       setSamplesCount(count || 0);
 
       // Fetch container info
       if (material.container_id) {
-        const { data: container } = await supabase
+        const { data: container, error: containerError } = await supabase
           .from('containers')
           .select('container_id, location')
           .eq('id', material.container_id)
           .maybeSingle();
 
+        if (containerError) throw containerError;
         setContainerInfo(container);
       } else {
         setContainerInfo(null);
       }
     } catch (error) {
       console.error('Error fetching timeline:', error);
+      toast({
+        title: "Historie konnte nicht geladen werden",
+        description: error instanceof Error ? error.message : "Bitte versuchen Sie es erneut.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Deep link from the QR scanner: /traceability?search=<code>
+  useEffect(() => {
+    const initialTerm = searchParams.get('search');
+    if (!initialTerm || initialSearchHandled.current) return;
+
+    initialSearchHandled.current = true;
+    setSearchTerm(initialTerm);
+    runSearch(initialTerm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const handleExportPDF = async () => {
+    if (!selectedMaterial) return;
+
+    setIsExporting(true);
+    try {
+      const pdfBlob = await generateTraceabilityPDF(
+        {
+          inputId: selectedMaterial.input_id,
+          material: `${selectedMaterial.material_type}${selectedMaterial.material_subtype ? `-${selectedMaterial.material_subtype}` : ''}`,
+          supplier: selectedMaterial.supplier,
+          weight: `${selectedMaterial.weight_kg} kg`,
+          status: getStatusLabel(selectedMaterial.status).label,
+          containerId: containerInfo?.container_id,
+          samplesCount,
+          createdAt: format(new Date(selectedMaterial.created_at), 'dd.MM.yyyy', { locale: de }),
+        },
+        timeline.map((event) => ({
+          label: eventTypeConfig[event.event_type]?.label || event.event_type,
+          description: event.event_description,
+          date: format(new Date(event.created_at), 'dd.MM.yyyy HH:mm', { locale: de }),
+          details: formatEventDetails(event.event_details),
+        })),
+        buildMaterialInputQRUrl(selectedMaterial.input_id)
+      );
+
+      downloadPDF(pdfBlob, `Rueckverfolgung_${selectedMaterial.input_id}.pdf`);
+
+      toast({
+        title: "PDF erstellt",
+        description: `Der Rückverfolgungsnachweis für ${selectedMaterial.input_id} wurde heruntergeladen.`,
+      });
+    } catch (error) {
+      console.error('Error generating traceability PDF:', error);
+      toast({
+        title: "Export fehlgeschlagen",
+        description: error instanceof Error ? error.message : "Das PDF konnte nicht erstellt werden.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -170,8 +402,18 @@ export default function Traceability() {
           <p className="text-muted-foreground mt-1">Komplette Materialhistorie einsehen</p>
         </div>
         {selectedMaterial && (
-          <Button variant="outline">
-            PDF exportieren
+          <Button variant="outline" onClick={handleExportPDF} disabled={isExporting}>
+            {isExporting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Erstelle PDF...
+              </>
+            ) : (
+              <>
+                <FileText className="h-4 w-4" />
+                PDF exportieren
+              </>
+            )}
           </Button>
         )}
       </div>
@@ -306,12 +548,9 @@ export default function Traceability() {
                             <div>
                               <h4 className="font-medium text-foreground">{config.label}</h4>
                               <p className="text-sm text-muted-foreground mt-0.5">{event.event_description}</p>
-                              {event.event_details && typeof event.event_details === 'object' && Object.keys(event.event_details as object).length > 0 && (
+                              {formatEventDetails(event.event_details) && (
                                 <p className="text-xs text-muted-foreground/70 mt-1 font-mono">
-                                  {Object.entries(event.event_details as Record<string, unknown>)
-                                    .filter(([key]) => !['created_by', 'step_labels'].includes(key))
-                                    .map(([key, value]) => `${key}: ${String(value)}`)
-                                    .join(' • ')}
+                                  {formatEventDetails(event.event_details)}
                                 </p>
                               )}
                             </div>

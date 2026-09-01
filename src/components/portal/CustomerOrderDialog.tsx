@@ -21,7 +21,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
-import { format, addDays } from "date-fns";
+import { format, addDays, startOfDay } from "date-fns";
 import { de } from "date-fns/locale";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -249,7 +249,7 @@ export function CustomerOrderDialog({
                     mode="single"
                     selected={formData.delivery_deadline}
                     onSelect={(date) => setFormData({ ...formData, delivery_deadline: date })}
-                    disabled={(date) => date < addDays(new Date(), 3)}
+                    disabled={(date) => date < startOfDay(addDays(new Date(), 3))}
                     locale={de}
                   />
                 </PopoverContent>

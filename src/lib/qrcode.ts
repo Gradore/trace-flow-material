@@ -62,33 +62,41 @@ export async function generateQRCodeSVG(
 }
 
 /**
+ * Build the URL that a printed QR code points at.
+ *
+ * There are no detail routes such as /containers/:id in the app, so encoding
+ * one would send every scan to the 404 page. The scanner page at /scan resolves
+ * a code passed as a query parameter and shows the record.
+ */
+function buildScanUrl(code: string): string {
+  const baseUrl = window.location.origin;
+  return `${baseUrl}/scan?code=${encodeURIComponent(code)}`;
+}
+
+/**
  * Build a QR code URL for a container
  */
 export function buildContainerQRUrl(containerId: string): string {
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/containers/${containerId}`;
+  return buildScanUrl(containerId);
 }
 
 /**
  * Build a QR code URL for a material input
  */
 export function buildMaterialInputQRUrl(inputId: string): string {
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/intake/${inputId}`;
+  return buildScanUrl(inputId);
 }
 
 /**
  * Build a QR code URL for an output material
  */
 export function buildOutputMaterialQRUrl(outputId: string): string {
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/output/${outputId}`;
+  return buildScanUrl(outputId);
 }
 
 /**
  * Build a QR code URL for a batch/delivery note
  */
 export function buildDeliveryNoteQRUrl(noteId: string): string {
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/delivery-notes/${noteId}`;
+  return buildScanUrl(noteId);
 }
