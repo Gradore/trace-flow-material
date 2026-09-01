@@ -1,10 +1,21 @@
 -- =====================================================================
 --  RekuFLOW — Altbestände löschen, Neustart ab dem Stichtag
 --
---  Löscht alle operativen Datensätze, die VOR dem Stichtag angelegt
---  wurden. Die Stammdaten des GFK-Projektmoduls (Partner, Phasen,
---  Aufgaben, Fraktionen, Mailvorlagen) bleiben erhalten — sie werden mit
---  01_datenbank_aktualisieren.sql frisch eingespielt.
+--  Löscht ALLE Datensätze, die VOR dem Stichtag angelegt wurden —
+--  Bewegungsdaten, Anlagen, Rezepturen, Firmen und Kontakte.
+--
+--  ERHALTEN BLEIBEN
+--   * Benutzerkonten, Rollen und Berechtigungen (profiles, user_roles,
+--     user_permissions) — niemand verliert seinen Zugang.
+--   * Die Stammdaten des GFK-Projektmoduls (Partner, Phasen, Aufgaben,
+--     Fraktionen, Mailvorlagen) — die kommen aus 01_datenbank_aktualisieren.sql.
+--
+--  FOLGE DES FIRMEN-LÖSCHENS
+--  Kunden-, Lieferanten- und Logistikkonten verlieren ihre Firmenzuordnung
+--  (sie hängt an contacts.user_id) und sehen in ihren Portalen nichts mehr,
+--  bis Sie sie unter Verwaltung -> Benutzer neu zuordnen.
+--  Die Verknüpfung project_partners.company_id wird dabei nur geleert,
+--  die Projektpartner selbst bleiben vollständig erhalten.
 --
 --  ANWENDUNG
 --  Erst 01_datenbank_aktualisieren.sql ausführen, danach dieses Skript.
@@ -51,6 +62,26 @@ DELETE FROM public.audit_logs l USING cutoff c WHERE l.created_at < c.d;
 -- ---------------------------------------------------------------- Wartung
 DELETE FROM public.maintenance_records m USING cutoff c WHERE m.created_at < c.d;
 
+-- ---------------------------------------------------------------- Stammdaten
+-- Reihenfolge nach Fremdschlüsseln: erst die Sätze, die ohne ON DELETE-Regel
+-- auf companies/contacts zeigen, dann die Stammtabellen selbst.
+DELETE FROM public.pending_registrations r USING cutoff c WHERE r.created_at < c.d;
+DELETE FROM public.company_contracts k USING cutoff c WHERE k.created_at < c.d;
+DELETE FROM public.company_documents d USING cutoff c WHERE d.created_at < c.d;
+
+-- Anlagen: maintenance_records hängt mit ON DELETE CASCADE daran.
+DELETE FROM public.equipment e USING cutoff c WHERE e.created_at < c.d;
+
+-- Rezepturen und Anwendungen: order_recipe_matches wird dabei auf NULL gesetzt.
+DELETE FROM public.recipes r USING cutoff c WHERE r.created_at < c.d;
+DELETE FROM public.applications a USING cutoff c WHERE a.created_at < c.d;
+
+-- Firmen und Kontakte zuletzt. contacts, company_contracts und
+-- company_documents hängen mit ON DELETE CASCADE an companies;
+-- project_partners.company_id wird nur geleert.
+DELETE FROM public.contacts k USING cutoff c WHERE k.created_at < c.d;
+DELETE FROM public.companies f USING cutoff c WHERE f.created_at < c.d;
+
 -- ---------------------------------------------------------------- Verwaiste Reste
 -- Sätze, deren übergeordneter Datensatz gerade entfernt wurde.
 DELETE FROM public.sample_results r
@@ -68,6 +99,12 @@ UNION ALL SELECT 'delivery_notes', count(*) FROM public.delivery_notes
 UNION ALL SELECT 'documents', count(*) FROM public.documents
 UNION ALL SELECT 'orders', count(*) FROM public.orders
 UNION ALL SELECT 'maintenance_records', count(*) FROM public.maintenance_records
+UNION ALL SELECT 'equipment', count(*) FROM public.equipment
+UNION ALL SELECT 'recipes', count(*) FROM public.recipes
+UNION ALL SELECT 'companies', count(*) FROM public.companies
+UNION ALL SELECT 'contacts', count(*) FROM public.contacts
+UNION ALL SELECT '— Benutzer (bleibt)', count(*) FROM public.profiles
+UNION ALL SELECT '— Rollen (bleibt)', count(*) FROM public.user_roles
 UNION ALL SELECT '— Projektpartner (bleibt)', count(*) FROM public.project_partners
 UNION ALL SELECT '— Projektaufgaben (bleibt)', count(*) FROM public.project_tasks
 ORDER BY 1;
