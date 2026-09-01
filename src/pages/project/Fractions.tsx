@@ -56,7 +56,6 @@ import {
   ConformityBadge,
   EmptyState,
   ErrorState,
-  IpGateBanner,
   LoadingRows,
   ProjectPageHeader,
   StatCard,
@@ -368,8 +367,6 @@ export default function Fractions() {
           </Button>
         }
       />
-
-      <IpGateBanner compact />
 
       {/* ------------------------------------------------------------ KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">

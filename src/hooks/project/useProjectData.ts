@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { PATENT_TASK_CODE } from "@/lib/project/constants";
 import type {
   AiAnalysis, AnalysisResult, Communication, DoeSeries, EmailTemplate,
   FractionAnalysis, FractionSpec, MaterialBatch, OutputFraction, Partner,
@@ -268,17 +267,6 @@ export function useProjectRisks() {
       return data ?? [];
     },
   });
-}
-
-/** Is the patent application (P0-2) filed? Gates every phase-2 activity. */
-export function usePatentFiled() {
-  const { data: tasks, isLoading } = useProjectTasks();
-  const patentTask = tasks?.find((t) => t.code === PATENT_TASK_CODE);
-  return {
-    isLoading,
-    patentTask: patentTask ?? null,
-    isFiled: patentTask?.status === "done",
-  };
 }
 
 /* ----------------------------------------------------------------- writes */

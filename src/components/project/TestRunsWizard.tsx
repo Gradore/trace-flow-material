@@ -11,7 +11,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
@@ -22,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { IpGateBanner } from "@/components/project/ProjectUI";
 import {
   NONE,
   doeLevelsForRun,
@@ -39,7 +37,7 @@ import {
   TEST_RUN_STATUSES,
   labelOf,
 } from "@/lib/project/constants";
-import { nextProjectCode, usePatentFiled } from "@/hooks/project/useProjectData";
+import { nextProjectCode } from "@/hooks/project/useProjectData";
 import { parseDoeFactors } from "@/lib/project/types";
 import type { DoeSeries, MaterialBatch, Partner } from "@/lib/project/types";
 import { cn } from "@/lib/utils";
@@ -171,15 +169,12 @@ export default function TestRunsWizard({
   isSaving,
   onSubmit,
 }: TestRunsWizardProps) {
-  const { isFiled: patentFiled } = usePatentFiled();
-
   // Der Dialogkörper scrollt selbst - der Ref hält ihn für Sprünge greifbar.
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [ipConfirmed, setIpConfirmed] = useState(false);
 
   const [runCode, setRunCode] = useState("");
   const [codeLoading, setCodeLoading] = useState(false);
@@ -207,7 +202,6 @@ export default function TestRunsWizard({
     setStep(1);
     setForm(emptyForm());
     setErrors({});
-    setIpConfirmed(false);
     setTemplateSeriesId(NONE);
     setTemplateRunNumber("1");
     setTemplateNote(null);
@@ -385,8 +379,7 @@ export default function TestRunsWizard({
 
   /* ------------------------------------------------------------- submitting */
 
-  const requiresIpConfirmation = !patentFiled && form.status !== "planned";
-  const canSubmit = Boolean(runCode) && !codeLoading && (!requiresIpConfirmation || ipConfirmed);
+  const canSubmit = Boolean(runCode) && !codeLoading;
 
   const handleSubmit = () => {
     const perStep = [validateStep(1), validateStep(2), validateStep(3)];
@@ -404,7 +397,6 @@ export default function TestRunsWizard({
       setCodeError("Es wurde noch kein Versuchscode vergeben.");
       return;
     }
-    if (requiresIpConfirmation && !ipConfirmed) return;
 
     const cost = parseDecimal(form.costEur);
     const weight = parseDecimal(form.inputWeightKg);
@@ -509,8 +501,6 @@ export default function TestRunsWizard({
             </button>
           ))}
         </div>
-
-        <IpGateBanner />
 
         {codeError && (
           <Alert variant="destructive">
@@ -965,27 +955,6 @@ export default function TestRunsWizard({
             </div>
 
             <ProcessLineCard lineId={form.processLine} compact />
-          </div>
-        )}
-
-        {requiresIpConfirmation && (
-          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
-            <label className="flex items-start gap-2.5 text-sm">
-              <Checkbox
-                checked={ipConfirmed}
-                onCheckedChange={(value) => setIpConfirmed(value === true)}
-                className="mt-0.5"
-                aria-label="Patentanmeldung noch nicht eingereicht — bestätigen"
-              />
-              <span>
-                Mir ist bewusst, dass die Patentanmeldung noch nicht eingereicht ist.
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  Ein Versuch mit dem Status „{labelOf(TEST_RUN_STATUSES, form.status)}“ gilt als
-                  gestartete Aktivität. Ohne eingereichte Anmeldung gefährdet eine Herstellerdemo
-                  die Neuheit des Verfahrens.
-                </span>
-              </span>
-            </label>
           </div>
         )}
 

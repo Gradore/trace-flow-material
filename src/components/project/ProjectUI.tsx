@@ -1,14 +1,12 @@
 import { ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { CONFORMITY_META, type ConformityLevel } from "@/lib/project/spec";
-import { IP_WARNING, PATENT_TASK_CODE } from "@/lib/project/constants";
-import { usePatentFiled } from "@/hooks/project/useProjectData";
 import type { Phase } from "@/lib/project/types";
 
 const TONE_CLASSES: Record<string, string> = {
@@ -60,60 +58,6 @@ export function ProjectPageHeader({ title, description, icon: Icon, actions }: P
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
     </div>
-  );
-}
-
-/**
- * Phase 2+ activities must not start before the patent application (P0-2)
- * is filed - a manufacturer demo before filing destroys novelty.
- */
-/** German labels for the raw task status values stored in the database. */
-const TASK_STATUS_LABELS: Record<string, string> = {
-  todo: "Offen",
-  doing: "In Arbeit",
-  blocked: "Blockiert",
-  done: "Erledigt",
-  skipped: "Übersprungen",
-};
-
-export function IpGateBanner({ compact = false }: { compact?: boolean }) {
-  const { isFiled, isLoading, patentTask } = usePatentFiled();
-  const location = useLocation();
-  const onTaskPage = location.pathname.startsWith("/projekt/aufgaben");
-  if (isLoading) return null;
-
-  if (isFiled) {
-    if (compact) return null;
-    return (
-      <Alert className="mb-4 border-success/30 bg-success/5">
-        <ShieldCheck className="h-4 w-4 text-success" />
-        <AlertTitle className="text-success">Patentanmeldung eingereicht</AlertTitle>
-        <AlertDescription className="text-sm">
-          {PATENT_TASK_CODE} ist abgeschlossen. Herstellerdemos und Technikumstermine sind freigegeben.
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
-  return (
-    <Alert variant="destructive" className="mb-4">
-      <AlertTriangle className="h-4 w-4" />
-      <AlertTitle>{IP_WARNING}</AlertTitle>
-      <AlertDescription className="text-sm">
-        Aufgabe {PATENT_TASK_CODE}
-        {patentTask ? ` („${patentTask.title}“)` : ""} steht auf{" "}
-        <strong>
-          {patentTask ? (TASK_STATUS_LABELS[patentTask.status] ?? patentTask.status) : "unbekannt"}
-        </strong>
-        . Solange die Anmeldung nicht eingereicht ist, gefährdet jede Herstellerdemo oder
-        Veröffentlichung die Neuheit des Verfahrens.{" "}
-        {!onTaskPage && (
-          <Link to="/projekt/aufgaben" className="underline underline-offset-2">
-            Zu den Aufgaben
-          </Link>
-        )}
-      </AlertDescription>
-    </Alert>
   );
 }
 

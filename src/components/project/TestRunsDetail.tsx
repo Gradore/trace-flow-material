@@ -45,7 +45,6 @@ import {
 import {
   ConformityBadge,
   EmptyState,
-  IpGateBanner,
   Markdown,
   ToneBadge,
   formatDate,
@@ -89,7 +88,6 @@ import { evaluateResult, goNoGoBreaches } from "@/lib/project/spec";
 import {
   nextFractionCode,
   useProjectMutation,
-  usePatentFiled,
 } from "@/hooks/project/useProjectData";
 import { useRequestAiAnalysis } from "@/hooks/project/useProjectAi";
 import { supabase } from "@/integrations/supabase/client";
@@ -227,11 +225,8 @@ export default function TestRunsDetail({
   specs,
   onExportPdf,
 }: TestRunsDetailProps) {
-  const { isFiled: patentFiled } = usePatentFiled();
-
   const [overview, setOverview] = useState<OverviewForm>(() => overviewFrom(run));
   const [overviewErrors, setOverviewErrors] = useState<Record<string, string>>({});
-  const [ipConfirmed, setIpConfirmed] = useState(false);
 
   const [paramRows, setParamRows] = useState<ParamRow[]>(() => paramRowsFrom(parameters));
   const [paramErrors, setParamErrors] = useState<Record<string, string>>({});
@@ -307,9 +302,6 @@ export default function TestRunsDetail({
 
   /* ---------------------------------------------------------------- writes */
 
-  const statusChangeNeedsConfirmation =
-    !patentFiled && overview.status !== "planned" && overview.status !== run.status;
-
   const saveOverview = useProjectMutation<OverviewForm>(
     async (values) => {
       const cost = parseDecimal(values.costEur);
@@ -348,7 +340,6 @@ export default function TestRunsDetail({
     {
       successMessage: "Versuch gespeichert",
       errorMessage: "Versuch konnte nicht gespeichert werden",
-      onDone: () => setIpConfirmed(false),
     },
   );
 
@@ -367,7 +358,6 @@ export default function TestRunsDetail({
     }
     setOverviewErrors(found);
     if (Object.keys(found).length) return;
-    if (statusChangeNeedsConfirmation && !ipConfirmed) return;
     saveOverview.mutate(overview);
   };
 
@@ -641,8 +631,6 @@ export default function TestRunsDetail({
           <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
             {/* --------------------------------------------------------- Übersicht */}
             <TabsContent value="overview" className="mt-0 space-y-4">
-              <IpGateBanner compact />
-
               <div className="space-y-1.5">
                 <Label htmlFor="detail-title">Titel</Label>
                 <Input
@@ -908,33 +896,12 @@ export default function TestRunsDetail({
                 />
               </div>
 
-              {statusChangeNeedsConfirmation && (
-                <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
-                  <label className="flex items-start gap-2.5 text-sm">
-                    <Checkbox
-                      checked={ipConfirmed}
-                      onCheckedChange={(value) => setIpConfirmed(value === true)}
-                      className="mt-0.5"
-                      aria-label="Patentanmeldung noch nicht eingereicht — bestätigen"
-                    />
-                    <span>
-                      Mir ist bewusst, dass die Patentanmeldung noch nicht eingereicht ist.
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        Der Status wechselt auf „{labelOf(TEST_RUN_STATUSES, overview.status)}“ —
-                        eine gestartete Herstelleraktivität vor der Anmeldung gefährdet die Neuheit.
-                      </span>
-                    </span>
-                  </label>
-                </div>
-              )}
-
               <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setOverview(overviewFrom(run));
                     setOverviewErrors({});
-                    setIpConfirmed(false);
                   }}
                   disabled={saveOverview.isPending}
                 >
@@ -943,9 +910,7 @@ export default function TestRunsDetail({
                 </Button>
                 <Button
                   onClick={handleSaveOverview}
-                  disabled={
-                    saveOverview.isPending || (statusChangeNeedsConfirmation && !ipConfirmed)
-                  }
+                  disabled={saveOverview.isPending}
                 >
                   {saveOverview.isPending ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

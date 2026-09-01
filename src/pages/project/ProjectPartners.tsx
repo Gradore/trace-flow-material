@@ -5,7 +5,6 @@
  * product tests and the communication log.
  */
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   Building2,
   CalendarClock,
@@ -25,16 +24,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,14 +53,12 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   usePartnerContacts,
   usePartners,
-  usePatentFiled,
   useFractionSpecs,
   useProjectMutation,
 } from "@/hooks/project/useProjectData";
 import {
   EmptyState,
   ErrorState,
-  IpGateBanner,
   LoadingRows,
   ProjectPageHeader,
   StatCard,
@@ -94,7 +81,6 @@ import {
   PartnerCreateDialog,
   emptyPartnerForm,
   formToPayload,
-  isPhaseTwoActivity,
   type PartnerFormValues,
 } from "@/components/project/ProjectPartnersForm";
 import PartnerDetailSheet from "@/components/project/ProjectPartnersDetail";
@@ -108,16 +94,10 @@ import {
 import type { Partner } from "@/lib/project/types";
 import { cn } from "@/lib/utils";
 
-interface StatusChange {
-  partner: Partner;
-  status: string;
-}
-
 export default function ProjectPartners() {
   const partnersQuery = usePartners();
   const contactsQuery = usePartnerContacts();
   const fractionSpecsQuery = useFractionSpecs();
-  const { isFiled: patentFiled } = usePatentFiled();
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>(ALL);
@@ -132,7 +112,6 @@ export default function ProjectPartners() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createValues, setCreateValues] = useState<PartnerFormValues>(emptyPartnerForm);
-  const [pendingStatus, setPendingStatus] = useState<StatusChange | null>(null);
 
   const partners = useMemo(() => partnersQuery.data ?? [], [partnersQuery.data]);
   const contacts = useMemo(() => contactsQuery.data ?? [], [contactsQuery.data]);
@@ -265,7 +244,7 @@ export default function ProjectPartners() {
     },
   );
 
-  const statusMutation = useProjectMutation<StatusChange>(
+  const statusMutation = useProjectMutation<{ partner: Partner; status: string }>(
     async ({ partner, status: nextStatus }) => {
       const { data, error } = await supabase
         .from("project_partners")
@@ -280,17 +259,11 @@ export default function ProjectPartners() {
     {
       successMessage: "Status aktualisiert",
       errorMessage: "Status konnte nicht geändert werden",
-      onDone: () => setPendingStatus(null),
     },
   );
 
-  /** Moving a manufacturer into "Im Test" starts a phase-2 activity. */
   const requestStatusChange = (partner: Partner, nextStatus: string) => {
     if (partner.status === nextStatus) return;
-    if (!patentFiled && isPhaseTwoActivity(partner.category, nextStatus)) {
-      setPendingStatus({ partner, status: nextStatus });
-      return;
-    }
     statusMutation.mutate({ partner, status: nextStatus });
   };
 
@@ -340,8 +313,6 @@ export default function ProjectPartners() {
           </Button>
         }
       />
-
-      <IpGateBanner compact />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <StatCard label="Partner gesamt" value={partners.length} icon={Users} accent="violet" />
@@ -862,43 +833,6 @@ export default function ProjectPartners() {
         subcategorySuggestions={subcategorySuggestions}
       />
 
-      <AlertDialog
-        open={Boolean(pendingStatus)}
-        onOpenChange={(next) => {
-          if (!next && !statusMutation.isPending) setPendingStatus(null);
-        }}
-      >
-        <AlertDialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Phase-2-Aktivität vor Patentanmeldung</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingStatus
-                ? `„${pendingStatus.partner.name}“ soll auf „${labelOf(
-                    PARTNER_STATUSES,
-                    pendingStatus.status,
-                  )}“ gesetzt werden. Aufgabe P0-2 (Patentanmeldung) ist noch nicht erledigt — eine Herstellerdemo gefährdet die Neuheit des Verfahrens.`
-                : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="text-sm">
-            <Link to="/projekt/aufgaben" className="underline underline-offset-2">
-              Zu den Aufgaben (P0-2)
-            </Link>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={statusMutation.isPending}>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={statusMutation.isPending}
-              onClick={(event) => {
-                event.preventDefault();
-                if (pendingStatus) statusMutation.mutate(pendingStatus);
-              }}
-            >
-              Trotzdem setzen
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

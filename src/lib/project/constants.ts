@@ -290,11 +290,6 @@ export const ECONOMICS = {
   targetCapacityTonsPerYear: 8000,
 } as const;
 
-/** The task that gates every phase-2 activity. */
-export const PATENT_TASK_CODE = "P0-2";
-export const IP_WARNING =
-  "Patent noch nicht eingereicht — Herstellerdemo gefährdet die Neuheit.";
-
 export const DOSAGE_SERIES = [5, 10, 15, 20] as const;
 export const CONCRETE_TEST_AGES_DAYS = [7, 28, 80] as const;
 

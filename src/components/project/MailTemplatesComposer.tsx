@@ -38,7 +38,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { usePartnerContacts, useProjectMutation } from "@/hooks/project/useProjectData";
-import { IpGateBanner, formatDate } from "@/components/project/ProjectUI";
+import { formatDate } from "@/components/project/ProjectUI";
 import {
   AUTO_PLACEHOLDER_HINTS,
   applyPlaceholders,
@@ -173,8 +173,6 @@ export default function MailComposer({
   const fullMailText = subject ? `Betreff: ${subject}\n\n${body}` : body;
 
   const contactEmail = contact?.email?.trim() ?? "";
-  const isPhaseTwoMail =
-    template?.category === "trial_request" || partner?.category === "machine_manufacturer";
 
   const logMutation = useProjectMutation<LogVars>(
     async (vars) => {
@@ -377,8 +375,6 @@ export default function MailComposer({
             )}
           </div>
         </div>
-
-        {isPhaseTwoMail && <IpGateBanner compact />}
 
         {senderFailed && (
           <p className="flex flex-wrap items-start gap-x-1.5 gap-y-1 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">

@@ -73,7 +73,6 @@ import { PRODUCT_TEST_CATEGORIES, labelOf, toneOf } from "@/lib/project/constant
 import {
   EmptyState,
   ErrorState,
-  IpGateBanner,
   LoadingRows,
   ProjectPageHeader,
   StatCard,
@@ -355,8 +354,6 @@ export default function ProductTests() {
           </>
         }
       />
-
-      <IpGateBanner />
 
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <StatCard

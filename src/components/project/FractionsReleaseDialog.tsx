@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectMutation } from "@/hooks/project/useProjectData";
 import { useRequestAiAnalysis } from "@/hooks/project/useProjectAi";
-import { ConformityBadge, IpGateBanner } from "@/components/project/ProjectUI";
+import { ConformityBadge } from "@/components/project/ProjectUI";
 import { FRACTION_STATUSES, labelOf } from "@/lib/project/constants";
 import { formatSpecWindow, formatVerdictValue, releaseEligibility, type FractionView } from "./FractionsShared";
 
@@ -105,7 +105,6 @@ export function FractionsReleaseDialog({
         </DialogHeader>
 
         <div className="space-y-3">
-          <IpGateBanner compact />
 
           <div className="flex flex-wrap items-center gap-2">
             <ConformityBadge level={view.conformity} />

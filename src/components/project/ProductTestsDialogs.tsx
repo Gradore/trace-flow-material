@@ -33,7 +33,6 @@ import {
   useProjectMutation,
 } from "@/hooks/project/useProjectData";
 import { DOSAGE_SERIES, PRODUCT_TEST_CATEGORIES } from "@/lib/project/constants";
-import { IpGateBanner } from "@/components/project/ProjectUI";
 import {
   NO_SELECTION,
   PRODUCT_TEST_STATUSES,
@@ -224,7 +223,6 @@ export function ProductTestCreateDialog({ open, onOpenChange, partners, fraction
           </DialogDescription>
         </DialogHeader>
 
-        <IpGateBanner compact />
 
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -469,7 +467,6 @@ export function DosageSeriesDialog({ open, onOpenChange, partners, fractions }: 
           </DialogDescription>
         </DialogHeader>
 
-        <IpGateBanner compact />
 
         <div className="space-y-4">
           <div className="space-y-1.5">

@@ -13,7 +13,6 @@ import {
   Plus,
   RotateCcw,
   Search,
-  ShieldAlert,
   Table2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -50,7 +49,6 @@ import { toast } from "@/hooks/use-toast";
 import {
   EmptyState,
   ErrorState,
-  IpGateBanner,
   LoadingRows,
   PhaseStepper,
   ProjectPageHeader,
@@ -61,8 +59,6 @@ import {
 } from "@/components/project/ProjectUI";
 import ProjectTasksDialog, { type TaskFormPayload } from "@/components/project/ProjectTasksDialog";
 import {
-  IP_WARNING,
-  PATENT_TASK_CODE,
   TASK_PRIORITIES,
   TASK_STATUSES,
   labelOf,
@@ -70,7 +66,6 @@ import {
 } from "@/lib/project/constants";
 import {
   usePartners,
-  usePatentFiled,
   usePhases,
   useProjectMutation,
   useProjectTasks,
@@ -97,7 +92,6 @@ const SATISFIED_STATUSES = new Set(["done", "skipped"]);
 
 interface Violation {
   blockers: ProjectTask[];
-  ipBlocked: boolean;
 }
 
 interface PendingAction extends Violation {
@@ -113,14 +107,6 @@ interface StatusColumn {
 }
 
 /** Phase codes are P0 … P7; everything from P2 upwards is gated by the patent filing. */
-function phaseNumberOf(code: string | null | undefined): number | null {
-  if (!code) return null;
-  const match = /^P\s*(\d+)/i.exec(code.trim());
-  if (!match) return null;
-  const parsed = Number(match[1]);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function startOfToday(): number {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -140,7 +126,6 @@ export default function ProjectTasks() {
   const phasesQuery = usePhases();
   const depsQuery = useTaskDependencies();
   const partnersQuery = usePartners();
-  const { isFiled: patentFiled } = usePatentFiled();
 
   const [phaseCode, setPhaseCode] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("list");
@@ -183,32 +168,14 @@ export default function ProjectTasks() {
       .filter((task): task is ProjectTask => Boolean(task))
       .sort((a, b) => a.code.localeCompare(b.code, "de", { numeric: true }));
 
-  const isPhaseTwoPlus = useMemo(
-    () => (phaseId: string | null) => {
-      if (!phaseId) return false;
-      const number = phaseNumberOf(phaseById.get(phaseId)?.code);
-      return number !== null && number >= 2;
-    },
-    [phaseById],
-  );
-
-  /**
-   * A task must not be started or completed while a predecessor is unfinished,
-   * and a phase-2+ task must not start before the patent application (P0-2) is filed.
-   */
-  const evaluateViolation = (
-    taskId: string | null,
-    taskCode: string,
-    nextStatus: string,
-    phaseId: string | null,
-  ): Violation | null => {
+  /** A task must not be started or completed while a predecessor is unfinished. */
+  const evaluateViolation = (taskId: string | null, nextStatus: string): Violation | null => {
     if (!STARTING_STATUSES.has(nextStatus)) return null;
     const blockers = taskId
       ? resolve(predecessorIds.get(taskId)).filter((entry) => !SATISFIED_STATUSES.has(entry.status))
       : [];
-    const ipBlocked = !patentFiled && taskCode !== PATENT_TASK_CODE && isPhaseTwoPlus(phaseId);
-    if (blockers.length === 0 && !ipBlocked) return null;
-    return { blockers, ipBlocked };
+    if (blockers.length === 0) return null;
+    return { blockers };
   };
 
   /* ---------------------------------------------------------------- writes */
@@ -311,7 +278,7 @@ export default function ProjectTasks() {
   const requestStatusChange = (task: ProjectTask, nextStatus: string) => {
     if (nextStatus === task.status) return;
     const run = () => statusMutation.mutate({ task, status: nextStatus });
-    const violation = evaluateViolation(task.id, task.code, nextStatus, task.phase_id);
+    const violation = evaluateViolation(task.id, nextStatus);
     if (!violation) {
       run();
       return;
@@ -331,7 +298,7 @@ export default function ProjectTasks() {
     const phaseChanged = dialogMode === "edit" && editingTask?.phase_id !== payload.phase_id;
     const violation =
       statusChanged || phaseChanged
-        ? evaluateViolation(editingTask?.id ?? null, payload.code, payload.status, payload.phase_id)
+        ? evaluateViolation(editingTask?.id ?? null, payload.status)
         : null;
     if (!violation) {
       run();
@@ -496,9 +463,6 @@ export default function ProjectTasks() {
     return sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />;
   };
 
-  const ipLockedFor = (task: ProjectTask) =>
-    !patentFiled && task.code !== PATENT_TASK_CODE && isPhaseTwoPlus(task.phase_id);
-
   /** Only the row whose status is currently being written is locked, not the whole table. */
   const statusPendingTaskId = statusMutation.isPending
     ? statusMutation.variables?.task.id ?? null
@@ -536,8 +500,6 @@ export default function ProjectTasks() {
           </Button>
         }
       />
-
-      <IpGateBanner />
 
       {loadError ? (
         <ErrorState error={loadError} onRetry={retry} />
@@ -679,17 +641,13 @@ export default function ProjectTasks() {
                       const phase = task.phase_id ? phaseById.get(task.phase_id) ?? null : null;
                       const partner = task.partner_id ? partnerById.get(task.partner_id) ?? null : null;
                       const overdue = isOverdue(task, today);
-                      const ipLocked = ipLockedFor(task);
                       const openPredecessors = resolve(predecessorIds.get(task.id)).filter(
                         (entry) => !SATISFIED_STATUSES.has(entry.status),
                       );
                       return (
                         <div
                           key={task.id}
-                          className={cn(
-                            "rounded-lg border border-border p-3",
-                            ipLocked && "border-destructive/30 bg-destructive/5",
-                          )}
+                          className="rounded-lg border border-border p-3"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <button
@@ -715,12 +673,6 @@ export default function ProjectTasks() {
                             </Button>
                           </div>
 
-                          {ipLocked && (
-                            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
-                              <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-px" />
-                              <span>{IP_WARNING}</span>
-                            </div>
-                          )}
                           {openPredecessors.length > 0 && (
                             <p className="mt-1 text-[11px] text-muted-foreground">
                               Wartet auf: {openPredecessors.map((entry) => entry.code).join(", ")}
@@ -810,12 +762,11 @@ export default function ProjectTasks() {
                           const phase = task.phase_id ? phaseById.get(task.phase_id) ?? null : null;
                           const partner = task.partner_id ? partnerById.get(task.partner_id) ?? null : null;
                           const overdue = isOverdue(task, today);
-                          const ipLocked = ipLockedFor(task);
                           const openPredecessors = resolve(predecessorIds.get(task.id)).filter(
                             (entry) => !SATISFIED_STATUSES.has(entry.status),
                           );
                           return (
-                            <TableRow key={task.id} className={cn(ipLocked && "bg-destructive/5")}>
+                            <TableRow key={task.id}>
                               <TableCell className="font-mono font-medium align-top">{task.code}</TableCell>
                               <TableCell className="align-top">
                                 <button
@@ -825,12 +776,6 @@ export default function ProjectTasks() {
                                 >
                                   {task.title}
                                 </button>
-                                {ipLocked && (
-                                  <div className="mt-1 flex items-start gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
-                                    <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-px" />
-                                    <span>{IP_WARNING}</span>
-                                  </div>
-                                )}
                                 {openPredecessors.length > 0 && (
                                   <p className="mt-1 text-[11px] text-muted-foreground">
                                     Wartet auf: {openPredecessors.map((entry) => entry.code).join(", ")}
@@ -885,7 +830,6 @@ export default function ProjectTasks() {
                   <div className="flex gap-3 min-w-max items-start">
                     {columns.map((column) => {
                       const columnTasks = filteredTasks.filter((task) => task.status === column.id);
-                      const ipRelevant = columnTasks.some(ipLockedFor);
                       return (
                         <div
                           key={column.id}
@@ -895,13 +839,6 @@ export default function ProjectTasks() {
                             <ToneBadge tone={column.tone}>{column.label}</ToneBadge>
                             <span className="text-xs text-muted-foreground">{columnTasks.length}</span>
                           </div>
-
-                          {ipRelevant && (
-                            <div className="mb-2 flex items-start gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
-                              <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-px" />
-                              <span>{IP_WARNING}</span>
-                            </div>
-                          )}
 
                           <div className="space-y-2">
                             {columnTasks.length === 0 ? (
@@ -915,13 +852,11 @@ export default function ProjectTasks() {
                                   ? partnerById.get(task.partner_id) ?? null
                                   : null;
                                 const overdue = isOverdue(task, today);
-                                const ipLocked = ipLockedFor(task);
                                 return (
                                   <div
                                     key={task.id}
                                     className={cn(
-                                      "rounded-lg border bg-card p-2.5 space-y-2",
-                                      ipLocked ? "border-destructive/40" : "border-border",
+                                      "rounded-lg border border-border bg-card p-2.5 space-y-2",
                                     )}
                                   >
                                     <div className="flex items-start justify-between gap-2">
@@ -1070,7 +1005,6 @@ export default function ProjectTasks() {
         partners={partners}
         predecessors={editingTask ? resolve(predecessorIds.get(editingTask.id)) : []}
         successors={editingTask ? resolve(successorIds.get(editingTask.id)) : []}
-        isPhaseTwoPlus={isPhaseTwoPlus}
         isSaving={saveMutation.isPending}
         onSubmit={handleDialogSubmit}
       />
@@ -1088,19 +1022,6 @@ export default function ProjectTasks() {
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
-
-          {pending && pending.ipBlocked && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              <p className="font-semibold flex items-center gap-1.5">
-                <ShieldAlert className="h-4 w-4 shrink-0" />
-                {IP_WARNING}
-              </p>
-              <p className="mt-1 text-xs">
-                Aufgabe {PATENT_TASK_CODE} (Patentanmeldung) ist noch nicht erledigt. Phase-2-Aktivitäten wie
-                Herstellerversuche vor der Einreichung zerstören die Neuheit des Verfahrens.
-              </p>
-            </div>
-          )}
 
           {pending && pending.blockers.length > 0 && (
             <div className="rounded-md border border-border p-3">
