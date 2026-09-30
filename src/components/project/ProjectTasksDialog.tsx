@@ -26,6 +26,10 @@ import type { Partner, Phase, ProjectTask } from "@/lib/project/types";
 /** Sentinel for "no selection" - Radix Select forbids an empty string value. */
 const NONE = "__none__";
 
+/** Maps the sentinel and any empty value to null so a uuid column never receives "". */
+const toIdOrNull = (value: string | null | undefined): string | null =>
+  value && value !== NONE ? value : null;
+
 export interface TaskFormPayload {
   code: string;
   title: string;
@@ -191,7 +195,7 @@ export default function ProjectTasksDialog({
     }
   }, [open, mode, task]);
 
-  const selectedPhaseId = form.phaseId === NONE ? null : form.phaseId;
+  const selectedPhaseId = toIdOrNull(form.phaseId);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -228,7 +232,7 @@ export default function ProjectTasksDialog({
       phase_id: selectedPhaseId,
       due_date: form.dueDate || null,
       assignee: form.assignee.trim() || null,
-      partner_id: form.partnerId === NONE ? null : form.partnerId,
+      partner_id: toIdOrNull(form.partnerId),
       estimated_cost_eur: estimated.ok ? estimated.value : null,
       actual_cost_eur: actual.ok ? actual.value : null,
       blocker_reason: form.blockerReason.trim() || null,
