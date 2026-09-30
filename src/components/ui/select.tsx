@@ -4,7 +4,26 @@ import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-const Select = SelectPrimitive.Root;
+/**
+ * Radix Select can emit onValueChange("") on its own - e.g. when mobile
+ * browsers or autofill touch the hidden native <select> it renders inside a
+ * form. "" is never a real choice (Radix forbids it as an item value), so it
+ * is dropped here instead of overwriting the selection. Otherwise a cleared
+ * "Kein Partner"/"Ohne Phase" field reaches Postgres as "" and fails with
+ * "invalid input syntax for type uuid".
+ */
+const Select = ({ onValueChange, ...props }: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>) => (
+  <SelectPrimitive.Root
+    {...props}
+    onValueChange={
+      onValueChange
+        ? (value: string) => {
+            if (value !== "") onValueChange(value);
+          }
+        : undefined
+    }
+  />
+);
 
 const SelectGroup = SelectPrimitive.Group;
 
